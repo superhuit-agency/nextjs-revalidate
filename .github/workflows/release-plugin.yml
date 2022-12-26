@@ -1,0 +1,49 @@
+---
+name: 'Release NEXT.js revalidate plugin'
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    name: "Release"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      # PHP Composer dependencies
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          coverage: none
+        env:
+          COMPOSER_TOKEN: ${{ github.token }}
+      - id: composer-cache
+        uses: actions/cache@v3
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-
+      - shell: bash
+        run: composer install --no-dev --prefer-dist --no-progress
+
+      - shell: bash
+        run: rsync -r --exclude .git --exclude .github --exclude .gitignore --exclude .editorconfig --exclude composer.json --exclude composer.lock . ./nextjs-revalidate
+          
+      - name: Archive Release
+        uses: montudor/action-zip@v1
+        with:
+          args: zip -qq -r nextjs-revalidate.zip nextjs-revalidate
+
+      - uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
+          files: |
+            nextjs-revalidate.zip
