@@ -13,7 +13,7 @@ class Revalidate {
 	 * Constructor.
 	 */
 	function __construct() {
-		add_action( 'save_post', [$this, 'on_post_save'], 99, 3 );
+		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -22,9 +22,15 @@ class Revalidate {
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
 	}
 
-	function on_post_save($post_id, $post, $update) {
-		// Do not continue for post type not viewable, nor autosave or revision, as in some cases it saves a draft!
+	function on_post_save( $post_id ) {
+		// Bail for post type not viewable, nor autosave or revision, as in some cases it saves a draft!
 		if ( !is_post_publicly_viewable($post_id) || wp_is_post_revision($post_id) || wp_is_post_autosave($post_id) ) return;
+
+		// Bail early if current request is for saving the metaboxes. (To not duplicate the purge query)
+		if ( isset($_REQUEST['meta-box-loader']) ) return;
+
+		// Ensure we do not fire this action twice. Safekeeping
+		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
 		$this->purge( get_permalink( $post_id ) );
 	}
