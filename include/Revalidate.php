@@ -29,6 +29,9 @@ class Revalidate {
 		// Bail early if current request is for saving the metaboxes. (To not duplicate the purge query)
 		if ( isset($_REQUEST['meta-box-loader']) ) return;
 
+		// Ensure we do not fire this action twice. Safekeeping
+		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
+
 		$this->purge( get_permalink( $post_id ) );
 	}
 
