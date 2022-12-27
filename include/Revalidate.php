@@ -23,8 +23,11 @@ class Revalidate {
 	}
 
 	function on_post_save( $post_id ) {
-		// Do not continue for post type not viewable, nor autosave or revision, as in some cases it saves a draft!
+		// Bail for post type not viewable, nor autosave or revision, as in some cases it saves a draft!
 		if ( !is_post_publicly_viewable($post_id) || wp_is_post_revision($post_id) || wp_is_post_autosave($post_id) ) return;
+
+		// Bail early if current request is for saving the metaboxes. (To not duplicate the purge query)
+		if ( isset($_REQUEST['meta-box-loader']) ) return;
 
 		$this->purge( get_permalink( $post_id ) );
 	}
