@@ -5,7 +5,7 @@
  * Description:       Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area. It also automatically purges & re-builds when a page/post/... is save or updated.
  * Author:            superhuit
  * Author URI:        https://www.superhuit.ch
- * Version:           1.0.1
+ * Version:           1.0.2
  * license:           GPLv3
  * License URI:       https://www.gnu.org/licenses/gpl-3.0.html
  * Requires PHP:      7.4
