@@ -1,14 +1,21 @@
 {
-    "name": "superhuit-agency/nextjs-revalidate",
+    "name": "superhuit/nextjs-revalidate",
     "description": "Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area. It also automatically purges & re-builds when a page/post/... is save or updated.",
     "type": "wordpress-plugin",
-    "license": "GPLv3",
+    "keywords": ["wordpress","nextjs","cache"],
+    "license": "GPL-3.0-or-later",
+    "homepage": "https://github.com/superhuit-agency/nextjs-revalidate",
     "authors": [
         {
             "name": "superhuit",
-            "email": "tech@superhuit.ch"
+            "email": "tech@superhuit.ch",
+            "homepage": "https://superhuit.ch",
+            "role": "Developer"
         }
     ],
+    "support": {
+        "issues": "https://github.com/superhuit-agency/nextjs-revalidate/issues"
+    },
     "autoload": {
         "psr-4": {
             "NextjsRevalidate\\": "include/"
