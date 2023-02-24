@@ -17,8 +17,10 @@ class Revalidate {
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
+		add_action( 'admin_init', [$this, 'revalidate_row_action'] );
 
-		add_action( 'admin_init', [$this, 'maybe_revalidate_action'] );
+		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
+
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
 	}
 
@@ -85,7 +87,7 @@ class Revalidate {
 		return $actions;
 	}
 
-	function maybe_revalidate_action() {
+	function revalidate_row_action() {
 		if ( ! (isset( $_GET['action'] ) && $_GET['action'] === 'nextjs-revalidate-purge' && isset($_GET['post']))  ) return;
 
 		check_admin_referer( "nextjs-revalidate-purge_{$_GET['post']}" );
@@ -101,7 +103,7 @@ class Revalidate {
 			}
 		}
 		else {
-			$sendback = remove_query_arg( [ 'trashed', 'untrashed', 'deleted', 'ids' ], $sendback );
+			$sendback = remove_query_arg( [ 'trashed', 'untrashed', 'deleted', 'ids', 'nextjs-revalidate-purged', 'nextjs-revalidate-bulk-purged' ], $sendback );
 		}
 
 		wp_safe_redirect(
@@ -110,19 +112,72 @@ class Revalidate {
 		exit;
 	}
 
+	/**
+	 * Register "Purge caches" bulk action.
+	 * All public post types, except "attachment" one
+	 */
+	function register_bulk_actions() {
+
+		$post_types = get_post_types([ 'public' => true ]);
+
+		unset( $post_types['attachment'] );
+
+		foreach ($post_types as $post_type) {
+			add_filter( "bulk_actions-edit-$post_type", [$this, 'add_revalidate_bulk_action'], 99 );
+			add_filter( "handle_bulk_actions-edit-$post_type",  [$this, 'revalidate_bulk_action'], 10, 3 );
+		}
+	}
+
+	function add_revalidate_bulk_action( $bulk_actions ) {
+		$bulk_actions['nextjs_revalidate-bulk_purge'] = __( 'Purge caches', 'nextjs-revalidate' );
+		return $bulk_actions;
+	}
+
+	function revalidate_bulk_action( $redirect_url, $action, $post_ids ) {
+		if ($action === 'nextjs_revalidate-bulk_purge') {
+
+			$purged = 0;
+			foreach ($post_ids as $post_id) {
+				if ( intval($this->purge( get_permalink( $post_id ) ) ) ) {
+					$purged++;
+				}
+			}
+
+			$redirect_url = add_query_arg('nextjs-revalidate-bulk-purged', $purged, $redirect_url);
+		}
+
+		return $redirect_url;
+	}
 
 	function purged_notice() {
-		if ( ! isset( $_GET['nextjs-revalidate-purged'] ) ) return;
+		if ( isset( $_GET['nextjs-revalidate-purged'] ) ) {
 
-		$success = boolval($_GET['nextjs-revalidate-purged']);
-		printf(
-			'<div class="notice notice-%s"><p>%s</p></div>',
-			$success ? 'success' : 'error',
-			($success
-				? sprintf( __( '“%s” cache has been correctly purged.', 'nextjs-revalidate' ), get_the_title($_GET['nextjs-revalidate-purged']) )
-				: __( 'The cache could not be purged correctly. Please try again or contact an administrator.', 'nextjs-revalidate' )
-			)
-		);
+			$success = boolval($_GET['nextjs-revalidate-purged']);
+			printf(
+				'<div class="notice notice-%s"><p>%s</p></div>',
+				$success ? 'success' : 'error',
+				($success
+					? sprintf( __( '“%s” cache has been correctly purged.', 'nextjs-revalidate' ), get_the_title($_GET['nextjs-revalidate-purged']) )
+					: __( 'The cache could not be purged correctly. Please try again or contact an administrator.', 'nextjs-revalidate' )
+				)
+			);
+		}
+
+		if ( isset($_GET['nextjs-revalidate-bulk-purged']) ) {
+
+			$nb_purged = intval($_GET['nextjs-revalidate-bulk-purged']);
+			$success = $nb_purged > 0;
+
+			printf(
+				'<div class="notice notice-%s"><p>%s</p></div>',
+				$success ? 'success' : 'error',
+				($success
+					? sprintf( _n( 'Successfully purged %d cache.', 'Successfully purged %d caches.', $nb_purged, 'nextjs-revalidate' ), $nb_purged )
+					: __( 'The caches could not be purged correctly. Please try again or contact an administrator.', 'nextjs-revalidate' )
+				)
+			);
+		}
+
 	}
 }
 
