@@ -71,8 +71,7 @@ class Revalidate {
 						[
 							'action'    => 'nextjs-revalidate-purge',
 							'post'      => $post->ID,
-						],
-						admin_url()
+						]
 					),
 					"nextjs-revalidate-purge_{$post->ID}"
 				),
@@ -93,13 +92,21 @@ class Revalidate {
 
 		$success = intval($this->purge( get_permalink( $_GET['post'] ) ) );
 
-		wp_redirect(add_query_arg(
-			[
-				'post_type'                => get_post_type($_GET['post']),
-				'nextjs-revalidate-purged' => $success ? $_GET['post'] : 0,
-			],
-			admin_url( 'edit.php' )
-		));
+		$sendback  = wp_get_referer();
+		if ( ! $sendback ) {
+			$sendback = admin_url( 'edit.php' );
+			$post_type = get_post_type($_GET['post']);
+			if ( ! empty( $post_type ) ) {
+				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
+			}
+		}
+		else {
+			$sendback = remove_query_arg( [ 'trashed', 'untrashed', 'deleted', 'ids' ], $sendback );
+		}
+
+		wp_safe_redirect(
+			add_query_arg( [ 'nextjs-revalidate-purged' => ($success ? $_GET['post'] : 0) ], $sendback )
+		);
 		exit;
 	}
 
