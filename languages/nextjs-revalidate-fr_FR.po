@@ -1,8 +1,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Next.js revalidate\n"
-"POT-Creation-Date: 2022-12-26 11:51+0100\n"
-"PO-Revision-Date: 2022-12-26 11:52+0100\n"
+"POT-Creation-Date: 2023-02-24 16:06+0100\n"
+"PO-Revision-Date: 2023-02-24 16:07+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "Language: fr_FR\n"
@@ -22,23 +22,42 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-0: *.min.js\n"
 "X-Poedit-SearchPathExcluded-1: vendor\n"
 
-#: include/Revalidate.php:73
+#: include/Revalidate.php:80
 #, php-format
 msgid "Purge cache of post “%s”"
 msgstr "Purger le cache du post « %s »"
 
-#: include/Revalidate.php:74
+#: include/Revalidate.php:81
 msgid "Purge cache"
 msgstr "Vider le cache"
 
-#: include/Revalidate.php:109
+#: include/Revalidate.php:132
+msgid "Purge caches"
+msgstr "Vider les caches"
+
+#: include/Revalidate.php:160
 #, php-format
 msgid "“%s” cache has been correctly purged."
 msgstr "Le cache « %s » a été correctement purgé."
 
-#: include/Revalidate.php:110
+#: include/Revalidate.php:161
 msgid ""
 "The cache could not be purged correctly. Please try again or contact an "
+"administrator."
+msgstr ""
+"Le cache n’a pas pu être vidé correctement. Veuillez réessayer ou contacter "
+"un administrateur."
+
+#: include/Revalidate.php:175
+#, php-format
+msgid "Successfully purged %d cache."
+msgid_plural "Successfully purged %d caches."
+msgstr[0] "%d cache a été correctement purgé."
+msgstr[1] "%d caches ont été correctement purgés."
+
+#: include/Revalidate.php:176
+msgid ""
+"The caches could not be purged correctly. Please try again or contact an "
 "administrator."
 msgstr ""
 "Le cache n’a pas pu être vidé correctement. Veuillez réessayer ou contacter "
@@ -61,7 +80,7 @@ msgstr "URL de revalidation"
 msgid "Revalidate Secret"
 msgstr "Secret de revalidation"
 
-#: nextjs-revalidate.php:33
+#: nextjs-revalidate.php:50
 msgid "Please install composer dependencies for Next.js Revalidate to work"
 msgstr ""
 "Veuillez installer les dépendances du compositeur pour que Next.js "
@@ -72,8 +91,15 @@ msgid "https://github.com/com:superhuit-agency/nextjs-revalidate.git"
 msgstr "https://github.com/com:superhuit-agency/nextjs-revalidate.git"
 
 #. Description of the plugin/theme
-msgid "Purges Next.js cache on pages and posts update."
-msgstr "Purges le cache des pages et publications de Next.js."
+msgid ""
+"Next.js plugin allows you to purge & re-build the cached pages from the "
+"WordPress admin area. It also automatically purges & re-builds when a page/"
+"post/... is save or updated."
+msgstr ""
+"Le plugin Next.js Revalidate vous permet de purger et de reconstruire les "
+"pages en cache depuis la zone d’administration de WordPress. Il purge et "
+"reconstruit aussi automatiquement lorsqu’une page/post/… est sauvegardée ou "
+"mise à jour."
 
 #. Author of the plugin/theme
 msgid "superhuit"
@@ -82,3 +108,6 @@ msgstr "superhuit"
 #. Author URI of the plugin/theme
 msgid "https://www.superhuit.ch"
 msgstr "https://www.superhuit.ch"
+
+#~ msgid "Purges Next.js cache on pages and posts update."
+#~ msgstr "Purges le cache des pages et publications de Next.js."
