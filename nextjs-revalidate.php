@@ -36,6 +36,7 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
+use NextJsRevalidate\Cron;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -59,6 +60,7 @@ class NextJsRevalidate {
 
 	private Revalidate $revalidate;
 	private Settings $settings;
+	private Cron $cron;
 
 	function __construct() {
 
@@ -66,6 +68,7 @@ class NextJsRevalidate {
 
 		$this->revalidate = new Revalidate();
 		$this->settings   = new Settings();
+		$this->cron       = new Cron();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -79,12 +82,16 @@ class NextJsRevalidate {
 	/**
 	 * Execute anything necessary on plugin activation
 	 */
-	function activate() {}
+	function activate() {
+		$this->cron->schedule_cron();
+	}
 
 	/**
 	 * Execute anything necessary on plugin deactivation
 	 */
-	function deactivate() {}
+	function deactivate() {
+		Cron::unschedule_cron();
+	}
 
 	/**
 	 * Execute anything necessary on plugin uninstall (deletion)
@@ -111,4 +118,17 @@ $NEXTJS_REVALIDATE = new NextJsRevalidate();
 function nextjs_revalidate_purge_url( $url ) {
 	global $NEXTJS_REVALIDATE;
 	return $NEXTJS_REVALIDATE->revalidate->purge( $url );
+}
+
+/**
+ * Schedule an URL purge from Next.js cache
+ * Triggers a revalidation of the given URL at the given date time
+ *
+ * @param  String $datetime The date time when to purge
+ * @param  String $url      The URL to purge
+ * @return Bool             Wether the schedule is registered
+ */
+function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
+	global $NEXTJS_REVALIDATE;
+	return $NEXTJS_REVALIDATE->cron->schedule_purge( $datetime, $url );
 }
