@@ -2,6 +2,7 @@
 
 namespace NextJsRevalidate;
 
+use NextJsRevalidate;
 use WP_Post;
 
 // Exit if accessed directly.
@@ -38,16 +39,16 @@ class Revalidate {
 	}
 
 	function purge( $permalink ) {
-		global $NEXTJS_REVALIDATE;
 
-		if ( !$NEXTJS_REVALIDATE->settings->is_configured() ) return false;
+		$njr = NextJsRevalidate::init();
+		if ( !$njr->settings->is_configured() ) return false;
 
 		$revalidate_uri = add_query_arg(
 			[
 				'path'   => wp_make_link_relative( $permalink ),
-				'secret' => $NEXTJS_REVALIDATE->settings->secret
+				'secret' => $njr->settings->secret
 			],
-			$NEXTJS_REVALIDATE->settings->url
+			$njr->settings->url
 		);
 
 		$response = wp_remote_get( $revalidate_uri, [ 'timeout' => 60 ] );
@@ -62,8 +63,8 @@ class Revalidate {
 
 		if ( $post instanceof WP_Post || is_array( $actions ) ) {
 
-			global $NEXTJS_REVALIDATE;
-			if ( $NEXTJS_REVALIDATE->settings->is_configured() ) {
+			$njr = NextJsRevalidate::init();
+			if ( $njr->settings->is_configured() ) {
 
 				$actions['revalidate'] = sprintf(
 					'<a href="%s" aria-label="%s">%s</a>',
@@ -117,8 +118,8 @@ class Revalidate {
 	 * All public post types, except "attachment" one
 	 */
 	function register_bulk_actions() {
-		global $NEXTJS_REVALIDATE;
-		if ( !$NEXTJS_REVALIDATE->settings->is_configured() ) return false;
+		$njr = NextJsRevalidate::init();
+		if ( !$njr->settings->is_configured() ) return false;
 
 		$post_types = get_post_types([ 'public' => true ]);
 

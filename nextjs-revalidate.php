@@ -62,12 +62,23 @@ class NextJsRevalidate {
 	private Settings $settings;
 	private Cron $cron;
 
-	function __construct() {
+	private static NextJsRevalidate $instance;
+
+	public static function init(): NextJsRevalidate {
+
+		if (!isset(self::$instance)) {
+			self::$instance = new static();
+	}
+
+	return self::$instance;
+	}
+
+	protected function __construct() {
 
 		new I18n();
 
-		$this->revalidate = new Revalidate();
 		$this->settings   = new Settings();
+		$this->revalidate = new Revalidate();
 		$this->cron       = new Cron();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
@@ -103,7 +114,7 @@ class NextJsRevalidate {
 
 }
 
-$NEXTJS_REVALIDATE = new NextJsRevalidate();
+NextJsRevalidate::init();
 
 /**
  * API functions
@@ -117,8 +128,8 @@ $NEXTJS_REVALIDATE = new NextJsRevalidate();
  * @return bool        Wether the purge was successful
  */
 function nextjs_revalidate_purge_url( $url ) {
-	global $NEXTJS_REVALIDATE;
-	return $NEXTJS_REVALIDATE->revalidate->purge( $url );
+	$njr = NextJsRevalidate::init();
+	return $njr->revalidate->purge( $url );
 }
 
 /**
@@ -130,6 +141,6 @@ function nextjs_revalidate_purge_url( $url ) {
  * @return Bool             Wether the schedule is registered
  */
 function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
-	global $NEXTJS_REVALIDATE;
-	return $NEXTJS_REVALIDATE->cron->schedule_purge( $datetime, $url );
+	$njr = NextJsRevalidate::init();
+	return $njr->cron->schedule_purge( $datetime, $url );
 }
