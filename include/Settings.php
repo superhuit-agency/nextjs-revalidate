@@ -123,6 +123,11 @@ class Settings {
 			delete_option( self::SETTINGS_SECRET_NAME );
 	}
 
+	public function define_settings() {
+		add_option( self::SETTINGS_URL_NAME );
+		add_option( self::SETTINGS_SECRET_NAME );
+	}
+
 	/**
 	 * Returns if the plugin is correctly configured.
 	 *

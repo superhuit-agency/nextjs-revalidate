@@ -84,6 +84,7 @@ class NextJsRevalidate {
 	 */
 	function activate() {
 		$this->cron->schedule_cron();
+		$this->settings->define_settings();
 	}
 
 	/**
