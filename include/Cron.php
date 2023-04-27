@@ -48,7 +48,8 @@ class Cron {
 		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
 
 		$entries = get_option( self::OPTION_NAME, [] );
-		$next_purge = array_shift(array_keys($entries));
+		$entries_key = array_keys($entries);
+		$next_purge = array_shift($entries_key);
 
 		if ( empty($next_purge) ) return;
 
