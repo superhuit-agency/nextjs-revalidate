@@ -40,18 +40,14 @@ class Revalidate {
 	function purge( $permalink ) {
 		global $NEXTJS_REVALIDATE;
 
-		$url = $NEXTJS_REVALIDATE->settings->url;
-		if ( empty($url) ) return false;
-
-		$secret = $NEXTJS_REVALIDATE->settings->secret;
-		if ( empty($secret) ) return false;
+		if ( !$NEXTJS_REVALIDATE->settings->is_configured() ) return false;
 
 		$revalidate_uri = add_query_arg(
 			[
 				'path'   => wp_make_link_relative( $permalink ),
-				'secret' => $secret
+				'secret' => $NEXTJS_REVALIDATE->settings->secret
 			],
-			$url
+			$NEXTJS_REVALIDATE->settings->url
 		);
 
 		$response = wp_remote_get( $revalidate_uri, [ 'timeout' => 60 ] );
@@ -66,21 +62,25 @@ class Revalidate {
 
 		if ( $post instanceof WP_Post || is_array( $actions ) ) {
 
-			$actions['revalidate'] = sprintf(
-				'<a href="%s" aria-label="%s">%s</a>',
-				wp_nonce_url(
-					add_query_arg(
-						[
-							'action'    => 'nextjs-revalidate-purge',
-							'post'      => $post->ID,
-						]
-					),
-					"nextjs-revalidate-purge_{$post->ID}"
-				),
-				esc_attr( sprintf( __('Purge cache of post “%s”', 'nextjs-revalidate'), get_the_title($post)) ),
-				__('Purge cache', 'nextjs-revalidate'),
-			);
+			global $NEXTJS_REVALIDATE;
+			if ( $NEXTJS_REVALIDATE->settings->is_configured() ) {
 
+				$actions['revalidate'] = sprintf(
+					'<a href="%s" aria-label="%s">%s</a>',
+					wp_nonce_url(
+						add_query_arg(
+							[
+								'action'    => 'nextjs-revalidate-purge',
+								'post'      => $post->ID,
+							]
+						),
+						"nextjs-revalidate-purge_{$post->ID}"
+					),
+					esc_attr( sprintf( __('Purge cache of post “%s”', 'nextjs-revalidate'), get_the_title($post)) ),
+					__('Purge cache', 'nextjs-revalidate'),
+				);
+
+			}
 		}
 
 
@@ -117,6 +117,8 @@ class Revalidate {
 	 * All public post types, except "attachment" one
 	 */
 	function register_bulk_actions() {
+		global $NEXTJS_REVALIDATE;
+		if ( !$NEXTJS_REVALIDATE->settings->is_configured() ) return false;
 
 		$post_types = get_post_types([ 'public' => true ]);
 

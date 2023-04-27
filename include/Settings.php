@@ -122,4 +122,16 @@ class Settings {
 			delete_option( self::SETTINGS_URL_NAME ) &&
 			delete_option( self::SETTINGS_SECRET_NAME );
 	}
+
+	/**
+	 * Returns if the plugin is correctly configured.
+	 *
+	 * @return boolean
+	 */
+	public function is_configured() {
+		$url = $this->url;
+		$secret = $this->secret;
+		return !(empty($url) || empty($secret));
+
+	}
 }
