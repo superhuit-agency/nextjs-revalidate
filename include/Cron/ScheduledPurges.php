@@ -4,6 +4,7 @@ namespace NextJsRevalidate\Cron;
 
 use DateTime;
 use DateTimeZone;
+use NextJsRevalidate;
 
 class ScheduledPurges {
 
@@ -19,7 +20,7 @@ class ScheduledPurges {
 
 	public function run_cron_hook() {
 
-		global $NEXTJS_REVALIDATE;
+		$njr = NextJsRevalidate::init();
 
 		$entries = get_option( self::OPTION_NAME, [] );
 		$now = new DateTime('now', $this->timezone );
@@ -30,7 +31,7 @@ class ScheduledPurges {
 			$next_purge_datetime = new DateTime( $datetime );
 			if ( $next_purge_datetime <= $now ) {
 				foreach ($urls as $url) {
-					$NEXTJS_REVALIDATE->revalidate->purge( $url );
+					$njr->revalidate->purge( $url );
 				}
 			}
 			else {
