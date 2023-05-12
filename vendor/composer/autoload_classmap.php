@@ -8,6 +8,7 @@ $baseDir = dirname($vendorDir);
 return array(
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',
     'NextJsRevalidate\\Assets' => $baseDir . '/include/Assets.php',
+    'NextJsRevalidate\\Cron\\PurgeAll' => $baseDir . '/include/Cron/PurgeAll.php',
     'NextJsRevalidate\\Cron\\ScheduledPurges' => $baseDir . '/include/Cron/ScheduledPurges.php',
     'NextJsRevalidate\\I18n' => $baseDir . '/include/I18n.php',
     'NextJsRevalidate\\Revalidate' => $baseDir . '/include/Revalidate.php',

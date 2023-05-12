@@ -63,6 +63,10 @@ class Revalidate {
 	}
 
 	function purge_all() {
+
+		$njr = NextJsRevalidate::init();
+		if ( !$njr->settings->is_configured() ) return false;
+
 		$nodes = [];
 
 		// retrieve all public post types
@@ -90,11 +94,12 @@ class Revalidate {
 		}
 
 		update_option( 'nextjs-revalidate-purge_all', [
-			'running' => true,
-			'nodes'   => $nodes,
-			'total'   => count($nodes),
+			'status' => 'running',
+			'nodes'  => $nodes,
+			'total'  => count($nodes),
 		] );
 
+		$njr->cronPurgeAll->start();
 	}
 
 	function add_revalidate_row_action( $actions, $post ) {
