@@ -36,7 +36,7 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
-use NextJsRevalidate\Cron;
+use NextJsRevalidate\Cron\ScheduledPurges;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -60,7 +60,7 @@ class NextJsRevalidate {
 
 	private Revalidate $revalidate;
 	private Settings $settings;
-	private Cron $cron;
+	private ScheduledPurges $cronScheduledPurges;
 
 	private static NextJsRevalidate $instance;
 
@@ -77,9 +77,9 @@ class NextJsRevalidate {
 
 		new I18n();
 
-		$this->settings   = new Settings();
-		$this->revalidate = new Revalidate();
-		$this->cron       = new Cron();
+		$this->settings            = new Settings();
+		$this->revalidate          = new Revalidate();
+		$this->cronScheduledPurges = new ScheduledPurges();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -94,7 +94,7 @@ class NextJsRevalidate {
 	 * Execute anything necessary on plugin activation
 	 */
 	function activate() {
-		$this->cron->schedule_cron();
+		$this->cronScheduledPurges->schedule_cron();
 		$this->settings->define_settings();
 	}
 
@@ -102,7 +102,7 @@ class NextJsRevalidate {
 	 * Execute anything necessary on plugin deactivation
 	 */
 	function deactivate() {
-		Cron::unschedule_cron();
+		ScheduledPurges::unschedule_cron();
 	}
 
 	/**
@@ -142,5 +142,5 @@ function nextjs_revalidate_purge_url( $url ) {
  */
 function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
 	$njr = NextJsRevalidate::init();
-	return $njr->cron->schedule_purge( $datetime, $url );
+	return $njr->cronScheduledPurges->schedule_purge( $datetime, $url );
 }
