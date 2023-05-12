@@ -89,9 +89,10 @@ class Revalidate {
 			$nodes = array_merge( $nodes, array_map(function($t) { return [ 'type' => 'term', 'id' => $t]; }, $terms) );
 		}
 
-		update_option( 'nextjs-revalidate-purge-all', [
+		update_option( 'nextjs-revalidate-purge_all', [
 			'running' => true,
 			'nodes'   => $nodes,
+			'total'   => count($nodes),
 		] );
 
 	}
@@ -271,13 +272,13 @@ class Revalidate {
 	}
 
 	function is_purging_all() {
-		$purge_all = get_option( 'nextjs-revalidate-purge-all' );
-		return boolval($purge_all['running']);
+		$purge_all = get_option( 'nextjs-revalidate-purge_all', [] );
+		return boolval($purge_all['running'] ?? false);
 	}
 
 	function get_total_pages_to_purge() {
-		$purge_all = get_option( 'nextjs-revalidate-purge-all' );
-		return count($purge_all['nodes']);
+		$purge_all = get_option( 'nextjs-revalidate-purge_all', [] );
+		return $purge_all['total'] ?? 0;
 	}
 
 	function revalidate_all_pages_action() {
