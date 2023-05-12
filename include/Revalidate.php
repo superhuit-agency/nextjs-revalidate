@@ -21,6 +21,7 @@ class Revalidate {
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_action( 'admin_init', [$this, 'revalidate_row_action'] );
 		add_action( 'admin_init', [$this, 'revalidate_all_pages_action'] );
+		add_action( 'admin_init', [$this, 'purge_all_progress'] );
 
 		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
 
@@ -223,11 +224,12 @@ class Revalidate {
 				);
 			}
 
+			$numbers = $this->get_purge_all_progress_numbers();
 			printf(
-				'<div class="notice notice-info"><p>%s</p></div>',
+				'<div class="notice notice-info nextjs-revalidate-purge-all__notice"><p>%s</p></div>',
 				sprintf(
 					__( 'Purging all caches. Please wait… %s', 'nextjs-revalidate' ),
-					sprintf('<span class="nextjs-revalidate-purge-all__progress">%d/%s</span>', 0, $this->get_total_pages_to_purge() )
+					sprintf('<span class="nextjs-revalidate-purge-all__progress">%s%% (%d/%s)</span>', $numbers->progress, $numbers->done, $numbers->total )
 				)
 			);
 		}
@@ -278,12 +280,21 @@ class Revalidate {
 
 	function is_purging_all() {
 		$purge_all = get_option( 'nextjs-revalidate-purge_all', [] );
-		return boolval($purge_all['running'] ?? false);
+		return in_array($purge_all['status'] ?? '', ['running']);
 	}
 
-	function get_total_pages_to_purge() {
+	function get_purge_all_progress_numbers() {
 		$purge_all = get_option( 'nextjs-revalidate-purge_all', [] );
-		return $purge_all['total'] ?? 0;
+
+		$todo     = count($purge_all['nodes'] ?? []);
+		$total    = $purge_all['total'] ?? 0;
+		$done     = max(0, $total - $todo);
+		return (object)[
+			'todo'     => $todo,
+			'done'     => $done,
+			'total'    => $total,
+			'progress' => $total > 0 ? round( $done / $total * 100 ) : 0,
+		];
 	}
 
 	function revalidate_all_pages_action() {
@@ -297,6 +308,39 @@ class Revalidate {
 		else $this->purge_all();
 
 		wp_safe_redirect( $sendback );
+		exit;
+	}
+
+	function purge_all_progress() {
+		if ( !isset($_GET['action']) || $_GET['action'] !== 'nextjs-revalidate-purge-all-progress' ) return;
+
+		if ( false === check_ajax_referer( 'nextjs-revalidate-purge_all_progress' ) ) return;
+
+		$purge_all = get_option( 'nextjs-revalidate-purge_all', [] );
+
+		$numbers = $this->get_purge_all_progress_numbers();
+		$done = $numbers->done;
+		$total = $numbers->total;
+		$progress = $numbers->progress;
+		switch ( $purge_all['status'] ?? '' ) {
+			case 'done':
+				$status = 'done';
+
+				break;
+			case 'running':
+				$status = 'running';
+
+				break;
+			default:
+				$status = 'not-running';
+		}
+
+		wp_send_json_success( [
+			'status' => $status,
+			'done'   => $done ?? 0,
+			'total'  => $total ?? 0,
+			'progress'  => $progress ?? 0,
+		] );
 		exit;
 	}
 }

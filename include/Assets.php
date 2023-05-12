@@ -49,7 +49,14 @@ class Assets {
 	}
 
 	function enqueue_admin_assets() {
-		if ( !empty($this->assets['admin']['js']) ) wp_enqueue_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
+		if ( !empty($this->assets['admin']['js']) ) {
+			wp_register_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
+			wp_localize_script( 'njr-admin-script', 'nextjs_revalidate', [
+				'url'   => admin_url( 'admin-ajax.php' ),
+				'nonce' => wp_create_nonce( 'nextjs-revalidate-purge_all_progress' ),
+			] );
+			wp_enqueue_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
+		}
 		if ( !empty($this->assets['admin']['css']) ) wp_enqueue_style( 'njr-admin-styles', $this->assets['admin']['css'] );
 	}
 
