@@ -7,14 +7,14 @@ namespace Composer\Autoload;
 class ComposerStaticInit66f366203ca8fe8d58684609d341da58
 {
     public static $prefixLengthsPsr4 = array (
-        'N' => 
+        'N' =>
         array (
             'NextjsRevalidate\\' => 17,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'NextjsRevalidate\\' => 
+        'NextjsRevalidate\\' =>
         array (
             0 => __DIR__ . '/../..' . '/include',
         ),
@@ -22,6 +22,7 @@ class ComposerStaticInit66f366203ca8fe8d58684609d341da58
 
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
+        'NextJsRevalidate\\Assets' => __DIR__ . '/../..' . '/include/Assets.php',
         'NextJsRevalidate\\Cron\\ScheduledPurges' => __DIR__ . '/../..' . '/include/Cron/ScheduledPurges.php',
         'NextJsRevalidate\\I18n' => __DIR__ . '/../..' . '/include/I18n.php',
         'NextJsRevalidate\\Revalidate' => __DIR__ . '/../..' . '/include/Revalidate.php',

@@ -33,6 +33,7 @@ You should have received a copy of the GNU General Public License
 along with Next.js revalidate. If not, see {URI to Plugin License}.
 */
 
+use NextJsRevalidate\Assets;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
@@ -40,6 +41,9 @@ use NextJsRevalidate\Cron\ScheduledPurges;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
+
+define( 'NJR_PATH', __DIR__ );
+define( 'NJR_URI', plugin_dir_url(__FILE__) );
 
 // Load dependencies
 // ====
@@ -58,6 +62,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 class NextJsRevalidate {
 
+	private Assets $assets;
 	private Revalidate $revalidate;
 	private Settings $settings;
 	private ScheduledPurges $cronScheduledPurges;
@@ -77,6 +82,7 @@ class NextJsRevalidate {
 
 		new I18n();
 
+		$this->assets              = new Assets();
 		$this->settings            = new Settings();
 		$this->revalidate          = new Revalidate();
 		$this->cronScheduledPurges = new ScheduledPurges();

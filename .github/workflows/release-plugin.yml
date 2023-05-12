@@ -33,8 +33,30 @@ jobs:
       - shell: bash
         run: composer install --no-dev --prefer-dist --no-progress
 
+      - name: Install node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'yarn'
+      - name: Install dependencies & build assets
+        run: |
+          yarn install --frozen-lockfile
+          yarn build
+
       - shell: bash
-        run: rsync -r --exclude .git --exclude .github --exclude .gitignore --exclude .editorconfig --exclude composer.json --exclude composer.lock . ./nextjs-revalidate
+        run: |
+          rsync -r \
+            --exclude .git \
+            --exclude .github \
+            --exclude .gitignore \
+            --exclude .editorconfig \
+            --exclude composer.json \
+            --exclude composer.lock \
+            --exclude .nvmrc \
+            --exclude node_modules \
+            --exclude webpack.config.js \
+            --exclude yarn.lock \
+          . ./nextjs-revalidate
           
       - name: Archive Release
         uses: montudor/action-zip@v1
