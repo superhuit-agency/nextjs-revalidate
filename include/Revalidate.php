@@ -3,6 +3,7 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate;
+use WP_Admin_Bar;
 use WP_Post;
 
 // Exit if accessed directly.
@@ -23,6 +24,7 @@ class Revalidate {
 		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
 
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
+		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
 	}
 
 	function on_post_save( $post_id ) {
@@ -95,17 +97,7 @@ class Revalidate {
 
 		$success = intval($this->purge( get_permalink( $_GET['post'] ) ) );
 
-		$sendback  = wp_get_referer();
-		if ( ! $sendback ) {
-			$sendback = admin_url( 'edit.php' );
-			$post_type = get_post_type($_GET['post']);
-			if ( ! empty( $post_type ) ) {
-				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
-			}
-		}
-		else {
-			$sendback = remove_query_arg( [ 'trashed', 'untrashed', 'deleted', 'ids', 'nextjs-revalidate-purged', 'nextjs-revalidate-bulk-purged' ], $sendback );
-		}
+		$sendback  = $this->get_sendback_url();
 
 		wp_safe_redirect(
 			add_query_arg( [ 'nextjs-revalidate-purged' => ($success ? $_GET['post'] : 0) ], $sendback )
@@ -181,6 +173,60 @@ class Revalidate {
 			);
 		}
 
+	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
+
+		$admin_bar->add_menu( [
+			'id'     => 'nextjs-revalidate',
+			'title'  => _x( 'Purge caches', 'Admin top bar menu', 'nextjs-revalidate'),
+			'meta'   => [
+				'class' => "nextjs-revalidate",
+			]
+		] );
+
+		$admin_bar->add_node( [
+			'id'     => "nextjs-revalidate-all-pages",
+			'parent' => 'nextjs-revalidate',
+			'title'  => _x( 'All pages', 'Admin top bar menu', 'nextjs-revalidate' ),
+			'href'   => esc_url(
+				wp_nonce_url(
+					add_query_arg( 'action', 'nextjs-revalidate-purge-all' ),
+					'nextjs-revalidate-purge-all'
+				)
+			),
+			'meta'   => [
+				'title' => _x( 'Purging all cache may take some time according to the number of pages to purge.', 'Admin top bar menu', 'nextjs-revalidate' ),
+			]
+		] );
+
+	}
+
+	function get_sendback_url() {
+		$sendback  = wp_get_referer();
+		if ( ! $sendback ) {
+			$sendback = admin_url( 'edit.php' );
+			$post_type = get_post_type($_GET['post']);
+			if ( ! empty( $post_type ) ) {
+				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
+			}
+		}
+		else {
+			$sendback = remove_query_arg( [ 'action', 'trashed', 'untrashed', 'deleted', 'ids', 'nextjs-revalidate-purged', 'nextjs-revalidate-bulk-purged' ], $sendback );
+		}
+
+		return $sendback;
+	}
+
+	function revalidate_all_pages_action() {
+		if ( ! (isset( $_GET['action'] ) && $_GET['action'] === 'nextjs-revalidate-purge-all')  ) return;
+
+		check_admin_referer( 'nextjs-revalidate-purge-all' );
+
+		$sendback = $this->get_sendback_url();
+
+		// TODO: Purge all
+
+		wp_safe_redirect( $sendback );
+		exit;
 	}
 }
 
