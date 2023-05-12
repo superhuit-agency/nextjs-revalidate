@@ -20,6 +20,7 @@ class Revalidate {
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_action( 'admin_init', [$this, 'revalidate_row_action'] );
+		add_action( 'admin_init', [$this, 'revalidate_all_pages_action'] );
 
 		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
 
@@ -59,6 +60,40 @@ class Revalidate {
 			? error_log($response->get_error_message())
 			: ($response['response']['code'] === 200)
 		);
+	}
+
+	function purge_all() {
+		$nodes = [];
+
+		// retrieve all public post types
+		$post_types = get_post_types([ 'public' => true ]);
+		foreach ($post_types as $post_type) {
+			$posts = get_posts([
+				'post_type'      => $post_type,
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'post_status'    => 'publish',
+			]);
+
+			$nodes = array_merge( $nodes, array_map(function($p) { return ['type' => 'post', 'id' => $p]; }, $posts) );
+		}
+
+		// retrieve all public taxonomies
+		$taxonomies = get_taxonomies([ 'public' => true ]);
+		foreach ($taxonomies as $taxonomy) {
+			$terms = get_terms([
+				'taxonomy'   => $taxonomy,
+				'hide_empty' => false,
+				'fields'     => 'ids',
+			]);
+			$nodes = array_merge( $nodes, array_map(function($t) { return [ 'type' => 'term', 'id' => $t]; }, $terms) );
+		}
+
+		update_option( 'nextjs-revalidate-purge-all', [
+			'running' => true,
+			'nodes'   => $nodes,
+		] );
+
 	}
 
 	function add_revalidate_row_action( $actions, $post ) {
@@ -173,6 +208,25 @@ class Revalidate {
 			);
 		}
 
+		if ( $this->is_purging_all() ) {
+
+			if ( isset($_GET['nextjs-revalidate-purge-all']) && $_GET['nextjs-revalidate-purge-all'] === 'already-running') {
+				printf(
+					'<div class="notice notice-warning"><p>%s</p></div>',
+					__( 'Purging all caches. is already running. Please wait until the end to restart the purge.', 'nextjs-revalidate' )
+				);
+			}
+
+			printf(
+				'<div class="notice notice-info"><p>%s</p></div>',
+				sprintf(
+					__( 'Purging all caches. Please wait… %s', 'nextjs-revalidate' ),
+					sprintf('<span class="nextjs-revalidate-purge-all__progress">%d/%s</span>', 0, $this->get_total_pages_to_purge() )
+				)
+			);
+		}
+	}
+
 	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
 
 		$admin_bar->add_menu( [
@@ -216,6 +270,16 @@ class Revalidate {
 		return $sendback;
 	}
 
+	function is_purging_all() {
+		$purge_all = get_option( 'nextjs-revalidate-purge-all' );
+		return boolval($purge_all['running']);
+	}
+
+	function get_total_pages_to_purge() {
+		$purge_all = get_option( 'nextjs-revalidate-purge-all' );
+		return count($purge_all['nodes']);
+	}
+
 	function revalidate_all_pages_action() {
 		if ( ! (isset( $_GET['action'] ) && $_GET['action'] === 'nextjs-revalidate-purge-all')  ) return;
 
@@ -223,10 +287,10 @@ class Revalidate {
 
 		$sendback = $this->get_sendback_url();
 
-		// TODO: Purge all
+		if ( $this->is_purging_all() ) $sendback = add_query_arg( ['nextjs-revalidate-purge-all' => 'already-running'], $sendback );
+		else $this->purge_all();
 
 		wp_safe_redirect( $sendback );
 		exit;
 	}
 }
-
