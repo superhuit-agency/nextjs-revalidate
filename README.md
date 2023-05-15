@@ -25,7 +25,7 @@ https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-str
 
 ### nextjs_revalidate_purge_url
 
-Allows to purge & re-build aby URL. Return a boolean to indicate wheter the purge has been successful.
+Allows to purge & re-build aby URL. Return a boolean to indicate whether the purge has been successful.
 
 #### Usage
 ```php
@@ -37,5 +37,25 @@ nextjs_revalidate_purge_url( $url );
 | Name | Type | Description |
 | --- | --- | --- |
 | url  | string | The URL to purge |
+
+### nextjs_revalidate_schedule_purge_url
+
+Schedule a URL purge from Next.js cache. Will triggers a revalidation of the given URL at the given date time. Returns a boolean tp indication whether the schedule is registered.
+
+#### Usage
+```php
+nextjs_revalidate_schedule_purge_url( $datetime, $url );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| datetime  | string | The date time when to purge |
+| url  | string | The URL to purge |
+
+#### Returns
+
+
 
 
