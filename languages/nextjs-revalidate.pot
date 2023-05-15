@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Next.js revalidate\n"
-"POT-Creation-Date: 2023-02-24 16:06+0100\n"
+"POT-Creation-Date: 2023-05-15 08:44+0200\n"
 "PO-Revision-Date: 2022-12-26 11:44+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -21,42 +21,72 @@ msgstr ""
 "X-Poedit-SearchPath-0: .\n"
 "X-Poedit-SearchPathExcluded-0: *.min.js\n"
 "X-Poedit-SearchPathExcluded-1: vendor\n"
+"X-Poedit-SearchPathExcluded-2: dist\n"
+"X-Poedit-SearchPathExcluded-3: node_modules\n"
 
-#: include/Revalidate.php:80
+#: include/Revalidate.php:125
 #, php-format
 msgid "Purge cache of post “%s”"
 msgstr ""
 
-#: include/Revalidate.php:81
+#: include/Revalidate.php:126
 msgid "Purge cache"
 msgstr ""
 
-#: include/Revalidate.php:132
+#: include/Revalidate.php:170
 msgid "Purge caches"
 msgstr ""
 
-#: include/Revalidate.php:160
+#: include/Revalidate.php:198
 #, php-format
 msgid "“%s” cache has been correctly purged."
 msgstr ""
 
-#: include/Revalidate.php:161
+#: include/Revalidate.php:199
 msgid ""
 "The cache could not be purged correctly. Please try again or contact an "
 "administrator."
 msgstr ""
 
-#: include/Revalidate.php:175
+#: include/Revalidate.php:213
 #, php-format
 msgid "Successfully purged %d cache."
 msgid_plural "Successfully purged %d caches."
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/Revalidate.php:176
+#: include/Revalidate.php:214
 msgid ""
 "The caches could not be purged correctly. Please try again or contact an "
 "administrator."
+msgstr ""
+
+#: include/Revalidate.php:224
+msgid ""
+"Purging all caches. is already running. Please wait until the end to "
+"restart the purge."
+msgstr ""
+
+#: include/Revalidate.php:232
+#, php-format
+msgid "Purging all caches. Please wait… %s"
+msgstr ""
+
+#: include/Revalidate.php:243
+msgctxt "Admin top bar menu"
+msgid "Purge caches"
+msgstr ""
+
+#: include/Revalidate.php:252
+msgctxt "Admin top bar menu"
+msgid "All pages"
+msgstr ""
+
+#: include/Revalidate.php:260
+msgctxt "Admin top bar menu"
+msgid ""
+"Purging all cache may take some time according to the number of pages to "
+"purge."
 msgstr ""
 
 #: include/Settings.php:32
@@ -76,7 +106,7 @@ msgstr ""
 msgid "Revalidate Secret"
 msgstr ""
 
-#: nextjs-revalidate.php:50
+#: nextjs-revalidate.php:55
 msgid "Please install composer dependencies for Next.js Revalidate to work"
 msgstr ""
 
