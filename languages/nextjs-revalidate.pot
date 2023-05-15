@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Next.js revalidate\n"
-"POT-Creation-Date: 2023-05-15 08:44+0200\n"
+"POT-Creation-Date: 2023-05-15 16:05+0200\n"
 "PO-Revision-Date: 2022-12-26 11:44+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -24,69 +24,69 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-2: dist\n"
 "X-Poedit-SearchPathExcluded-3: node_modules\n"
 
-#: include/Revalidate.php:125
+#: include/PurgeAll.php:51
+msgctxt "Admin top bar menu"
+msgid "Purge caches"
+msgstr ""
+
+#: include/PurgeAll.php:60
+msgctxt "Admin top bar menu"
+msgid "All pages"
+msgstr ""
+
+#: include/PurgeAll.php:68
+msgctxt "Admin top bar menu"
+msgid ""
+"Purging all cache may take some time according to the number of pages to "
+"purge."
+msgstr ""
+
+#: include/PurgeAll.php:79
+msgid ""
+"Purging all caches. is already running. Please wait until the end to "
+"restart the purge."
+msgstr ""
+
+#: include/PurgeAll.php:87
+#, php-format
+msgid "Purging all caches. Please wait… %s"
+msgstr ""
+
+#: include/Revalidate.php:86
 #, php-format
 msgid "Purge cache of post “%s”"
 msgstr ""
 
-#: include/Revalidate.php:126
+#: include/Revalidate.php:87
 msgid "Purge cache"
 msgstr ""
 
-#: include/Revalidate.php:170
+#: include/Revalidate.php:131
 msgid "Purge caches"
 msgstr ""
 
-#: include/Revalidate.php:198
+#: include/Revalidate.php:159
 #, php-format
 msgid "“%s” cache has been correctly purged."
 msgstr ""
 
-#: include/Revalidate.php:199
+#: include/Revalidate.php:160
 msgid ""
 "The cache could not be purged correctly. Please try again or contact an "
 "administrator."
 msgstr ""
 
-#: include/Revalidate.php:213
+#: include/Revalidate.php:174
 #, php-format
 msgid "Successfully purged %d cache."
 msgid_plural "Successfully purged %d caches."
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/Revalidate.php:214
+#: include/Revalidate.php:175
 msgid ""
 "The caches could not be purged correctly. Please try again or contact an "
 "administrator."
-msgstr ""
-
-#: include/Revalidate.php:224
-msgid ""
-"Purging all caches. is already running. Please wait until the end to "
-"restart the purge."
-msgstr ""
-
-#: include/Revalidate.php:232
-#, php-format
-msgid "Purging all caches. Please wait… %s"
-msgstr ""
-
-#: include/Revalidate.php:243
-msgctxt "Admin top bar menu"
-msgid "Purge caches"
-msgstr ""
-
-#: include/Revalidate.php:252
-msgctxt "Admin top bar menu"
-msgid "All pages"
-msgstr ""
-
-#: include/Revalidate.php:260
-msgctxt "Admin top bar menu"
-msgid ""
-"Purging all cache may take some time according to the number of pages to "
-"purge."
 msgstr ""
 
 #: include/Settings.php:32

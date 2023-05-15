@@ -1,8 +1,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Next.js revalidate\n"
-"POT-Creation-Date: 2023-05-15 08:44+0200\n"
-"PO-Revision-Date: 2023-05-15 08:46+0200\n"
+"POT-Creation-Date: 2023-05-15 16:05+0200\n"
+"PO-Revision-Date: 2023-05-15 16:05+0200\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "Language: fr_FR\n"
@@ -22,71 +22,17 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-0: *.min.js\n"
 "X-Poedit-SearchPathExcluded-1: vendor\n"
 
-#: include/Revalidate.php:125
-#, php-format
-msgid "Purge cache of post “%s”"
-msgstr "Purger le cache du post « %s »"
-
-#: include/Revalidate.php:126
-msgid "Purge cache"
-msgstr "Vider le cache"
-
-#: include/Revalidate.php:170
-msgid "Purge caches"
-msgstr "Vider les caches"
-
-#: include/Revalidate.php:198
-#, php-format
-msgid "“%s” cache has been correctly purged."
-msgstr "Le cache « %s » a été correctement purgé."
-
-#: include/Revalidate.php:199
-msgid ""
-"The cache could not be purged correctly. Please try again or contact an "
-"administrator."
-msgstr ""
-"Le cache n’a pas pu être vidé correctement. Veuillez réessayer ou contacter "
-"un administrateur."
-
-#: include/Revalidate.php:213
-#, php-format
-msgid "Successfully purged %d cache."
-msgid_plural "Successfully purged %d caches."
-msgstr[0] "%d cache a été correctement purgé."
-msgstr[1] "%d caches ont été correctement purgés."
-
-#: include/Revalidate.php:214
-msgid ""
-"The caches could not be purged correctly. Please try again or contact an "
-"administrator."
-msgstr ""
-"Le cache n’a pas pu être vidé correctement. Veuillez réessayer ou contacter "
-"un administrateur."
-
-#: include/Revalidate.php:224
-msgid ""
-"Purging all caches. is already running. Please wait until the end to restart "
-"the purge."
-msgstr ""
-"La purge de toutes les pages est déjà en cours d’exécution. Veuillez "
-"attendre la fin pour redémarrer la purge."
-
-#: include/Revalidate.php:232
-#, php-format
-msgid "Purging all caches. Please wait… %s"
-msgstr "La purge des pages en cours d’exécution. Veuillez patienter... %s"
-
-#: include/Revalidate.php:243
+#: include/PurgeAll.php:51
 msgctxt "Admin top bar menu"
 msgid "Purge caches"
 msgstr "Vider les caches"
 
-#: include/Revalidate.php:252
+#: include/PurgeAll.php:60
 msgctxt "Admin top bar menu"
 msgid "All pages"
 msgstr "Toutes les pages"
 
-#: include/Revalidate.php:260
+#: include/PurgeAll.php:68
 msgctxt "Admin top bar menu"
 msgid ""
 "Purging all cache may take some time according to the number of pages to "
@@ -94,6 +40,60 @@ msgid ""
 msgstr ""
 "La purge de tout le cache peut prendre un certain temps en fonction du "
 "nombre de pages à purger."
+
+#: include/PurgeAll.php:79
+msgid ""
+"Purging all caches. is already running. Please wait until the end to restart "
+"the purge."
+msgstr ""
+"La purge de toutes les pages est déjà en cours d’exécution. Veuillez "
+"attendre la fin pour redémarrer la purge."
+
+#: include/PurgeAll.php:87
+#, php-format
+msgid "Purging all caches. Please wait… %s"
+msgstr "La purge des pages en cours d’exécution. Veuillez patienter... %s"
+
+#: include/Revalidate.php:86
+#, php-format
+msgid "Purge cache of post “%s”"
+msgstr "Purger le cache du post « %s »"
+
+#: include/Revalidate.php:87
+msgid "Purge cache"
+msgstr "Vider le cache"
+
+#: include/Revalidate.php:131
+msgid "Purge caches"
+msgstr "Vider les caches"
+
+#: include/Revalidate.php:159
+#, php-format
+msgid "“%s” cache has been correctly purged."
+msgstr "Le cache « %s » a été correctement purgé."
+
+#: include/Revalidate.php:160
+msgid ""
+"The cache could not be purged correctly. Please try again or contact an "
+"administrator."
+msgstr ""
+"Le cache n’a pas pu être vidé correctement. Veuillez réessayer ou contacter "
+"un administrateur."
+
+#: include/Revalidate.php:174
+#, php-format
+msgid "Successfully purged %d cache."
+msgid_plural "Successfully purged %d caches."
+msgstr[0] "%d cache a été correctement purgé."
+msgstr[1] "%d caches ont été correctement purgés."
+
+#: include/Revalidate.php:175
+msgid ""
+"The caches could not be purged correctly. Please try again or contact an "
+"administrator."
+msgstr ""
+"Le cache n’a pas pu être vidé correctement. Veuillez réessayer ou contacter "
+"un administrateur."
 
 #: include/Settings.php:32
 msgid "Next.js revalidate settings"
