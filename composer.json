@@ -24,8 +24,10 @@
             "include/"
         ]
     },
-    "require": {},
     "require-dev": {
         "johnpbloch/wordpress-core": "6.1"
+    },
+    "require": {
+        "chuyskywalker/rolling-curl": "^3.1"
     }
 }

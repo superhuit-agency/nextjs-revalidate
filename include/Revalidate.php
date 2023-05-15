@@ -43,19 +43,25 @@ class Revalidate {
 		$njr = NextJsRevalidate::init();
 		if ( !$njr->settings->is_configured() ) return false;
 
-		$revalidate_uri = add_query_arg(
+		$response = wp_remote_get(
+			$this->build_revalidate_uri( $permalink ),
+			[ 'timeout' => 60 ]
+		);
+
+		return ( is_wp_error($response)
+			? error_log($response->get_error_message())
+			: ($response['response']['code'] === 200)
+		);
+	}
+
+	function build_revalidate_uri( $permalink ) {
+		$njr = NextJsRevalidate::init();
+		return add_query_arg(
 			[
 				'path'   => wp_make_link_relative( $permalink ),
 				'secret' => $njr->settings->secret
 			],
 			$njr->settings->url
-		);
-
-		$response = wp_remote_get( $revalidate_uri, [ 'timeout' => 60 ] );
-
-		return ( is_wp_error($response)
-			? error_log($response->get_error_message())
-			: ($response['response']['code'] === 200)
 		);
 	}
 
