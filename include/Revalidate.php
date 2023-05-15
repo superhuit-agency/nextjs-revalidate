@@ -3,7 +3,6 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate;
-use WP_Admin_Bar;
 use WP_Post;
 
 // Exit if accessed directly.
@@ -20,13 +19,10 @@ class Revalidate {
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_action( 'admin_init', [$this, 'revalidate_row_action'] );
-		add_action( 'admin_init', [$this, 'revalidate_all_pages_action'] );
-		add_action( 'admin_init', [$this, 'purge_all_progress'] );
 
 		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
 
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
-		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
 	}
 
 	function on_post_save( $post_id ) {
@@ -61,47 +57,6 @@ class Revalidate {
 			? error_log($response->get_error_message())
 			: ($response['response']['code'] === 200)
 		);
-	}
-
-	function purge_all() {
-
-		$njr = NextJsRevalidate::init();
-		if ( !$njr->settings->is_configured() ) return false;
-
-		$nodes = [];
-
-		// retrieve all public post types
-		$post_types = get_post_types([ 'public' => true ]);
-		foreach ($post_types as $post_type) {
-			if ( $post_type === 'attachment' ) continue; // skip attachments
-			$posts = get_posts([
-				'post_type'      => $post_type,
-				'posts_per_page' => -1,
-				'fields'         => 'ids',
-				'post_status'    => 'publish',
-			]);
-
-			$nodes = array_merge( $nodes, array_map(function($p) { return ['type' => 'post', 'id' => $p]; }, $posts) );
-		}
-
-		// retrieve all public taxonomies
-		$taxonomies = get_taxonomies([ 'public' => true ]);
-		foreach ($taxonomies as $taxonomy) {
-			$terms = get_terms([
-				'taxonomy'   => $taxonomy,
-				'hide_empty' => false,
-				'fields'     => 'ids',
-			]);
-			$nodes = array_merge( $nodes, array_map(function($t) { return [ 'type' => 'term', 'id' => $t]; }, $terms) );
-		}
-
-		update_option( 'nextjs-revalidate-purge_all', [
-			'status' => 'running',
-			'nodes'  => $nodes,
-			'total'  => count($nodes),
-		] );
-
-		$njr->cronPurgeAll->start();
 	}
 
 	function add_revalidate_row_action( $actions, $post ) {
@@ -215,52 +170,6 @@ class Revalidate {
 				)
 			);
 		}
-
-		if ( $this->is_purging_all() ) {
-
-			if ( isset($_GET['nextjs-revalidate-purge-all']) && $_GET['nextjs-revalidate-purge-all'] === 'already-running') {
-				printf(
-					'<div class="notice notice-warning"><p>%s</p></div>',
-					__( 'Purging all caches. is already running. Please wait until the end to restart the purge.', 'nextjs-revalidate' )
-				);
-			}
-
-			$numbers = $this->get_purge_all_progress_numbers();
-			printf(
-				'<div class="notice notice-info nextjs-revalidate-purge-all__notice"><p>%s</p></div>',
-				sprintf(
-					__( 'Purging all caches. Please wait… %s', 'nextjs-revalidate' ),
-					sprintf('<span class="nextjs-revalidate-purge-all__progress">%s%% (%d/%s)</span>', $numbers->progress, $numbers->done, $numbers->total )
-				)
-			);
-		}
-	}
-
-	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
-
-		$admin_bar->add_menu( [
-			'id'     => 'nextjs-revalidate',
-			'title'  => _x( 'Purge caches', 'Admin top bar menu', 'nextjs-revalidate'),
-			'meta'   => [
-				'class' => "nextjs-revalidate",
-			]
-		] );
-
-		$admin_bar->add_node( [
-			'id'     => "nextjs-revalidate-all-pages",
-			'parent' => 'nextjs-revalidate',
-			'title'  => _x( 'All pages', 'Admin top bar menu', 'nextjs-revalidate' ),
-			'href'   => esc_url(
-				wp_nonce_url(
-					add_query_arg( 'action', 'nextjs-revalidate-purge-all' ),
-					'nextjs-revalidate-purge-all'
-				)
-			),
-			'meta'   => [
-				'title' => _x( 'Purging all cache may take some time according to the number of pages to purge.', 'Admin top bar menu', 'nextjs-revalidate' ),
-			]
-		] );
-
 	}
 
 	function get_sendback_url() {
@@ -277,71 +186,5 @@ class Revalidate {
 		}
 
 		return $sendback;
-	}
-
-	function is_purging_all() {
-		$purge_all = get_option( 'nextjs-revalidate-purge_all', [] );
-		return in_array($purge_all['status'] ?? '', ['running']);
-	}
-
-	function get_purge_all_progress_numbers() {
-		$purge_all = get_option( 'nextjs-revalidate-purge_all', [] );
-
-		$todo     = count($purge_all['nodes'] ?? []);
-		$total    = $purge_all['total'] ?? 0;
-		$done     = max(0, $total - $todo);
-		return (object)[
-			'todo'     => $todo,
-			'done'     => $done,
-			'total'    => $total,
-			'progress' => $total > 0 ? round( $done / $total * 100 ) : 0,
-		];
-	}
-
-	function revalidate_all_pages_action() {
-		if ( ! (isset( $_GET['action'] ) && $_GET['action'] === 'nextjs-revalidate-purge-all')  ) return;
-
-		check_admin_referer( 'nextjs-revalidate-purge-all' );
-
-		$sendback = $this->get_sendback_url();
-
-		if ( $this->is_purging_all() ) $sendback = add_query_arg( ['nextjs-revalidate-purge-all' => 'already-running'], $sendback );
-		else $this->purge_all();
-
-		wp_safe_redirect( $sendback );
-		exit;
-	}
-
-	function purge_all_progress() {
-		if ( !isset($_GET['action']) || $_GET['action'] !== 'nextjs-revalidate-purge-all-progress' ) return;
-
-		if ( false === check_ajax_referer( 'nextjs-revalidate-purge_all_progress' ) ) return;
-
-		$purge_all = get_option( 'nextjs-revalidate-purge_all', [] );
-
-		$numbers = $this->get_purge_all_progress_numbers();
-		$done = $numbers->done;
-		$total = $numbers->total;
-		$progress = $numbers->progress;
-		switch ( $purge_all['status'] ?? '' ) {
-			case 'done':
-				$status = 'done';
-
-				break;
-			case 'running':
-				$status = 'running';
-
-				break;
-			default:
-				$status = 'not-running';
-		}
-
-		wp_send_json_success( [
-			'status' => $status,
-			'done'   => $done ?? 0,
-			'total'  => $total ?? 0,
-			'progress'  => $progress ?? 0,
-		] );
-		exit;
 	}
 }
