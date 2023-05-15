@@ -134,7 +134,7 @@ NextJsRevalidate::init();
  * Triggers a revalidation of the given URL
  *
  * @param  string $url The URL to purge
- * @return bool        Wether the purge was successful
+ * @return bool        Whether the purge was successful
  */
 function nextjs_revalidate_purge_url( $url ) {
 	$njr = NextJsRevalidate::init();
@@ -147,7 +147,7 @@ function nextjs_revalidate_purge_url( $url ) {
  *
  * @param  String $datetime The date time when to purge
  * @param  String $url      The URL to purge
- * @return Bool             Wether the schedule is registered
+ * @return Bool             Whether the schedule is registered
  */
 function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
 	$njr = NextJsRevalidate::init();
