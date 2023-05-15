@@ -73,6 +73,7 @@ class Revalidate {
 		// retrieve all public post types
 		$post_types = get_post_types([ 'public' => true ]);
 		foreach ($post_types as $post_type) {
+			if ( $post_type === 'attachment' ) continue; // skip attachments
 			$posts = get_posts([
 				'post_type'      => $post_type,
 				'posts_per_page' => -1,
