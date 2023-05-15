@@ -2,11 +2,11 @@
 # Next.js revalidate
 
 Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area.
-It also automatically purges & re-builds when a page/post/... is save or updated.
+It also automatically purges & re-builds when a page/post/... is saved or updated.
 
 The revalidation request will be sent to the configured URL endpoint with two query arguments.
 
-1. The reliative `path` to revalidate
+1. The relative `path` to revalidate
 2. The `secret` to protect the revalidation endpoint.
 
 ### Example
@@ -14,7 +14,7 @@ The revalidation request will be sent to the configured URL endpoint with two qu
 https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-string
 ```
 
-> Base on the Next.js [On-demand revalidation](https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration#on-demand-revalidation) documentation
+> Based on the Next.js [On-demand revalidation](https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration#on-demand-revalidation) documentation
 
 ## Requirements
 
@@ -37,4 +37,5 @@ nextjs_revalidate_purge_url( $url );
 | Name | Type | Description |
 | --- | --- | --- |
 | url  | string | The URL to purge |
+
 
