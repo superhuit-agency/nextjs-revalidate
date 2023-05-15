@@ -33,13 +33,18 @@ You should have received a copy of the GNU General Public License
 along with Next.js revalidate. If not, see {URI to Plugin License}.
 */
 
+use NextJsRevalidate\Assets;
 use NextJsRevalidate\I18n;
+use NextJsRevalidate\PurgeAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
-use NextJsRevalidate\Cron;
+use NextJsRevalidate\Cron\ScheduledPurges;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
+
+define( 'NJR_PATH', __DIR__ );
+define( 'NJR_URI', plugin_dir_url(__FILE__) );
 
 // Load dependencies
 // ====
@@ -58,9 +63,11 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 class NextJsRevalidate {
 
+	private Assets $assets;
 	private Revalidate $revalidate;
 	private Settings $settings;
-	private Cron $cron;
+	private ScheduledPurges $cronScheduledPurges;
+	private PurgeAll $purgeAll;
 
 	private static NextJsRevalidate $instance;
 
@@ -77,9 +84,11 @@ class NextJsRevalidate {
 
 		new I18n();
 
-		$this->settings   = new Settings();
-		$this->revalidate = new Revalidate();
-		$this->cron       = new Cron();
+		$this->assets              = new Assets();
+		$this->settings            = new Settings();
+		$this->revalidate          = new Revalidate();
+		$this->cronScheduledPurges = new ScheduledPurges();
+		$this->purgeAll            = new PurgeAll();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -94,7 +103,7 @@ class NextJsRevalidate {
 	 * Execute anything necessary on plugin activation
 	 */
 	function activate() {
-		$this->cron->schedule_cron();
+		$this->cronScheduledPurges->schedule_cron();
 		$this->settings->define_settings();
 	}
 
@@ -102,7 +111,7 @@ class NextJsRevalidate {
 	 * Execute anything necessary on plugin deactivation
 	 */
 	function deactivate() {
-		Cron::unschedule_cron();
+		ScheduledPurges::unschedule_cron();
 	}
 
 	/**
@@ -125,7 +134,7 @@ NextJsRevalidate::init();
  * Triggers a revalidation of the given URL
  *
  * @param  string $url The URL to purge
- * @return bool        Wether the purge was successful
+ * @return bool        Whether the purge was successful
  */
 function nextjs_revalidate_purge_url( $url ) {
 	$njr = NextJsRevalidate::init();
@@ -138,9 +147,9 @@ function nextjs_revalidate_purge_url( $url ) {
  *
  * @param  String $datetime The date time when to purge
  * @param  String $url      The URL to purge
- * @return Bool             Wether the schedule is registered
+ * @return Bool             Whether the schedule is registered
  */
 function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
 	$njr = NextJsRevalidate::init();
-	return $njr->cron->schedule_purge( $datetime, $url );
+	return $njr->cronScheduledPurges->schedule_purge( $datetime, $url );
 }

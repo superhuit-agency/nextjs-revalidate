@@ -43,19 +43,25 @@ class Revalidate {
 		$njr = NextJsRevalidate::init();
 		if ( !$njr->settings->is_configured() ) return false;
 
-		$revalidate_uri = add_query_arg(
+		$response = wp_remote_get(
+			$this->build_revalidate_uri( $permalink ),
+			[ 'timeout' => 60 ]
+		);
+
+		return ( is_wp_error($response)
+			? error_log($response->get_error_message())
+			: ($response['response']['code'] === 200)
+		);
+	}
+
+	function build_revalidate_uri( $permalink ) {
+		$njr = NextJsRevalidate::init();
+		return add_query_arg(
 			[
 				'path'   => wp_make_link_relative( $permalink ),
 				'secret' => $njr->settings->secret
 			],
 			$njr->settings->url
-		);
-
-		$response = wp_remote_get( $revalidate_uri, [ 'timeout' => 60 ] );
-
-		return ( is_wp_error($response)
-			? error_log($response->get_error_message())
-			: ($response['response']['code'] === 200)
 		);
 	}
 
@@ -95,17 +101,7 @@ class Revalidate {
 
 		$success = intval($this->purge( get_permalink( $_GET['post'] ) ) );
 
-		$sendback  = wp_get_referer();
-		if ( ! $sendback ) {
-			$sendback = admin_url( 'edit.php' );
-			$post_type = get_post_type($_GET['post']);
-			if ( ! empty( $post_type ) ) {
-				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
-			}
-		}
-		else {
-			$sendback = remove_query_arg( [ 'trashed', 'untrashed', 'deleted', 'ids', 'nextjs-revalidate-purged', 'nextjs-revalidate-bulk-purged' ], $sendback );
-		}
+		$sendback  = $this->get_sendback_url();
 
 		wp_safe_redirect(
 			add_query_arg( [ 'nextjs-revalidate-purged' => ($success ? $_GET['post'] : 0) ], $sendback )
@@ -180,7 +176,21 @@ class Revalidate {
 				)
 			);
 		}
+	}
 
+	function get_sendback_url() {
+		$sendback  = wp_get_referer();
+		if ( ! $sendback ) {
+			$sendback = admin_url( 'edit.php' );
+			$post_type = get_post_type($_GET['post']);
+			if ( ! empty( $post_type ) ) {
+				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
+			}
+		}
+		else {
+			$sendback = remove_query_arg( [ 'action', 'trashed', 'untrashed', 'deleted', 'ids', 'nextjs-revalidate-purged', 'nextjs-revalidate-bulk-purged' ], $sendback );
+		}
+
+		return $sendback;
 	}
 }
-

@@ -1,11 +1,12 @@
 <?php
 
-namespace NextJsRevalidate;
+namespace NextJsRevalidate\Cron;
 
 use DateTime;
 use DateTimeZone;
+use NextJsRevalidate;
 
-class Cron {
+class ScheduledPurges {
 
 	const CRON_HOOK_NAME = 'nextjs-revalidate-scheduled_purges';
 	const OPTION_NAME    = 'nextjs-revalidate-scheduled_purges';
@@ -19,7 +20,7 @@ class Cron {
 
 	public function run_cron_hook() {
 
-		global $NEXTJS_REVALIDATE;
+		$njr = NextJsRevalidate::init();
 
 		$entries = get_option( self::OPTION_NAME, [] );
 		$now = new DateTime('now', $this->timezone );
@@ -30,7 +31,7 @@ class Cron {
 			$next_purge_datetime = new DateTime( $datetime );
 			if ( $next_purge_datetime <= $now ) {
 				foreach ($urls as $url) {
-					$NEXTJS_REVALIDATE->revalidate->purge( $url );
+					$njr->revalidate->purge( $url );
 				}
 			}
 			else {
@@ -39,7 +40,7 @@ class Cron {
 		}
 
 		// Update the entries with the ones that have not been executed yet.
-		update_option( self::CRON_HOOK_NAME, $left_entries );
+		update_option( self::OPTION_NAME, $left_entries );
 
 		$this->schedule_cron();
 	}
@@ -85,7 +86,7 @@ class Cron {
 		ksort( $entries );
 
 		// Save new entries
-		update_option( self::CRON_HOOK_NAME, $entries );
+		update_option( self::OPTION_NAME, $entries );
 
 		$this->schedule_cron();
 
