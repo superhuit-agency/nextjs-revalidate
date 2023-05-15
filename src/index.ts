@@ -1,4 +1,4 @@
-const INTERVAL = 2; // seconds
+const INTERVAL = 1; // seconds
 
 let checkProgressInterval: NodeJS.Timer;
 
