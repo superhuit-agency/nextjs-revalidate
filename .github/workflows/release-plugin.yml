@@ -69,3 +69,13 @@ jobs:
           prerelease: false
           files: |
             nextjs-revalidate.zip
+
+      - name: Upload to release-belt
+        uses: easingthemes/ssh-deploy@main
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.RELEASE_BELT_PUBLISH_PRIVATE_KEY }}
+          REMOTE_USER: ${{ secrets.RELEASE_BELT_USER }}
+          REMOTE_HOST: ${{ secrets.RELEASE_BELT_HOST }}
+          REMOTE_PORT: ${{ secrets.RELEASE_BELT_PORT }}
+          SOURCE: nextjs-revalidate.zip
+          TARGET: "${{ secrets.RELEASE_BELT_PATH }}/releases/wordpress-plugin/superhuit/nextjs-revalidate-${{  github.ref_name }}.zip"
