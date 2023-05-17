@@ -43,15 +43,17 @@ class Revalidate {
 		$njr = NextJsRevalidate::init();
 		if ( !$njr->settings->is_configured() ) return false;
 
-		$response = wp_remote_get(
-			$this->build_revalidate_uri( $permalink ),
-			[ 'timeout' => 60 ]
-		);
+		try {
+			$response = wp_remote_get(
+				$this->build_revalidate_uri( $permalink ),
+				[ 'timeout' => 60 ]
+			);
 
-		return ( is_wp_error($response)
-			? error_log($response->get_error_message())
-			: ($response['response']['code'] === 200)
-		);
+			if ( is_wp_error($response) ) throw new \Exception("Unable to revalidate $permalink", 1);
+			return $response['response']['code'] === 200;
+		} catch (\Throwable $th) {
+			return false;
+		}
 	}
 
 	function build_revalidate_uri( $permalink ) {
