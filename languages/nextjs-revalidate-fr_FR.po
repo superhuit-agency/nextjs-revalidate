@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Next.js revalidate\n"
 "POT-Creation-Date: 2023-05-15 16:05+0200\n"
-"PO-Revision-Date: 2023-05-15 16:05+0200\n"
+"PO-Revision-Date: 2023-05-23 16:16+0200\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "Language: fr_FR\n"
@@ -10,7 +10,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"X-Generator: Poedit 3.2\n"
+"X-Generator: Poedit 3.3.1\n"
 "X-Poedit-Basepath: .\n"
 "X-Poedit-Flags-xgettext: --add-comments=translators:\n"
 "X-Poedit-WPHeader: nextjs-revalidate.php\n"
@@ -52,7 +52,7 @@ msgstr ""
 #: include/PurgeAll.php:87
 #, php-format
 msgid "Purging all caches. Please wait… %s"
-msgstr "La purge des pages en cours d’exécution. Veuillez patienter... %s"
+msgstr "La purge des pages est en cours d’exécution. Veuillez patienter... %s"
 
 #: include/Revalidate.php:86
 #, php-format
