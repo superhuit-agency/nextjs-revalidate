@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Next.js revalidate\n"
-"POT-Creation-Date: 2023-05-15 16:05+0200\n"
+"POT-Creation-Date: 2023-09-12 11:43+0200\n"
 "PO-Revision-Date: 2022-12-26 11:44+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -24,86 +24,110 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-2: dist\n"
 "X-Poedit-SearchPathExcluded-3: node_modules\n"
 
-#: include/PurgeAll.php:51
+#: include/PurgeAll.php:55
 msgctxt "Admin top bar menu"
 msgid "Purge caches"
 msgstr ""
 
-#: include/PurgeAll.php:60
+#: include/PurgeAll.php:65
 msgctxt "Admin top bar menu"
-msgid "All pages"
+msgid "All"
 msgstr ""
 
-#: include/PurgeAll.php:68
+#: include/PurgeAll.php:83
 msgctxt "Admin top bar menu"
 msgid ""
 "Purging all cache may take some time according to the number of pages to "
 "purge."
 msgstr ""
 
-#: include/PurgeAll.php:79
+#: include/PurgeAll.php:95
 msgid ""
 "Purging all caches. is already running. Please wait until the end to "
 "restart the purge."
 msgstr ""
 
-#: include/PurgeAll.php:87
+#: include/PurgeAll.php:103
 #, php-format
 msgid "Purging all caches. Please wait… %s"
 msgstr ""
 
-#: include/Revalidate.php:86
+#: include/Revalidate.php:88
 #, php-format
 msgid "Purge cache of post “%s”"
 msgstr ""
 
-#: include/Revalidate.php:87
+#: include/Revalidate.php:89
 msgid "Purge cache"
 msgstr ""
 
-#: include/Revalidate.php:131
+#: include/Revalidate.php:133
 msgid "Purge caches"
 msgstr ""
 
-#: include/Revalidate.php:159
+#: include/Revalidate.php:161
 #, php-format
 msgid "“%s” cache has been correctly purged."
 msgstr ""
 
-#: include/Revalidate.php:160
+#: include/Revalidate.php:162
 msgid ""
 "The cache could not be purged correctly. Please try again or contact an "
 "administrator."
 msgstr ""
 
-#: include/Revalidate.php:174
+#: include/Revalidate.php:176
 #, php-format
 msgid "Successfully purged %d cache."
 msgid_plural "Successfully purged %d caches."
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/Revalidate.php:175
+#: include/Revalidate.php:177
 msgid ""
 "The caches could not be purged correctly. Please try again or contact an "
 "administrator."
 msgstr ""
 
-#: include/Settings.php:32
+#: include/Settings.php:33
 msgid "Next.js revalidate settings"
 msgstr ""
 
 #. Plugin Name of the plugin/theme
-#: include/Settings.php:33
+#: include/Settings.php:34
 msgid "Next.js revalidate"
 msgstr ""
 
-#: include/Settings.php:74
+#: include/Settings.php:68
+msgid "Next.js API config"
+msgstr ""
+
+#: include/Settings.php:75
 msgid "Revalidate url"
 msgstr ""
 
-#: include/Settings.php:90
+#: include/Settings.php:91
 msgid "Revalidate Secret"
+msgstr ""
+
+#: include/Settings.php:106
+msgid "Allow purge all options"
+msgstr ""
+
+#: include/Settings.php:108
+msgid ""
+"Define which post type has the option to have all posts purged in the "
+"admin bar."
+msgstr ""
+
+#: include/Settings.php:138
+msgid "All post types"
+msgstr ""
+
+#: include/Settings.php:147
+msgid ""
+"Warning: according to the number of post types & posts for each post type "
+"this action can be very slow."
 msgstr ""
 
 #: nextjs-revalidate.php:55
