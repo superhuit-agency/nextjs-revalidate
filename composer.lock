@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b9bbee0da8987751151cd9b7fd02d962",
+    "content-hash": "7f37a380c8120f4723ba747d4a6302d1",
     "packages": [
         {
             "name": "chuyskywalker/rolling-curl",
@@ -68,6 +68,45 @@
                 "source": "https://github.com/chuyskywalker/rolling-curl/tree/master"
             },
             "time": "2014-08-30T03:39:25+00:00"
+        },
+        {
+            "name": "kuuak/wordpress-setting-fields",
+            "version": "1.1.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/kuuak/wordpress-setting-fields.git",
+                "reference": "cbaf556e84420b2e7cefae03bf6e5909897820db"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/kuuak/wordpress-setting-fields/zipball/cbaf556e84420b2e7cefae03bf6e5909897820db",
+                "reference": "cbaf556e84420b2e7cefae03bf6e5909897820db",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.2.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Kuuak\\WordPressSettingFields\\": "include/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Kuuak"
+                }
+            ],
+            "description": "WordPress setting field functions to output different type of fields",
+            "support": {
+                "issues": "https://github.com/kuuak/wordpress-setting-fields/issues",
+                "source": "https://github.com/kuuak/wordpress-setting-fields/tree/v1.1.2"
+            },
+            "time": "2023-07-14T08:55:40+00:00"
         }
     ],
     "packages-dev": [
