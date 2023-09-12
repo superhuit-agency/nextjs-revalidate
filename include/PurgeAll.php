@@ -46,6 +46,10 @@ class PurgeAll {
 	 */
 	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
 
+		$purge_all_opts = $this->getMainInstance()->settings->allow_purge_all;
+
+		if ( empty($purge_all_opts) ) return;
+
 		$admin_bar->add_menu( [
 			'id'     => 'nextjs-revalidate',
 			'title'  => _x( 'Purge caches', 'Admin top bar menu', 'nextjs-revalidate'),
@@ -54,22 +58,34 @@ class PurgeAll {
 			]
 		] );
 
-		$admin_bar->add_node( [
-			'id'     => "nextjs-revalidate-all-pages",
-			'parent' => 'nextjs-revalidate',
-			'title'  => _x( 'All pages', 'Admin top bar menu', 'nextjs-revalidate' ),
-			'href'   => esc_url(
-				wp_nonce_url(
-					add_query_arg( 'action', 'nextjs-revalidate-purge-all' ),
-					'nextjs-revalidate-purge-all'
-				)
-			),
-			'meta'   => [
-				'title' => _x( 'Purging all cache may take some time according to the number of pages to purge.', 'Admin top bar menu', 'nextjs-revalidate' ),
-			]
-		] );
+		foreach ($purge_all_opts as $post_type => $allow) {
+			if ( $allow !== 'on' ) continue;
 
+			if ( $post_type === 'all') {
+				$name = _x('All', 'Admin top bar menu', 'nextjs-revalidate' );
+			}
+			else {
+				$post_type_object = get_post_type_object( $post_type );
+				$name = $post_type_object->labels->name;
+			}
+
+			$admin_bar->add_node( [
+				'id'     => "nextjs-revalidate-all-$post_type",
+				'parent' => 'nextjs-revalidate',
+				'title'  => $name,
+				'href'   => esc_url(
+					wp_nonce_url(
+						add_query_arg( ['action' => 'nextjs-revalidate-purge-all', 'nextjs-revalidate-type' => $post_type ] ),
+						'nextjs-revalidate-purge-all'
+					)
+				),
+				'meta'   => [
+					'title' => _x( 'Purging all cache may take some time according to the number of pages to purge.', 'Admin top bar menu', 'nextjs-revalidate' ),
+				]
+			] );
+		}
 	}
+
 	function purged_notice() {
 		if ( !$this->is_purging_all() ) return;
 
