@@ -189,10 +189,15 @@ class PurgeAll {
 
 		$nodes = [];
 
-		// retrieve all public post types
-		$post_types = get_post_types([ 'public' => true ]);
+		if ( $_GET['nextjs-revalidate-type'] === 'all' ) {
+			// retrieve all public post types except attachments
+			$post_types = array_filter(get_post_types([ 'public' => true ]), function($pt) { return $pt !== 'attachment'; });
+		}
+		else {
+			$post_types = [ $_GET['nextjs-revalidate-type'] ];
+		}
+
 		foreach ($post_types as $post_type) {
-			if ( $post_type === 'attachment' ) continue; // skip attachments
 			$posts = get_posts([
 				'post_type'      => $post_type,
 				'posts_per_page' => -1,
@@ -204,7 +209,11 @@ class PurgeAll {
 		}
 
 		// retrieve all public taxonomies
-		$taxonomies = get_taxonomies([ 'public' => true ]);
+		$args = [
+			'public' => true,
+		];
+		if ( $_GET['nextjs-revalidate-type'] !== 'all' ) $args['object_type'] = [ $_GET['nextjs-revalidate-type'] ];
+		$taxonomies = get_taxonomies($args);
 		foreach ($taxonomies as $taxonomy) {
 			$terms = get_terms([
 				'taxonomy'   => $taxonomy,
