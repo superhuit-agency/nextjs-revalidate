@@ -10,6 +10,7 @@ class Settings {
 
 	const SETTINGS_URL_NAME = 'nextjs_revalidate-url';
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
+	const SETTINGS_ALLOW_PURGE_ALL_NAME = 'nextjs_revalidate-allow_purge_all';
 
 	/**
 	 * @var array
@@ -64,7 +65,7 @@ class Settings {
 		register_setting( self::SETTINGS_GROUP, self::SETTINGS_URL_NAME );
 		add_settings_section(
 			'nextjs-revalidate-section',
-			'',
+			__('Next.js API config', 'nextjs-revalidate'),
 			null,
 			self::PAGE_NAME
 		);
@@ -99,6 +100,53 @@ class Settings {
 			'nextjs-revalidate-section'
 		);
 
+
+		add_settings_section(
+			'nextjs-revalidate-section-allow_purge_all',
+			__('Allow purge all options', 'nextjs-revalidate'),
+			function() {
+				printf( '<p>%s</p>', __('Define which post type has the option to have all posts purged in the admin bar.', 'nextjs-revalidate') );
+			},
+			self::PAGE_NAME
+		);
+
+		$post_types = get_post_types([ 'public' => true ]);
+		register_setting( self::SETTINGS_GROUP, self::SETTINGS_ALLOW_PURGE_ALL_NAME );
+		foreach ($post_types as $post_type) {
+			if ( $post_type === 'attachment' ) continue; // skip attachments
+
+			$post_type_object = get_post_type_object( $post_type );
+			$id = "allow_purge_all-$post_type";
+			add_settings_field(
+				$id,
+				$post_type_object->labels->name,
+				'Kuuak\WordPressSettingFields\Fields::switch',
+				self::PAGE_NAME,
+				'nextjs-revalidate-section-allow_purge_all',
+				[
+					'label_for' => $id,
+					'id'        => $id,
+					'name'      => self::SETTINGS_ALLOW_PURGE_ALL_NAME."[$post_type]",
+					'checked'   => $this->allow_purge_all[$post_type] ?? false,
+				]
+			);
+		}
+
+		$id = "allow_purge_all-all";
+		add_settings_field(
+			$id,
+			__('All post types', 'nextjs-revalidate'),
+			'Kuuak\WordPressSettingFields\Fields::switch',
+			self::PAGE_NAME,
+			'nextjs-revalidate-section-allow_purge_all',
+			[
+				'label_for' => $id,
+				'id'        => $id,
+				'name'      => self::SETTINGS_ALLOW_PURGE_ALL_NAME.'[all]',
+				'checked'   => $this->allow_purge_all['all'] ?? false,
+				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
+			]
+		);
 	}
 
 	public function __get( $name ) {
@@ -109,6 +157,9 @@ class Settings {
 				break;
 			case 'secret':
 				$setting_name = self::SETTINGS_SECRET_NAME;
+				break;
+			case 'allow_purge_all':
+				$setting_name = self::SETTINGS_ALLOW_PURGE_ALL_NAME;
 				break;
 		}
 
@@ -126,6 +177,7 @@ class Settings {
 	public function define_settings() {
 		add_option( self::SETTINGS_URL_NAME );
 		add_option( self::SETTINGS_SECRET_NAME );
+		add_option( self::SETTINGS_ALLOW_PURGE_ALL_NAME, [] );
 	}
 
 	/**
