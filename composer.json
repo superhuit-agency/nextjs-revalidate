@@ -28,6 +28,7 @@
         "johnpbloch/wordpress-core": "6.1"
     },
     "require": {
-        "chuyskywalker/rolling-curl": "^3.1"
+        "chuyskywalker/rolling-curl": "^3.1",
+        "kuuak/wordpress-setting-fields": "^1.1"
     }
 }
