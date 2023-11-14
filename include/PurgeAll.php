@@ -4,9 +4,11 @@ namespace NextJsRevalidate;
 
 use DateTime;
 use DateTimeZone;
+use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Pool;
+use GuzzleHttp\Promise\CancellationException;
+use GuzzleHttp\Psr7\Request;
 use NextJsRevalidate;
-use RollingCurl\Request;
-use RollingCurl\RollingCurl;
 use WP_Admin_Bar;
 
 class PurgeAll {
@@ -249,46 +251,53 @@ class PurgeAll {
 		// Bail early if status not running
 		if ( $purge_all['status'] !== 'running') return;
 
-		$rollingCurl = new RollingCurl();
+		$client = new GuzzleClient();
 
-		$bacth_count = min(count($purge_all['nodes']), self::BATCH_SIZE_MAX);
-		for ($i=0; $i < $bacth_count; $i++) {
-			$node = $purge_all['nodes'][$i];
+		$batch_count = min(count($purge_all['nodes']), self::BATCH_SIZE_MAX);
+		$purge_all = $this->getOption();
+		$nodes = array_slice( $purge_all['nodes'], 0, $batch_count );
 
-			switch ($node['type']) {
-				case 'term':
-					$url = get_term_link( $node['id'] );
-					break;
+		$requests = function ($nodes) {
+			$total = count($nodes);
+			for ($i = 0; $i < $total; $i++) {
+				$node = $nodes[$i];
+				$uri = $uri = ( $node['type'] === 'term'
+					? get_term_link( $node['id'] )
+					: get_permalink( $node['id'] )
+				);
 
-				case 'post':
-				default:
-					$url = get_permalink( $node['id'] );
-					break;
+				yield new Request(
+					'GET',
+					$this->getMainInstance()->revalidate->build_revalidate_uri($uri)
+				);
 			}
+		};
 
-			$request = new Request( $this->getMainInstance()->revalidate->build_revalidate_uri( $url ));
-			$request->addOptions([ CURLOPT_TIMEOUT => 60 ]);
-			$request->setExtraInfo( $node['key'] );
-			$rollingCurl->add( $request );
+		$gen = $requests($nodes);
+
+		$callback = function ($resp_or_reason, $index) use ($nodes) {
+			$opts = $this->getOption();
+
+			$node_key = $nodes[$index]['key'];
+			$idx = array_search($node_key, array_column($opts['nodes'], 'key'));
+			if ( $idx !== false ) {
+				array_splice( $opts['nodes'], $idx, 1 );
+				$this->saveOption( $opts );
+			}
+		};
+
+		$pool = new Pool($client, $gen, [
+			'concurrency' => self::MAX_SIMULTANEOUS_REQUESTS,
+			'fulfilled'   => $callback,
+			'rejected'    => $callback,
+		]);
+
+		try {
+			$promise = $pool->promise();
+			$promise->wait();
+		} catch (CancellationException $exception) {
+			// Do nothing, because cancellation was done by the reason
 		}
-
-		$rollingCurl
-			->setCallback(function(Request $request, RollingCurl $rollingCurl) {
-				$url = $request->getUrl();
-
-				$opts = $this->getOption( true );
-
-				if ( false !== $url ) {
-					$node_key = $request->getExtraInfo();
-					$idx = array_search($node_key, array_column($opts['nodes'], 'key'));
-					if ( $idx !== false ) {
-						array_splice( $opts['nodes'], $idx, 1 );
-						$this->saveOption( $opts );
-					}
-				}
-			})
-			->setSimultaneousLimit(self::MAX_SIMULTANEOUS_REQUESTS)
-			->execute();
 
 		$opts = $this->getOption();
 		if ( empty($opts['nodes']) ) {
