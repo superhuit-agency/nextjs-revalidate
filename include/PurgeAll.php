@@ -275,14 +275,17 @@ class PurgeAll {
 
 		$gen = $requests($nodes);
 
-		$callback = function ($resp_or_reason, $index) use ($nodes) {
+		$callback = function ($resp_or_reason, $index, $aggregate) use ($nodes) {
 			$opts = $this->getOption();
 
-			$node_key = $nodes[$index]['key'];
-			$idx = array_search($node_key, array_column($opts['nodes'], 'key'));
-			if ( $idx !== false ) {
-				array_splice( $opts['nodes'], $idx, 1 );
-				$this->saveOption( $opts );
+			if ( $opts['status'] !== 'running') $aggregate->cancel();
+			else  {
+				$node_key = $nodes[$index]['key'];
+				$idx = array_search($node_key, array_column($opts['nodes'], 'key'));
+				if ( $idx !== false ) {
+					array_splice( $opts['nodes'], $idx, 1 );
+					$this->saveOption( $opts );
+				}
 			}
 		};
 
