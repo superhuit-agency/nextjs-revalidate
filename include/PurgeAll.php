@@ -17,7 +17,7 @@ class PurgeAll {
 	const OPTION_NAME    = 'nextjs-revalidate-purge_all';
 
 	const BATCH_SIZE_MAX = 500;
-	const MAX_SIMULTANEOUS_REQUESTS = 10;
+	const MAX_SIMULTANEOUS_REQUESTS = 5;
 
 	private DateTimeZone $timezone;
 	private ?NextJsRevalidate $njr = null;
