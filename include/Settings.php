@@ -52,7 +52,19 @@ class Settings {
 					settings_fields( self::SETTINGS_GROUP );
 					do_settings_sections( self::PAGE_NAME );
 					submit_button();
-				?>
+
+					$revalidate_queue = (new Revalidate())->get_queue();
+					?>
+					<hr />
+					<h2>Purge queue</h2>
+					<details>
+						<summary><?php printf("%d URLs waiting to be purged", count($revalidate_queue)); ?></summary>
+						<ul>
+							<?php foreach ($revalidate_queue as $url): ?>
+								<li><?php echo $url; ?></li>
+							<?php endforeach; ?>
+						</ul>
+					</details>
 			</form>
 		</div>
 		<?php
