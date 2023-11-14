@@ -21,7 +21,7 @@ class PurgeAll {
 	private ?NextJsRevalidate $njr = null;
 
 	public function __construct() {
-		$this->timezone = new DateTimeZone( 'Europe/Zurich' ); // TODO: maybe use timezone set in WP settings
+		$this->timezone = new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
 
 		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
