@@ -2,6 +2,8 @@
 
 namespace NextJsRevalidate;
 
+use DateTime;
+use DateTimeZone;
 use NextJsRevalidate;
 use WP_Post;
 
@@ -10,10 +12,18 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 class Revalidate {
 
+	private $timezone;
+
+	const OPTION_NAME = 'nextjs-revalidate-queue';
+	const CRON_HOOK_NAME = 'nextjs-revalidate-queue';
+	const CRON_TRANSCIENT_NAME = 'nextjs_revalidate-doing_cron-queue';
+
 	/**
 	 * Constructor.
 	 */
 	function __construct() {
+		$this->timezone = new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
+
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -23,6 +33,9 @@ class Revalidate {
 		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
 
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
+
+		add_action( self::CRON_HOOK_NAME, [ $this, 'run_cron' ] );
+		$this->schedule_next_cron();
 	}
 
 	function on_post_save( $post_id ) {
@@ -35,7 +48,7 @@ class Revalidate {
 		// Ensure we do not fire this action twice. Safekeeping
 		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
-		$this->purge( get_permalink( $post_id ) );
+		$this->add_to_queue( get_permalink( $post_id ) );
 	}
 
 	function purge( $permalink ) {
@@ -101,12 +114,14 @@ class Revalidate {
 
 		check_admin_referer( "nextjs-revalidate-purge_{$_GET['post']}" );
 
-		$success = intval($this->purge( get_permalink( $_GET['post'] ) ) );
+		$permalink = get_permalink( $_GET['post'] );
+
+		if ( false !== $permalink ) $this->add_to_queue( $permalink );
 
 		$sendback  = $this->get_sendback_url();
 
 		wp_safe_redirect(
-			add_query_arg( [ 'nextjs-revalidate-purged' => ($success ? $_GET['post'] : 0) ], $sendback )
+			add_query_arg( [ 'nextjs-revalidate-purged' => (false !== $permalink ? $_GET['post'] : 0) ], $sendback )
 		);
 		exit;
 	}
@@ -139,12 +154,14 @@ class Revalidate {
 
 			$purged = 0;
 			foreach ($post_ids as $post_id) {
-				if ( intval($this->purge( get_permalink( $post_id ) ) ) ) {
+				$permalink = get_permalink( $post_id );
+				if ( false !== $permalink ) {
+					$this->add_to_queue( $permalink );
 					$purged++;
 				}
 			}
 
-			$redirect_url = add_query_arg('nextjs-revalidate-bulk-purged', $purged, $redirect_url);
+			$redirect_url = add_query_arg('nextjs-revalidate-bulk-purged', $purged, $this->get_sendback_url($redirect_url));
 		}
 
 		return $redirect_url;
@@ -158,8 +175,8 @@ class Revalidate {
 				'<div class="notice notice-%s"><p>%s</p></div>',
 				$success ? 'success' : 'error',
 				($success
-					? sprintf( __( '“%s” cache has been correctly purged.', 'nextjs-revalidate' ), get_the_title($_GET['nextjs-revalidate-purged']) )
-					: __( 'The cache could not be purged correctly. Please try again or contact an administrator.', 'nextjs-revalidate' )
+					? sprintf( __( '“%s” cache will be purged shortly.', 'nextjs-revalidate' ), get_the_title($_GET['nextjs-revalidate-purged']) )
+					: __( 'Unable to purge cache. Please try again or contact an administrator.', 'nextjs-revalidate' )
 				)
 			);
 		}
@@ -173,15 +190,16 @@ class Revalidate {
 				'<div class="notice notice-%s"><p>%s</p></div>',
 				$success ? 'success' : 'error',
 				($success
-					? sprintf( _n( 'Successfully purged %d cache.', 'Successfully purged %d caches.', $nb_purged, 'nextjs-revalidate' ), $nb_purged )
-					: __( 'The caches could not be purged correctly. Please try again or contact an administrator.', 'nextjs-revalidate' )
+					? sprintf( _n( '%d cache will be purged shortly.', '%d caches will be purged shortly.', $nb_purged, 'nextjs-revalidate' ), $nb_purged )
+					: __( 'Unable to purge cache. Please try again or contact an administrator.', 'nextjs-revalidate' )
 				)
 			);
 		}
 	}
 
-	function get_sendback_url() {
-		$sendback  = wp_get_referer();
+	function get_sendback_url( $sendback = null) {
+		if ( empty($sendback) ) $sendback  = wp_get_referer();
+
 		if ( ! $sendback ) {
 			$sendback = admin_url( 'edit.php' );
 			$post_type = get_post_type($_GET['post']);
@@ -189,10 +207,98 @@ class Revalidate {
 				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
 			}
 		}
-		else {
-			$sendback = remove_query_arg( [ 'action', 'trashed', 'untrashed', 'deleted', 'ids', 'nextjs-revalidate-purged', 'nextjs-revalidate-bulk-purged' ], $sendback );
-		}
+
+		$sendback = remove_query_arg(
+			[ 'action',
+				'trashed',
+				'untrashed',
+				'deleted',
+				'ids',
+				'nextjs-revalidate-purged',
+				'nextjs-revalidate-bulk-purged'
+			],
+			$sendback
+		);
 
 		return $sendback;
+	}
+
+	/**
+	 * Schedule the cron for the next sync sync
+	 */
+	private function schedule_next_cron() {
+		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
+
+		// Do not schedule if queue is empty
+		$queue = $this->get_queue();
+		if ( count($queue) === 0 ) return;
+
+		$next_cron_datetime = new DateTime( 'now', $this->timezone );
+		wp_schedule_single_event( $next_cron_datetime->getTimestamp(), self::CRON_HOOK_NAME );
+	}
+
+	public static function unschedule_cron() {
+		wp_unschedule_hook( self::CRON_HOOK_NAME );
+	}
+
+	private function is_cron_already_running() {
+		return false !== get_transient( self::CRON_TRANSCIENT_NAME );
+	}
+
+	/**
+	 * Run the cron
+	 * Will run multiple items in the queue until the max execution time is reached
+	 */
+	public function run_cron() {
+		if ( $this->is_cron_already_running() ) return;
+		set_transient( self::CRON_TRANSCIENT_NAME, true, 3600 );
+
+		$start_time = time();
+
+		// get max php exec time
+		$max_exec_time = ini_get('max_execution_time');
+		$max_exec_time = $max_exec_time ? $max_exec_time : 60;
+
+		// Remove 5% as a safety margin
+		$max_exec_time = $max_exec_time * 0.95;
+
+		do {
+			$queue = $this->get_queue( true );
+			$permalink = array_shift($queue);
+			$this->save_queue( $queue );
+
+			if ( $permalink ) $this->purge( $permalink );
+
+		} while ($permalink && $max_exec_time > (time() - $start_time) );
+
+
+		delete_transient( self::CRON_TRANSCIENT_NAME );
+
+		$this->schedule_next_cron();
+	}
+
+	public function get_queue($force_from_db = false) {
+		if($force_from_db) {
+			wp_cache_delete(SELF::OPTION_NAME, 'options' );
+		}
+
+		return get_option( self::OPTION_NAME, [] );
+	}
+
+	private function save_queue( $value ) {
+		return update_option( self::OPTION_NAME, $value, false );
+	}
+
+	public function add_to_queue( $permalink )  {
+		$queue = $this->get_queue();
+
+		// Stop here, not need to go further as we don't want to add the same url twice
+		if ( in_array($permalink, $queue) ) return;
+
+		$queue[] = $permalink;
+		$this->save_queue( $queue );
+
+		// Make sure a cron is schedule
+		$this->schedule_next_cron();
 	}
 }
