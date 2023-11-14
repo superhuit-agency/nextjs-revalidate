@@ -32,7 +32,7 @@ class PurgeAll {
 		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron_hook'] );
 	}
 
-	function getOptions() {
+	function getOption() {
 		wp_cache_delete(SELF::OPTION_NAME, 'options' ); // Force cache refresh
 		return get_option( self::OPTION_NAME, [] );
 	}
@@ -115,11 +115,11 @@ class PurgeAll {
 	 * Helpers
 	 */
 	function is_purging_all() {
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 		return boolval( in_array($opts['status'] ?? '', ['running']) );
 	}
 	function get_purge_all_progress_numbers() {
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 
 		$todo     = count($opts['nodes'] ?? []);
 		$total    = $opts['total'] ?? 0;
@@ -157,7 +157,7 @@ class PurgeAll {
 
 		if ( false === check_ajax_referer( 'nextjs-revalidate-purge_all_progress' ) ) return;
 
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 
 		$numbers = $this->get_purge_all_progress_numbers();
 		$done = $numbers->done;
@@ -244,7 +244,7 @@ class PurgeAll {
 
 		if ( !$this->getMainInstance()->settings->is_configured() ) return false;
 
-		$purge_all = $this->getOptions();
+		$purge_all = $this->getOption();
 
 		// Bail early if status not running
 		if ( $purge_all['status'] !== 'running') return;
@@ -276,7 +276,7 @@ class PurgeAll {
 			->setCallback(function(Request $request, RollingCurl $rollingCurl) {
 				$url = $request->getUrl();
 
-				$opts = $this->getOptions( true );
+				$opts = $this->getOption( true );
 
 				if ( false !== $url ) {
 					$node_key = $request->getExtraInfo();
@@ -290,7 +290,7 @@ class PurgeAll {
 			->setSimultaneousLimit(self::MAX_SIMULTANEOUS_REQUESTS)
 			->execute();
 
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 		if ( empty($opts['nodes']) ) {
 			$opts['status'] = 'done';
 			$this->saveOption( $opts );
@@ -306,7 +306,7 @@ class PurgeAll {
 	public function schedule_next_cron() {
 		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
 
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 		if ( $opts['status'] !== 'running') return;
 		if ( empty($opts['nodes']) ) {
 			$opts['status'] = 'done';
@@ -323,5 +323,13 @@ class PurgeAll {
 	 */
 	public static function unschedule_cron() {
 		wp_unschedule_hook( self::CRON_HOOK_NAME );
+	}
+
+	public function stop_purge_all() {
+		$this->saveOption( [
+			'status' => 'stopped',
+			'nodes'  => [],
+			'total'  => 0,
+		]);
 	}
 }
