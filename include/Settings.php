@@ -2,6 +2,8 @@
 
 namespace NextJsRevalidate;
 
+use NextJsRevalidate;
+
 class Settings {
 
 	const PAGE_NAME = 'nextjs-revalidate-settings';
@@ -23,6 +25,7 @@ class Settings {
 	function __construct() {
 		add_action( 'admin_menu', [$this, 'add_page'] );
 		add_action( 'admin_init', [$this, 'register_fields'] );
+		add_action( 'admin_init', [$this, 'stop_purge_all'] );
 	}
 
 	/**
@@ -52,6 +55,12 @@ class Settings {
 					settings_fields( self::SETTINGS_GROUP );
 					do_settings_sections( self::PAGE_NAME );
 					submit_button();
+
+
+					$njr = NextJsRevalidate::init();
+					if ( $njr->purgeAll->is_purging_all() ) {
+						submit_button( "Stop / Reset Purge All", 'secondary', 'purge_all_stop', false );
+					}
 				?>
 			</form>
 		</div>
@@ -190,5 +199,13 @@ class Settings {
 		$secret = $this->secret;
 		return !(empty($url) || empty($secret));
 
+	}
+
+	public function stop_purge_all() {
+		if ( !(isset($_POST['option_page']) && $_POST['option_page'] === 'nextjs-revalidate-settings') ) return;
+		if ( !isset($_POST['purge_all_stop']) ) return;
+
+		$njr = NextJsRevalidate::init();
+		$njr->purgeAll->stop_purge_all();
 	}
 }

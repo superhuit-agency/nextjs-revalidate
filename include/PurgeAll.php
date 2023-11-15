@@ -4,9 +4,11 @@ namespace NextJsRevalidate;
 
 use DateTime;
 use DateTimeZone;
+use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Pool;
+use GuzzleHttp\Promise\CancellationException;
+use GuzzleHttp\Psr7\Request;
 use NextJsRevalidate;
-use RollingCurl\Request;
-use RollingCurl\RollingCurl;
 use WP_Admin_Bar;
 
 class PurgeAll {
@@ -15,13 +17,13 @@ class PurgeAll {
 	const OPTION_NAME    = 'nextjs-revalidate-purge_all';
 
 	const BATCH_SIZE_MAX = 500;
-	const MAX_SIMULTANEOUS_REQUESTS = 10;
+	const MAX_SIMULTANEOUS_REQUESTS = 5;
 
 	private DateTimeZone $timezone;
 	private ?NextJsRevalidate $njr = null;
 
 	public function __construct() {
-		$this->timezone = new DateTimeZone( 'Europe/Zurich' ); // TODO: maybe use timezone set in WP settings
+		$this->timezone = new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
 
 		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
@@ -32,8 +34,13 @@ class PurgeAll {
 		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron_hook'] );
 	}
 
-	function getOptions() {
+	function getOption() {
+		wp_cache_delete(SELF::OPTION_NAME, 'options' ); // Force cache refresh
 		return get_option( self::OPTION_NAME, [] );
+	}
+
+	function saveOption( $value = [] ) {
+		return update_option( self::OPTION_NAME, $value, false );
 	}
 
 	function getMainInstance() {
@@ -110,11 +117,11 @@ class PurgeAll {
 	 * Helpers
 	 */
 	function is_purging_all() {
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 		return boolval( in_array($opts['status'] ?? '', ['running']) );
 	}
 	function get_purge_all_progress_numbers() {
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 
 		$todo     = count($opts['nodes'] ?? []);
 		$total    = $opts['total'] ?? 0;
@@ -152,7 +159,7 @@ class PurgeAll {
 
 		if ( false === check_ajax_referer( 'nextjs-revalidate-purge_all_progress' ) ) return;
 
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 
 		$numbers = $this->get_purge_all_progress_numbers();
 		$done = $numbers->done;
@@ -223,7 +230,7 @@ class PurgeAll {
 			$nodes = array_merge( $nodes, array_map(function($t) { return ['key'=> "term_$t", 'type' => 'term', 'id' => $t]; }, $terms) );
 		}
 
-		update_option( self::OPTION_NAME, [
+		$this->saveOption( [
 			'status' => 'running',
 			'nodes'  => $nodes,
 			'total'  => count($nodes),
@@ -239,56 +246,66 @@ class PurgeAll {
 
 		if ( !$this->getMainInstance()->settings->is_configured() ) return false;
 
-		$purge_all = $this->getOptions();
+		$purge_all = $this->getOption();
 
 		// Bail early if status not running
 		if ( $purge_all['status'] !== 'running') return;
 
-		$rollingCurl = new RollingCurl();
+		$client = new GuzzleClient();
 
-		$bacth_count = min(count($purge_all['nodes']), self::BATCH_SIZE_MAX);
-		for ($i=0; $i < $bacth_count; $i++) {
-			$node = $purge_all['nodes'][$i];
+		$batch_count = min(count($purge_all['nodes']), self::BATCH_SIZE_MAX);
+		$purge_all = $this->getOption();
+		$nodes = array_slice( $purge_all['nodes'], 0, $batch_count );
 
-			switch ($node['type']) {
-				case 'term':
-					$url = get_term_link( $node['id'] );
-					break;
+		$requests = function ($nodes) {
+			$total = count($nodes);
+			for ($i = 0; $i < $total; $i++) {
+				$node = $nodes[$i];
+				$uri = $uri = ( $node['type'] === 'term'
+					? get_term_link( $node['id'] )
+					: get_permalink( $node['id'] )
+				);
 
-				case 'post':
-				default:
-					$url = get_permalink( $node['id'] );
-					break;
+				yield new Request(
+					'GET',
+					$this->getMainInstance()->revalidate->build_revalidate_uri($uri)
+				);
 			}
+		};
 
-			$request = new Request( $this->getMainInstance()->revalidate->build_revalidate_uri( $url ));
-			$request->addOptions([ CURLOPT_TIMEOUT => 60 ]);
-			$request->setExtraInfo( $node['key'] );
-			$rollingCurl->add( $request );
+		$gen = $requests($nodes);
+
+		$callback = function ($resp_or_reason, $index, $aggregate) use ($nodes) {
+			$opts = $this->getOption();
+
+			if ( $opts['status'] !== 'running') $aggregate->cancel();
+			else  {
+				$node_key = $nodes[$index]['key'];
+				$idx = array_search($node_key, array_column($opts['nodes'], 'key'));
+				if ( $idx !== false ) {
+					array_splice( $opts['nodes'], $idx, 1 );
+					$this->saveOption( $opts );
+				}
+			}
+		};
+
+		$pool = new Pool($client, $gen, [
+			'concurrency' => self::MAX_SIMULTANEOUS_REQUESTS,
+			'fulfilled'   => $callback,
+			'rejected'    => $callback,
+		]);
+
+		try {
+			$promise = $pool->promise();
+			$promise->wait();
+		} catch (CancellationException $exception) {
+			// Do nothing, because cancellation was done by the reason
 		}
 
-		$rollingCurl
-			->setCallback(function(Request $request, RollingCurl $rollingCurl) {
-				$url = $request->getUrl();
-
-				$opts = $this->getOptions();
-
-				if ( false !== $url ) {
-					$node_key = $request->getExtraInfo();
-					$idx = array_search($node_key, array_column($opts['nodes'], 'key'));
-					if ( $idx !== false ) {
-						array_splice( $opts['nodes'], $idx, 1 );
-						update_option( self::OPTION_NAME, $opts );
-					}
-				}
-			})
-			->setSimultaneousLimit(self::MAX_SIMULTANEOUS_REQUESTS)
-			->execute();
-
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 		if ( empty($opts['nodes']) ) {
 			$opts['status'] = 'done';
-			update_option( self::OPTION_NAME, $opts );
+			$this->saveOption( $opts );
 		}
 		else {
 			$this->schedule_next_cron();
@@ -301,11 +318,11 @@ class PurgeAll {
 	public function schedule_next_cron() {
 		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
 
-		$opts = $this->getOptions();
+		$opts = $this->getOption();
 		if ( $opts['status'] !== 'running') return;
 		if ( empty($opts['nodes']) ) {
 			$opts['status'] = 'done';
-			update_option( self::OPTION_NAME, $opts );
+			$this->saveOption( $opts );
 			return;
 		}
 
@@ -318,5 +335,13 @@ class PurgeAll {
 	 */
 	public static function unschedule_cron() {
 		wp_unschedule_hook( self::CRON_HOOK_NAME );
+	}
+
+	public function stop_purge_all() {
+		$this->saveOption( [
+			'status' => 'stopped',
+			'nodes'  => [],
+			'total'  => 0,
+		]);
 	}
 }
