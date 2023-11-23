@@ -116,6 +116,14 @@ class Revalidate {
 
 		$permalink = get_permalink( $_GET['post'] );
 
+		/**
+		 * Fires before adding the post to the revalidation queue.
+		 *
+		 * @param int $post_id The post ID.
+		 * @param string|false $permalink The post permalink. False if the post is not public.
+		 */
+		do_action( 'nextjs_revalidate_purge_action', $_GET['post'], $permalink );
+
 		if ( false !== $permalink ) $this->add_to_queue( $permalink );
 
 		$sendback  = $this->get_sendback_url();
@@ -155,6 +163,15 @@ class Revalidate {
 			$purged = 0;
 			foreach ($post_ids as $post_id) {
 				$permalink = get_permalink( $post_id );
+
+				/**
+				 * Fires before adding the post to the revalidation queue.
+				 *
+				 * @param int $post_id The post ID.
+				 * @param string|false $permalink The post permalink. False if the post is not public.
+				 */
+				do_action( 'nextjs_revalidate_purge_action', $post_id, $permalink );
+
 				if ( false !== $permalink ) {
 					$this->add_to_queue( $permalink );
 					$purged++;
