@@ -145,7 +145,7 @@ class PurgeAll {
 		$sendback = $this->getMainInstance()->revalidate->get_sendback_url();
 
 		if ( $this->is_purging_all() ) $sendback = add_query_arg( ['nextjs-revalidate-purge-all' => 'already-running'], $sendback );
-		else $this->purge_all();
+		else $this->purge_all( $_GET['nextjs-revalidate-type'] );
 
 		wp_safe_redirect( $sendback );
 		exit;
@@ -190,18 +190,21 @@ class PurgeAll {
 	/**
 	 * Retrive all content nodes to purge, saves them in option
 	 * and schedule the purge all cron to run.
+	 *
+	 * @param string $type Optional. The type of post type to revalidate. Default. 'all'.
+	 * @return void
 	 */
-	function purge_all() {
+	function purge_all( $type = 'all' ) {
 		if ( !$this->getMainInstance()->settings->is_configured() ) return false;
 
 		$nodes = [];
 
-		if ( $_GET['nextjs-revalidate-type'] === 'all' ) {
+		if ( $type === 'all' ) {
 			// retrieve all public post types except attachments
 			$post_types = array_filter(get_post_types([ 'public' => true ]), function($pt) { return $pt !== 'attachment'; });
 		}
 		else {
-			$post_types = [ $_GET['nextjs-revalidate-type'] ];
+			$post_types = [ $type ];
 		}
 
 		foreach ($post_types as $post_type) {
@@ -219,7 +222,7 @@ class PurgeAll {
 		$args = [
 			'public' => true,
 		];
-		if ( $_GET['nextjs-revalidate-type'] !== 'all' ) $args['object_type'] = [ $_GET['nextjs-revalidate-type'] ];
+		if ( $type !== 'all' ) $args['object_type'] = [ $type ];
 		$taxonomies = get_taxonomies($args);
 		foreach ($taxonomies as $taxonomy) {
 			$terms = get_terms([
