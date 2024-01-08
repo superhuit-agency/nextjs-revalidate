@@ -12,7 +12,7 @@ class Settings {
 
 	const SETTINGS_URL_NAME = 'nextjs_revalidate-url';
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
-	const SETTINGS_ALLOW_PURGE_ALL_NAME = 'nextjs_revalidate-allow_purge_all';
+	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
 
 	/**
 	 * @var array
@@ -25,6 +25,7 @@ class Settings {
 	function __construct() {
 		add_action( 'admin_menu', [$this, 'add_page'] );
 		add_action( 'admin_init', [$this, 'register_fields'] );
+		add_action( 'admin_init', [$this, 'stop_revalidate_all'] );
 		add_action( 'admin_init', [$this, 'stop_purge_all'] );
 	}
 
@@ -57,8 +58,8 @@ class Settings {
 					submit_button();
 
 					$njr = NextJsRevalidate::init();
-					if ( $njr->purgeAll->is_purging_all() ) {
-						submit_button( "Stop / Reset Purge All", 'secondary', 'purge_all_stop', false );
+					if ( $njr->RevalidateAll->is_revalidating_all() ) {
+						submit_button( "Stop / Reset Purge All", 'secondary', 'revalidate_all_stop', false );
 					}
 
 					$revalidate_queue = (new Revalidate())->get_queue();
@@ -122,7 +123,7 @@ class Settings {
 
 
 		add_settings_section(
-			'nextjs-revalidate-section-allow_purge_all',
+			'nextjs-revalidate-section-allow_revalidate_all',
 			__('Allow purge all options', 'nextjs-revalidate'),
 			function() {
 				printf( '<p>%s</p>', __('Define which post type has the option to have all posts purged in the admin bar.', 'nextjs-revalidate') );
@@ -131,39 +132,39 @@ class Settings {
 		);
 
 		$post_types = get_post_types([ 'public' => true ]);
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_ALLOW_PURGE_ALL_NAME );
+		register_setting( self::SETTINGS_GROUP, self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME );
 		foreach ($post_types as $post_type) {
 			if ( $post_type === 'attachment' ) continue; // skip attachments
 
 			$post_type_object = get_post_type_object( $post_type );
-			$id = "allow_purge_all-$post_type";
+			$id = "allow_revalidate_all-$post_type";
 			add_settings_field(
 				$id,
 				$post_type_object->labels->name,
 				'Kuuak\WordPressSettingFields\Fields::switch',
 				self::PAGE_NAME,
-				'nextjs-revalidate-section-allow_purge_all',
+				'nextjs-revalidate-section-allow_revalidate_all',
 				[
 					'label_for' => $id,
 					'id'        => $id,
-					'name'      => self::SETTINGS_ALLOW_PURGE_ALL_NAME."[$post_type]",
-					'checked'   => $this->allow_purge_all[$post_type] ?? false,
+					'name'      => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME."[$post_type]",
+					'checked'   => $this->allow_revalidate_all[$post_type] ?? false,
 				]
 			);
 		}
 
-		$id = "allow_purge_all-all";
+		$id = "allow_revalidate_all-all";
 		add_settings_field(
 			$id,
 			__('All post types', 'nextjs-revalidate'),
 			'Kuuak\WordPressSettingFields\Fields::switch',
 			self::PAGE_NAME,
-			'nextjs-revalidate-section-allow_purge_all',
+			'nextjs-revalidate-section-allow_revalidate_all',
 			[
 				'label_for' => $id,
 				'id'        => $id,
-				'name'      => self::SETTINGS_ALLOW_PURGE_ALL_NAME.'[all]',
-				'checked'   => $this->allow_purge_all['all'] ?? false,
+				'name'      => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME.'[all]',
+				'checked'   => $this->allow_revalidate_all['all'] ?? false,
 				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
 			]
 		);
@@ -178,8 +179,8 @@ class Settings {
 			case 'secret':
 				$setting_name = self::SETTINGS_SECRET_NAME;
 				break;
-			case 'allow_purge_all':
-				$setting_name = self::SETTINGS_ALLOW_PURGE_ALL_NAME;
+			case 'allow_revalidate_all':
+				$setting_name = self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME;
 				break;
 		}
 
@@ -197,7 +198,7 @@ class Settings {
 	public function define_settings() {
 		add_option( self::SETTINGS_URL_NAME );
 		add_option( self::SETTINGS_SECRET_NAME );
-		add_option( self::SETTINGS_ALLOW_PURGE_ALL_NAME, [] );
+		add_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, [] );
 	}
 
 	/**
@@ -212,11 +213,12 @@ class Settings {
 
 	}
 
-	public function stop_purge_all() {
+	public function stop_revalidate_all() {
 		if ( !(isset($_POST['option_page']) && $_POST['option_page'] === 'nextjs-revalidate-settings') ) return;
-		if ( !isset($_POST['purge_all_stop']) ) return;
+		if ( !isset($_POST['revalidate_all_stop']) ) return;
 
 		$njr = NextJsRevalidate::init();
-		$njr->purgeAll->stop_purge_all();
+		$njr->RevalidateAll->stop_revalidate_all();
+	}
 	}
 }

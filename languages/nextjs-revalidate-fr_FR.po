@@ -22,17 +22,17 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-0: *.min.js\n"
 "X-Poedit-SearchPathExcluded-1: vendor\n"
 
-#: include/PurgeAll.php:55
+#: include/RevalidateAll.php:55
 msgctxt "Admin top bar menu"
 msgid "Purge caches"
 msgstr "Vider les caches"
 
-#: include/PurgeAll.php:65
+#: include/RevalidateAll.php:65
 msgctxt "Admin top bar menu"
 msgid "All"
 msgstr "Tout"
 
-#: include/PurgeAll.php:83
+#: include/RevalidateAll.php:83
 msgctxt "Admin top bar menu"
 msgid ""
 "Purging all cache may take some time according to the number of pages to "
@@ -41,7 +41,7 @@ msgstr ""
 "La purge de tout le cache peut prendre un certain temps en fonction du "
 "nombre de pages à purger."
 
-#: include/PurgeAll.php:95
+#: include/RevalidateAll.php:95
 msgid ""
 "Purging all caches. is already running. Please wait until the end to restart "
 "the purge."
@@ -49,7 +49,7 @@ msgstr ""
 "La purge de toutes les pages est déjà en cours d’exécution. Veuillez "
 "attendre la fin pour redémarrer la purge."
 
-#: include/PurgeAll.php:103
+#: include/RevalidateAll.php:103
 #, php-format
 msgid "Purging all caches. Please wait… %s"
 msgstr "La purge des pages est en cours d’exécution. Veuillez patienter... %s"
