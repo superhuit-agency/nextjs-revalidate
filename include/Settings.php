@@ -26,7 +26,8 @@ class Settings {
 		add_action( 'admin_menu', [$this, 'add_page'] );
 		add_action( 'admin_init', [$this, 'register_fields'] );
 		add_action( 'admin_init', [$this, 'stop_revalidate_all'] );
-		add_action( 'admin_init', [$this, 'stop_purge_all'] );
+
+		add_action( 'admin_init', [$this, 'migrate_db'] );
 	}
 
 	/**
@@ -220,5 +221,29 @@ class Settings {
 		$njr = NextJsRevalidate::init();
 		$njr->RevalidateAll->stop_revalidate_all();
 	}
+
+	/**
+	 * Migrate the database options
+	 * according to the version of the plugin
+	 */
+	public function migrate_db() {
+
+		$plugin_data = get_plugin_data( __FILE__ );
+		$version = intval(str_replace('.', '', $plugin_data['Version']));
+		if ( $version > 141 ) return;
+
+		$revalidate_all_opt = get_option('nextjs_revalidate-allow_purge_all');
+		delete_option('nextjs_revalidate-allow_purge_all');
+
+		if ( !empty($revalidate_all_opt) ) {
+			update_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, $revalidate_all_opt );
+		}
+
+		$revalidate_all_cron_opt = get_option('nextjs-revalidate-purge_all');
+		delete_option('nextjs-revalidate-purge_all');
+
+		if ( !empty($revalidate_all_cron_opt) ) {
+			update_option( RevalidateAll::OPTION_NAME, $revalidate_all_cron_opt );
+		}
 	}
 }
