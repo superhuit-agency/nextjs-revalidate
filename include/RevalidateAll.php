@@ -11,10 +11,10 @@ use GuzzleHttp\Psr7\Request;
 use NextJsRevalidate;
 use WP_Admin_Bar;
 
-class PurgeAll {
+class RevalidateAll {
 
-	const CRON_HOOK_NAME = 'nextjs-revalidate-purge_all';
-	const OPTION_NAME    = 'nextjs-revalidate-purge_all';
+	const CRON_HOOK_NAME = 'nextjs-revalidate-revalidate_all';
+	const OPTION_NAME    = 'nextjs-revalidate-revalidate_all';
 
 	const BATCH_SIZE_MAX = 500;
 	const MAX_SIMULTANEOUS_REQUESTS = 5;
@@ -28,8 +28,10 @@ class PurgeAll {
 		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
 
-		add_action( 'admin_init', [$this, 'purge_all_progress'] );
+		add_action( 'admin_init', [$this, 'revalidate_all_progress'] );
 		add_action( 'admin_init', [$this, 'revalidate_all_pages_action'] );
+
+		add_action( 'wp_update_nav_menu', 'revalidate_all_after_menu_update' );
 
 		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron_hook'] );
 	}
@@ -53,9 +55,9 @@ class PurgeAll {
 	 */
 	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
 
-		$purge_all_opts = $this->getMainInstance()->settings->allow_purge_all;
+		$revalidate_all_opts = $this->getMainInstance()->settings->allow_revalidate_all;
 
-		if ( empty($purge_all_opts) ) return;
+		if ( empty($revalidate_all_opts) ) return;
 
 		$admin_bar->add_menu( [
 			'id'     => 'nextjs-revalidate',
@@ -65,7 +67,7 @@ class PurgeAll {
 			]
 		] );
 
-		foreach ($purge_all_opts as $post_type => $allow) {
+		foreach ($revalidate_all_opts as $post_type => $allow) {
 			if ( $allow !== 'on' ) continue;
 
 			if ( $post_type === 'all') {
@@ -94,7 +96,7 @@ class PurgeAll {
 	}
 
 	function purged_notice() {
-		if ( !$this->is_purging_all() ) return;
+		if ( !$this->is_revalidating_all() ) return;
 
 		if ( isset($_GET['nextjs-revalidate-purge-all']) && $_GET['nextjs-revalidate-purge-all'] === 'already-running') {
 			printf(
@@ -103,7 +105,7 @@ class PurgeAll {
 			);
 		}
 
-		$numbers = $this->get_purge_all_progress_numbers();
+		$numbers = $this->get_revalidate_all_progress_numbers();
 		printf(
 			'<div class="notice notice-info nextjs-revalidate-purge-all__notice"><p>%s</p></div>',
 			sprintf(
@@ -116,11 +118,11 @@ class PurgeAll {
 	/**
 	 * Helpers
 	 */
-	function is_purging_all() {
+	function is_revalidating_all() {
 		$opts = $this->getOption();
 		return boolval( in_array($opts['status'] ?? '', ['running']) );
 	}
-	function get_purge_all_progress_numbers() {
+	function get_revalidate_all_progress_numbers() {
 		$opts = $this->getOption();
 
 		$todo     = count($opts['nodes'] ?? []);
@@ -144,24 +146,34 @@ class PurgeAll {
 
 		$sendback = $this->getMainInstance()->revalidate->get_sendback_url();
 
-		if ( $this->is_purging_all() ) $sendback = add_query_arg( ['nextjs-revalidate-purge-all' => 'already-running'], $sendback );
-		else $this->purge_all( $_GET['nextjs-revalidate-type'] );
+		if ( $this->is_revalidating_all() ) $sendback = add_query_arg( ['nextjs-revalidate-purge-all' => 'already-running'], $sendback );
+		else $this->revalidate_all( $_GET['nextjs-revalidate-type'] );
 
 		wp_safe_redirect( $sendback );
 		exit;
 	}
 
 	/**
+	 * Revalidate all content after a menu update
+	 *
+	 * @param int $menu_id
+	 * @return void
+	 */
+	function revalidate_all_after_menu_update( $menu_id ) {
+
+	}
+
+	/**
 	 * Ajax callback to retrieve the purge all progress data
 	 */
-	function purge_all_progress() {
+	function revalidate_all_progress() {
 		if ( !isset($_GET['action']) || $_GET['action'] !== 'nextjs-revalidate-purge-all-progress' ) return;
 
-		if ( false === check_ajax_referer( 'nextjs-revalidate-purge_all_progress' ) ) return;
+		if ( false === check_ajax_referer( 'nextjs-revalidate-revalidate_all_progress' ) ) return;
 
 		$opts = $this->getOption();
 
-		$numbers = $this->get_purge_all_progress_numbers();
+		$numbers = $this->get_revalidate_all_progress_numbers();
 		$done = $numbers->done;
 		$total = $numbers->total;
 		$progress = $numbers->progress;
@@ -188,13 +200,13 @@ class PurgeAll {
 	}
 
 	/**
-	 * Retrive all content nodes to purge, saves them in option
-	 * and schedule the purge all cron to run.
+	 * Retrive all post type content nodes to revalidate, saves them in option
+	 * and schedule the revalidate all cron to run.
 	 *
 	 * @param string $type Optional. The type of post type to revalidate. Default. 'all'.
 	 * @return void
 	 */
-	function purge_all( $type = 'all' ) {
+	function revalidate_all( $type = 'all' ) {
 		if ( !$this->getMainInstance()->settings->is_configured() ) return false;
 
 		$nodes = [];
@@ -249,16 +261,16 @@ class PurgeAll {
 
 		if ( !$this->getMainInstance()->settings->is_configured() ) return false;
 
-		$purge_all = $this->getOption();
+		$revalidate_all = $this->getOption();
 
 		// Bail early if status not running
-		if ( $purge_all['status'] !== 'running') return;
+		if ( $revalidate_all['status'] !== 'running') return;
 
 		$client = new GuzzleClient();
 
-		$batch_count = min(count($purge_all['nodes']), self::BATCH_SIZE_MAX);
-		$purge_all = $this->getOption();
-		$nodes = array_slice( $purge_all['nodes'], 0, $batch_count );
+		$batch_count = min(count($revalidate_all['nodes']), self::BATCH_SIZE_MAX);
+		$revalidate_all = $this->getOption();
+		$nodes = array_slice( $revalidate_all['nodes'], 0, $batch_count );
 
 		$requests = function ($nodes) {
 			$total = count($nodes);
@@ -340,7 +352,7 @@ class PurgeAll {
 		wp_unschedule_hook( self::CRON_HOOK_NAME );
 	}
 
-	public function stop_purge_all() {
+	public function stop_revalidate_all() {
 		$this->saveOption( [
 			'status' => 'stopped',
 			'nodes'  => [],

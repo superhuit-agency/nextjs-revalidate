@@ -35,7 +35,7 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 
 use NextJsRevalidate\Assets;
 use NextJsRevalidate\I18n;
-use NextJsRevalidate\PurgeAll;
+use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\Cron\ScheduledPurges;
@@ -67,7 +67,7 @@ class NextJsRevalidate {
 	private Revalidate $revalidate;
 	private Settings $settings;
 	private ScheduledPurges $cronScheduledPurges;
-	private PurgeAll $purgeAll;
+	private RevalidateAll $RevalidateAll;
 
 	private static NextJsRevalidate $instance;
 
@@ -88,7 +88,7 @@ class NextJsRevalidate {
 		$this->settings            = new Settings();
 		$this->revalidate          = new Revalidate();
 		$this->cronScheduledPurges = new ScheduledPurges();
-		$this->purgeAll            = new PurgeAll();
+		$this->RevalidateAll       = new RevalidateAll();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
