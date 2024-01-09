@@ -13,6 +13,7 @@ class Settings {
 	const SETTINGS_URL_NAME = 'nextjs_revalidate-url';
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
+	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
 
 	/**
 	 * @var array
@@ -169,6 +170,51 @@ class Settings {
 				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
 			]
 		);
+
+		add_settings_section(
+			'nextjs-revalidate-section-revalidate-on-menu-save',
+			__('On menu update revalidations', 'nextjs-revalidate'),
+			function() {
+				printf( '<p>%s</p>', __('Define which post type will be revalidated when updating a menu.', 'nextjs-revalidate') );
+			},
+			self::PAGE_NAME
+		);
+
+
+		register_setting( self::SETTINGS_GROUP, self::SETTINGS_REVALIDATE_ON_MENU_SAVE );
+		foreach ($post_types as $post_type) {
+			if ( $post_type === 'attachment' ) continue; // skip attachments
+
+			$post_type_object = get_post_type_object( $post_type );
+			$id = "revalidate-on-menu-save-$post_type";
+			add_settings_field(
+				$id,
+				$post_type_object->labels->name,
+				'Kuuak\WordPressSettingFields\Fields::switch',
+				self::PAGE_NAME,
+				'nextjs-revalidate-section-revalidate-on-menu-save',
+				[
+					'label_for' => $id,
+					'id'        => $id,
+					'name'      => self::SETTINGS_REVALIDATE_ON_MENU_SAVE."[$post_type]",
+					'checked'   => $this->revalidate_on_menu_save[$post_type] ?? false,
+				]
+			);
+		}
+		add_settings_field(
+			$id,
+			__('All post types', 'nextjs-revalidate'),
+			'Kuuak\WordPressSettingFields\Fields::switch',
+			self::PAGE_NAME,
+			'nextjs-revalidate-section-revalidate-on-menu-save',
+			[
+				'label_for' => $id,
+				'id'        => $id,
+				'name'      => self::SETTINGS_REVALIDATE_ON_MENU_SAVE.'[all]',
+				'checked'   => $this->revalidate_on_menu_save['all'] ?? false,
+				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
+			]
+		);
 	}
 
 	public function __get( $name ) {
@@ -182,6 +228,9 @@ class Settings {
 				break;
 			case 'allow_revalidate_all':
 				$setting_name = self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME;
+				break;
+			case 'revalidate_on_menu_save':
+				$setting_name = self::SETTINGS_REVALIDATE_ON_MENU_SAVE;
 				break;
 		}
 

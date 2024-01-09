@@ -31,6 +31,8 @@ class RevalidateAll {
 		add_action( 'admin_init', [$this, 'revalidate_all_progress'] );
 		add_action( 'admin_init', [$this, 'revalidate_all_pages_action'] );
 
+		add_action( 'wp_update_nav_menu', [$this, 'revalidate_all_after_menu_update'] );
+
 		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron_hook'] );
 	}
 
@@ -152,10 +154,30 @@ class RevalidateAll {
 	}
 
 	/**
-	 * Ajax callback to retrieve the purge all progress data
+	 * Revalidate all content after a menu update
+	 *
+	 * @param int $menu_id
+	 * @return void
+	 */
+	function revalidate_all_after_menu_update( $menu_id ) {
+		$revalidate_on_save = $this->getMainInstance()->settings->revalidate_on_menu_save;
+
+		if (isset($revalidate_on_save['all']) && $revalidate_on_save['all'] === 'on') {
+			$this->is_revalidating_all();
+		}
+		else {
+			foreach ($revalidate_on_save as $post_type => $enabled) {
+				if ( $enabled !== 'on' ) continue;
+				$this->revalidate_all($post_type);
+			}
+		}
+	}
+
+	/**
+	 * Ajax callback to retrieve the revalidate all progress data
 	 */
 	function revalidate_all_progress() {
-		if ( !isset($_GET['action']) || $_GET['action'] !== 'nextjs-revalidate-purge-all-progress' ) return;
+		if ( !isset($_GET['action']) || $_GET['action'] !== 'nextjs-revalidate-revalidate-all-progress' ) return;
 
 		if ( false === check_ajax_referer( 'nextjs-revalidate-revalidate_all_progress' ) ) return;
 
