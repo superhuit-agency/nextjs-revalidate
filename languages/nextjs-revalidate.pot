@@ -24,30 +24,30 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-2: dist\n"
 "X-Poedit-SearchPathExcluded-3: node_modules\n"
 
-#: include/PurgeAll.php:55
+#: include/RevalidateAll.php:55
 msgctxt "Admin top bar menu"
 msgid "Purge caches"
 msgstr ""
 
-#: include/PurgeAll.php:65
+#: include/RevalidateAll.php:65
 msgctxt "Admin top bar menu"
 msgid "All"
 msgstr ""
 
-#: include/PurgeAll.php:83
+#: include/RevalidateAll.php:83
 msgctxt "Admin top bar menu"
 msgid ""
 "Purging all cache may take some time according to the number of pages to "
 "purge."
 msgstr ""
 
-#: include/PurgeAll.php:95
+#: include/RevalidateAll.php:95
 msgid ""
 "Purging all caches. is already running. Please wait until the end to "
 "restart the purge."
 msgstr ""
 
-#: include/PurgeAll.php:103
+#: include/RevalidateAll.php:103
 #, php-format
 msgid "Purging all caches. Please wait… %s"
 msgstr ""

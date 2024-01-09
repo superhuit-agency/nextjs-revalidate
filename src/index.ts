@@ -11,10 +11,10 @@ function init() {
 
 	if ( !window?.nextjs_revalidate?.url || !window?.nextjs_revalidate?.nonce ) return;
 
-	checkProgressInterval = setInterval(checkPurgeAllProgress, 1000 * INTERVAL);
+	checkProgressInterval = setInterval(checkRevalidateAllProgress, 1000 * INTERVAL);
 }
 
-function checkPurgeAllProgress() {
+function checkRevalidateAllProgress() {
 	const url = new URL( window.nextjs_revalidate.url )
 	url.searchParams.append( 'action', 'nextjs-revalidate-purge-all-progress' )
 	url.searchParams.append( '_ajax_nonce', window.nextjs_revalidate.nonce )
