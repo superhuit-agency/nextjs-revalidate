@@ -60,7 +60,7 @@ class Settings {
 					submit_button();
 
 					$njr = NextJsRevalidate::init();
-					if ( $njr->RevalidateAll->is_revalidating_all() ) {
+					if ( $njr->revalidateAll->is_revalidating_all() ) {
 						submit_button( "Stop / Reset Purge All", 'secondary', 'revalidate_all_stop', false );
 					}
 
@@ -268,7 +268,7 @@ class Settings {
 		if ( !isset($_POST['revalidate_all_stop']) ) return;
 
 		$njr = NextJsRevalidate::init();
-		$njr->RevalidateAll->stop_revalidate_all();
+		$njr->revalidateAll->stop_revalidate_all();
 	}
 
 	/**

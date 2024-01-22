@@ -39,6 +39,7 @@ use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\Cron\ScheduledPurges;
+use NextJsRevalidate\RevalidateQueue;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -67,7 +68,8 @@ class NextJsRevalidate {
 	private Revalidate $revalidate;
 	private Settings $settings;
 	private ScheduledPurges $cronScheduledPurges;
-	private RevalidateAll $RevalidateAll;
+	private RevalidateAll $revalidateAll;
+	private RevalidateQueue $queue;
 
 	private static NextJsRevalidate $instance;
 
@@ -88,7 +90,8 @@ class NextJsRevalidate {
 		$this->settings            = new Settings();
 		$this->revalidate          = new Revalidate();
 		$this->cronScheduledPurges = new ScheduledPurges();
-		$this->RevalidateAll       = new RevalidateAll();
+		$this->revalidateAll       = new RevalidateAll();
+		$this->queue               = new RevalidateQueue();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -105,6 +108,8 @@ class NextJsRevalidate {
 	function activate() {
 		$this->cronScheduledPurges->schedule_cron();
 		$this->settings->define_settings();
+
+		$this->queue->create_table();
 	}
 
 	/**
@@ -120,6 +125,9 @@ class NextJsRevalidate {
 	 */
 	public static function uninstall() {
 		Settings::delete_settings();
+
+		$queue = new RevalidateQueue();
+		$queue->delete_table();
 	}
 
 }
