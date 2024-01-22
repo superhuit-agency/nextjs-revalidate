@@ -18,6 +18,8 @@ class Revalidate {
 	const CRON_HOOK_NAME = 'nextjs-revalidate-queue';
 	const CRON_TRANSCIENT_NAME = 'nextjs_revalidate-doing_cron-queue';
 
+	const MAX_NB_RUNNING_CRON = 4;
+
 	/**
 	 * Constructor.
 	 */
@@ -258,8 +260,28 @@ class Revalidate {
 		wp_unschedule_hook( self::CRON_HOOK_NAME );
 	}
 
-	private function is_cron_already_running() {
-		return false !== get_transient( self::CRON_TRANSCIENT_NAME );
+	private function add_running_cron() {
+		$nb_running_cron = get_transient( self::CRON_TRANSCIENT_NAME );
+		$nb_running_cron = intval(false === $nb_running_cron ? 0 : $nb_running_cron);
+
+		if ( $nb_running_cron >= self::MAX_NB_RUNNING_CRON ) return false;
+
+		$nb_running_cron++;
+		set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
+
+		$this->schedule_next_cron();
+
+		return $nb_running_cron;
+	}
+
+	private function remove_running_cron() {
+		$nb_running_cron = get_transient( self::CRON_TRANSCIENT_NAME ) || 0;
+
+		$nb_running_cron--;
+		if ( $nb_running_cron > 0 ) set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
+		else delete_transient( self::CRON_TRANSCIENT_NAME );
+
+		return true;
 	}
 
 	/**
@@ -267,8 +289,7 @@ class Revalidate {
 	 * Will run multiple items in the queue until the max execution time is reached
 	 */
 	public function run_cron() {
-		if ( $this->is_cron_already_running() ) return;
-		set_transient( self::CRON_TRANSCIENT_NAME, true, 3600 );
+		if ( !$this->add_running_cron() ) return;
 
 		$start_time = time();
 
@@ -280,18 +301,36 @@ class Revalidate {
 		$max_exec_time = $max_exec_time * 0.95;
 
 		do {
-			$queue = $this->get_queue( true );
-			$permalink = array_shift($queue);
-			$this->save_queue( $queue );
+			$permalink = $this->get_next_item_in_queue();
 
 			if ( $permalink ) $this->purge( $permalink );
 
 		} while ($permalink && $max_exec_time > (time() - $start_time) );
 
-
-		delete_transient( self::CRON_TRANSCIENT_NAME );
+		$this->remove_running_cron();
 
 		$this->schedule_next_cron();
+	}
+
+	private function get_next_item_in_queue() {
+		global $wpdb;
+
+		$wpdb->query('START TRANSACTION');
+
+		$queue = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM $wpdb->options WHERE option_name = %s FOR UPDATE", self::OPTION_NAME ) );
+		$queue = maybe_unserialize( $queue );
+
+		$permalink = array_shift( $queue );
+
+		$wpdb->update(
+			$wpdb->options,
+			[ 'option_value' => maybe_serialize( $queue ) ],
+			[ 'option_name'  => self::OPTION_NAME ]
+		);
+
+		$wpdb->query('COMMIT');
+
+		return $permalink;
 	}
 
 	public function get_queue($force_from_db = false) {
