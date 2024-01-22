@@ -44,7 +44,7 @@ class Logger {
 		$alignment = str_repeat(' ', 16 - strlen($filename));
 
 		$dirs = wp_upload_dir();
-		$logFile = $dirs['basedir'] . 'nextjs-revalidate.log';
+		$logFile = "{$dirs['basedir']}/nextjs-revalidate.log";
 
 		error_log(
 			sprintf(

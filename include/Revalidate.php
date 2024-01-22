@@ -248,10 +248,11 @@ class Revalidate {
 	private function schedule_next_cron() {
 		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
 
-		// Do not schedule if queue is empty
 		global $wpdb;
 		$queue = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM $wpdb->options WHERE option_name = %s", self::OPTION_NAME ) );
 		$queue = maybe_unserialize( $queue );
+
+		// Do not schedule if queue is empty
 		if ( !is_array($queue) || count($queue) === 0 ) return;
 
 		$next_cron_datetime = new DateTime( 'now', $this->timezone );
@@ -271,6 +272,9 @@ class Revalidate {
 		$nb_running_cron++;
 		set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
 
+		Logger::log( '------', __FILE__ );
+		Logger::log( "🆕 revalidate cron (nb running: $nb_running_cron)", __FILE__ );
+
 		$this->schedule_next_cron();
 
 		return $nb_running_cron;
@@ -284,6 +288,8 @@ class Revalidate {
 		if ( $nb_running_cron > 0 ) set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
 		else delete_transient( self::CRON_TRANSCIENT_NAME );
 
+		Logger::log( "🗑️ (remove) revalidate cron (nb still running: $nb_running_cron)", __FILE__ );
+
 		return true;
 	}
 
@@ -295,19 +301,30 @@ class Revalidate {
 		$n_cron = $this->add_running_cron();
 		if ( false === $n_cron ) return;
 
+		$id = uniqid();
 		$start_time = time();
+
+		Logger::log( "#$id: Start revalidate queue", __FILE__ );
 
 		// get max php exec time
 		$max_exec_time = ini_get('max_execution_time');
 		$max_exec_time = $max_exec_time ? $max_exec_time : 60;
 
+		Logger::log( "#$id: Revalidate queue will be running for max $max_exec_time seconds" , __FILE__ );
+
 		// Remove 5% as a safety margin
 		$max_exec_time = $max_exec_time * 0.95;
 
 		do {
+			$rev_start = microtime(true);
 			$permalink = $this->get_next_item_in_queue();
 
-			if ( $permalink ) $this->purge( $permalink );
+			if ( $permalink ) {
+				$this->purge( $permalink );
+
+				$t_to_revalidate = microtime(true) - $rev_start;
+				Logger::log("#$id: ✅ Revalidated in {$t_to_revalidate}s {$permalink}", __FILE__);
+			}
 
 		} while ($permalink && $max_exec_time > (time() - $start_time) );
 
