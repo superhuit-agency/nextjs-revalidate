@@ -249,8 +249,10 @@ class Revalidate {
 		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
 
 		// Do not schedule if queue is empty
-		$queue = $this->get_queue();
-		if ( count($queue) === 0 ) return;
+		global $wpdb;
+		$queue = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM $wpdb->options WHERE option_name = %s", self::OPTION_NAME ) );
+		$queue = maybe_unserialize( $queue );
+		if ( !is_array($queue) || count($queue) === 0 ) return;
 
 		$next_cron_datetime = new DateTime( 'now', $this->timezone );
 		wp_schedule_single_event( $next_cron_datetime->getTimestamp(), self::CRON_HOOK_NAME );
@@ -275,7 +277,8 @@ class Revalidate {
 	}
 
 	private function remove_running_cron() {
-		$nb_running_cron = get_transient( self::CRON_TRANSCIENT_NAME ) || 0;
+		$nb_running_cron = get_transient( self::CRON_TRANSCIENT_NAME );
+		$nb_running_cron = intval(false === $nb_running_cron ? 0 : $nb_running_cron);
 
 		$nb_running_cron--;
 		if ( $nb_running_cron > 0 ) set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
@@ -289,7 +292,8 @@ class Revalidate {
 	 * Will run multiple items in the queue until the max execution time is reached
 	 */
 	public function run_cron() {
-		if ( !$this->add_running_cron() ) return;
+		$n_cron = $this->add_running_cron();
+		if ( false === $n_cron ) return;
 
 		$start_time = time();
 
@@ -346,13 +350,38 @@ class Revalidate {
 	}
 
 	public function add_to_queue( $permalink )  {
-		$queue = $this->get_queue();
+		global $wpdb;
 
-		// Stop here, not need to go further as we don't want to add the same url twice
-		if ( in_array($permalink, $queue) ) return;
+		$wpdb->query('START TRANSACTION');
 
-		$queue[] = $permalink;
-		$this->save_queue( $queue );
+		$queue_option = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM $wpdb->options WHERE option_name = %s FOR UPDATE", self::OPTION_NAME));
+		$queue = maybe_unserialize($queue_option);
+
+		if (!is_array($queue)) {
+			$queue = [];
+			$wpdb->insert(
+				$wpdb->options,
+				[
+					'option_name'  => self::OPTION_NAME,
+					'option_value' => maybe_serialize( [] )
+				]
+			);
+		}
+
+		if (!in_array($permalink, $queue)) {
+			$queue[] = $permalink;
+
+			$wpdb->update(
+				$wpdb->options,
+				[ 'option_value' => maybe_serialize( $queue ) ],
+				[ 'option_name'  => self::OPTION_NAME ]
+			);
+		}
+
+		$wpdb->query('COMMIT');
+
+		// No need to schedule a cron if queue is empty
+		if (empty($queue)) return;
 
 		// Make sure a cron is schedule
 		$this->schedule_next_cron();
