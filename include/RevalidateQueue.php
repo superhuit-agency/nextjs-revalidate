@@ -95,21 +95,22 @@ class RevalidateQueue {
 	/**
 	 * Get the next item in the queue and delete it from the queue
 	 *
-	 * @return string|null
+	 * @return RevalidateItem|null
 	 */
 	public function get_next_item() {
 		global $wpdb;
 		$wpdb->query("START TRANSACTION");
 
-		$row = $wpdb->get_row("SELECT * FROM `$this->table_name` ORDER BY `priority` ASC, `id` ASC LIMIT 1 FOR UPDATE");
+		$item = $wpdb->get_row("SELECT * FROM `$this->table_name` ORDER BY `priority` ASC, `id` ASC LIMIT 1 FOR UPDATE");
 
-		if ($row) {
-			$wpdb->delete($this->table_name, ['id' => $row->id]);
+		if ($item) {
+			$item = new RevalidateItem( $item );
+			$wpdb->delete($this->table_name, ['id' => $item->id]);
 		}
 
 		$wpdb->query("COMMIT");
 
-		return $row->permalink ?? null;
+		return $item;
 	}
 
 	/**
