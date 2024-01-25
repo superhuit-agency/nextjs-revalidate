@@ -65,17 +65,31 @@ class Settings {
 					}
 
 					$queue = NextjsRevalidate::init()->queue->get_queue();
+					$nb_in_queue = count($queue);
 					?>
-					<hr />
-					<h2>Purge queue</h2>
-					<details>
-						<summary><?php printf("%d URLs waiting to be purged", count($queue)); ?></summary>
-						<ul>
-							<?php foreach ($queue as $url): ?>
-								<li><?php echo $url; ?></li>
-							<?php endforeach; ?>
-						</ul>
-					</details>
+
+					<section id="nextjs_revalidate-queue">
+						<h2><?php _e('Revalidate queue', 'nextjs-revalidate'); ?></h2>
+						<p><strong><?php
+							printf( _n( '%d URL waiting to be purged', '%d URLs waiting to be purged', $nb_in_queue, 'nextjs-revalidate'), $nb_in_queue );
+						?></strong></p>
+						<table>
+							<thead>
+								<th><?php _e('Id', 'nextjs-revalidate'); ?></th>
+								<th><?php _e('Priority', 'nextjs-revalidate'); ?></th>
+								<th><?php _e('URL', 'nextjs-revalidate'); ?></th>
+							</thead>
+							<tbody>
+								<?php foreach ($queue as $item): ?>
+								<tr>
+									<td><?php echo $item->id; ?></td>
+									<td><?php echo $item->priority; ?></td>
+									<td><?php echo $item->permalink; ?></td>
+								</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</section>
 			</form>
 		</div>
 		<?php

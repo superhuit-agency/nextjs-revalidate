@@ -1,0 +1,55 @@
+#nextjs_revalidate-queue {
+	margin-left: -20px;
+	margin-right: -20px;
+	padding: 20px;
+	background-color: white;
+
+	table {
+		min-width: 100%;
+		margin: 1rem 0;
+		text-indent: 0;
+		border-color: inherit;
+		border-collapse: collapse;
+
+		tbody {
+			tr {
+				border: 0 solid #e5e7eb;
+				border-top-width: 1px;
+				border-bottom-width: 1px;
+
+				&:first-child {
+					border-top-color: rgb(209 213 219);
+				}
+			}
+		}
+
+		tr {
+			th {
+				padding: 0.875rem 0.75rem;
+				color: rgb(17 24 39);
+				font-weight: 500;
+				font-size: 0.875rem;
+				line-height: 1.25rem;
+				text-align: left;
+			}
+
+			td {
+				padding: 1rem 0.75rem;
+				color: rgb(17 24 39);
+				font-size: 0.875rem;
+				line-height: 1.25rem;
+				white-space: nowrap;
+			}
+
+			th:first-child,
+			td:first-child {
+				padding-left: 0px;
+			}
+
+			th:last-child,
+			td:last-child {
+				padding-right: 0px;
+			}
+		}
+	}
+}

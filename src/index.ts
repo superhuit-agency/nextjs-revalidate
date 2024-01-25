@@ -1,49 +1,54 @@
 const INTERVAL = 1; // seconds
 
-let checkProgressInterval: NodeJS.Timer;
+let checkProgressInterval: number;
 
 function getNotice() {
-	return document.querySelector('.nextjs-revalidate-purge-all__notice');
+	return document.querySelector(".nextjs-revalidate-purge-all__notice");
 }
 
 function init() {
-	if ( !getNotice() ) return;
+	if (!getNotice()) return;
 
-	if ( !window?.nextjs_revalidate?.url || !window?.nextjs_revalidate?.nonce ) return;
+	if (!window?.nextjs_revalidate?.url || !window?.nextjs_revalidate?.nonce)
+		return;
 
-	checkProgressInterval = setInterval(checkRevalidateAllProgress, 1000 * INTERVAL);
+	checkProgressInterval = window.setInterval(
+		checkRevalidateAllProgress,
+		1000 * INTERVAL
+	);
 }
 
 function checkRevalidateAllProgress() {
-	const url = new URL( window.nextjs_revalidate.url )
-	url.searchParams.append( 'action', 'nextjs-revalidate-purge-all-progress' )
-	url.searchParams.append( '_ajax_nonce', window.nextjs_revalidate.nonce )
+	const url = new URL(window.nextjs_revalidate.url);
+	url.searchParams.append("action", "nextjs-revalidate-purge-all-progress");
+	url.searchParams.append("_ajax_nonce", window.nextjs_revalidate.nonce);
 
 	fetch(url)
-		.then( (res) => res.json() )
-		.then( ({ data }) => {
+		.then((res) => res.json())
+		.then(({ data }) => {
 			const notice = getNotice();
-			const progress = notice.querySelector('.nextjs-revalidate-purge-all__progress');
+			const progress = notice.querySelector(
+				".nextjs-revalidate-purge-all__progress"
+			);
 
-			if ( data.status === 'running' ) progress.textContent = `${data.progress}% (${data.done}/${data.total})`;
+			if (data.status === "running")
+				progress.textContent = `${data.progress}% (${data.done}/${data.total})`;
 			else {
-				if ( data.status === 'done' ) {
-					notice.classList.remove('notice-info')
+				if (data.status === "done") {
+					notice.classList.remove("notice-info");
 					progress.textContent = `${data.progress}% (${data.done}/${data.total}) 🎉`;
-					notice.classList.add('notice-success')
+					notice.classList.add("notice-success");
+				} else {
+					notice.parentElement.removeChild(notice);
 				}
-				else {
-					notice.parentElement.removeChild( notice );
-				}
-				clearInterval( checkProgressInterval );
+				window.clearInterval(checkProgressInterval);
 			}
 		})
-		.catch( err => {
-			console.error( err );
-		})
+		.catch((err) => {
+			console.error(err);
+		});
 }
 
-
-window.addEventListener('load', function() {
+window.addEventListener("load", function () {
 	init();
-})
+});

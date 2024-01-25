@@ -46,6 +46,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 define( 'NJR_PATH', __DIR__ );
 define( 'NJR_URI', plugin_dir_url(__FILE__) );
+define( 'NJR_VERSION', '1.5.0' );
 
 // Load dependencies
 // ====
