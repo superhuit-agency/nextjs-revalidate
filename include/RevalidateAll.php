@@ -163,7 +163,7 @@ class RevalidateAll {
 		$revalidate_on_save = $this->getMainInstance()->settings->revalidate_on_menu_save;
 
 		if (isset($revalidate_on_save['all']) && $revalidate_on_save['all'] === 'on') {
-			$this->is_revalidating_all();
+			$this->revalidate_all();
 		}
 		else {
 			foreach ($revalidate_on_save as $post_type => $enabled) {
