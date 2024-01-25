@@ -14,6 +14,7 @@ class Settings {
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
 	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
+	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
 	 * @var array
@@ -86,6 +87,9 @@ class Settings {
 	 */
 	public function register_fields() {
 		register_setting( self::SETTINGS_GROUP, self::SETTINGS_URL_NAME );
+
+
+		// API section settings
 		add_settings_section(
 			'nextjs-revalidate-section',
 			__('Next.js API config', 'nextjs-revalidate'),
@@ -124,6 +128,7 @@ class Settings {
 		);
 
 
+		// Revalidate All section settings
 		add_settings_section(
 			'nextjs-revalidate-section-allow_revalidate_all',
 			__('Allow purge all options', 'nextjs-revalidate'),
@@ -171,6 +176,8 @@ class Settings {
 			]
 		);
 
+
+		// On menu save section settings
 		add_settings_section(
 			'nextjs-revalidate-section-revalidate-on-menu-save',
 			__('On menu update revalidations', 'nextjs-revalidate'),
@@ -179,7 +186,6 @@ class Settings {
 			},
 			self::PAGE_NAME
 		);
-
 
 		register_setting( self::SETTINGS_GROUP, self::SETTINGS_REVALIDATE_ON_MENU_SAVE );
 		foreach ($post_types as $post_type) {
@@ -201,6 +207,7 @@ class Settings {
 				]
 			);
 		}
+		$id = "revalidate-on-menu-save-all";
 		add_settings_field(
 			$id,
 			__('All post types', 'nextjs-revalidate'),
@@ -213,6 +220,38 @@ class Settings {
 				'name'      => self::SETTINGS_REVALIDATE_ON_MENU_SAVE.'[all]',
 				'checked'   => $this->revalidate_on_menu_save['all'] ?? false,
 				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
+			]
+		);
+
+
+		// Debug section settings
+		add_settings_section(
+			'nextjs-revalidate-section-debug',
+			__('Debug section', 'nextjs-revalidate'),
+			function() {
+				printf( '<p>%s</p>', __('Some configuration for easier debug.', 'nextjs-revalidate') );
+			},
+			self::PAGE_NAME
+		);
+		register_setting( self::SETTINGS_GROUP, self::SETTINGS_DEBUG );
+
+		$upload_dir = wp_upload_dir();
+		$id = "enable-logs";
+		add_settings_field(
+			$id,
+			__('Enable logs', 'nextjs-revalidate'),
+			'Kuuak\WordPressSettingFields\Fields::switch',
+			self::PAGE_NAME,
+			'nextjs-revalidate-section-debug',
+			[
+				'label_for' => $id,
+				'id'        => $id,
+				'name'      => self::SETTINGS_DEBUG.'[enable-logs]',
+				'checked'   => $this->debug['enable-logs'] ?? false,
+				'help'      => sprintf(
+					__('Logs will be saved to file lacated in <code>%s</code>', 'nextjs-revalidate'),
+					trailingslashit($upload_dir['basedir']) . Logger::FILENAME
+				),
 			]
 		);
 	}
@@ -231,6 +270,9 @@ class Settings {
 				break;
 			case 'revalidate_on_menu_save':
 				$setting_name = self::SETTINGS_REVALIDATE_ON_MENU_SAVE;
+				break;
+			case 'debug':
+				$setting_name = self::SETTINGS_DEBUG;
 				break;
 		}
 

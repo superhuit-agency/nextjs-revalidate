@@ -2,6 +2,8 @@
 
 namespace NextJsRevalidate;
 
+use NextJsRevalidate;
+
 class Logger {
 
 	public const INFO  = 0;
@@ -27,6 +29,11 @@ class Logger {
 	 * [2017-03-20 3:35:43] [DEBUG] [file.php] Regex empty
 	 */
 	public static function log($text, $currentFile, $level= self::INFO) {
+
+		// Do not log if setting disabled
+		$debug = NextJsRevalidate::init()->settings->debug ?: [];
+		if ( ! ( isset($debug['enable-logs']) && 'on' !== $debug['enable-logs'] ) ) return;
+
 		switch (strtolower($level)) {
 			case self::ERROR:
 				$level='ERROR';
