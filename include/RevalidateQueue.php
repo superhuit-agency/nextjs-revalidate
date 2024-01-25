@@ -2,18 +2,37 @@
 
 namespace NextJsRevalidate;
 
+use DateTime;
+use DateTimeZone;
 use NextJsRevalidate;
 
 class RevalidateQueue {
+
+	const CRON_HOOK_NAME = 'nextjs_revalidate-queue';
+	const CRON_TRANSCIENT_NAME = 'nextjs_revalidate-running_queue';
 
 	/**
 	 * @var string
 	 */
 	private $table_name;
 
+	/**
+	 * @var DateTimeZone
+	 */
+	private $timezone;
+
 	public function __construct() {
 		global $wpdb;
 		$this->table_name = $wpdb->prefix . 'revalidate_queue';
+
+		$this->timezone = new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
+
+		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron'] );
+	}
+
+	function __get( $name ) {
+		if ( $name === 'njr' ) return NextJsRevalidate::init();
+		return null;
 	}
 
 	/**
@@ -86,8 +105,7 @@ class RevalidateQueue {
 
 		$wpdb->query("COMMIT");
 
-		$njr = NextJsRevalidate::init();
-		$njr->revalidate->schedule_next_cron();
+		$this->schedule_next_cron();
 
 		return $inserted;
 	}
@@ -124,19 +142,65 @@ class RevalidateQueue {
 	}
 
 	/**
-	 * Get the size of the queue
-	 *
-	 * @return int
+	 * Reset the table auto increment id counter
 	 */
-	public function get_queue_size() {
-		return count( $this->get_queue() );
+	private function reset_queue() {
+		global $wpdb;
+		$wpdb->query("ALTER TABLE `$this->table_name` AUTO_INCREMENT = 1");
 	}
 
 	/**
-	 * Reset the table auto increment id counter
+	 * Schedule the cron queue to run
 	 */
-	public function reset_queue() {
-		global $wpdb;
-		$wpdb->query("ALTER TABLE `$this->table_name` AUTO_INCREMENT = 1");
+	private function schedule_next_cron() {
+		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
+
+		// Do not schedule if queue is empty
+		if ( count($this->get_queue()) === 0 ) {
+			$this->reset_queue();
+			return;
+		}
+
+		$next_cron_datetime = new DateTime( 'now', $this->timezone );
+		wp_schedule_single_event( $next_cron_datetime->getTimestamp(), self::CRON_HOOK_NAME );
+	}
+
+	public function unschedule_cron() {
+		wp_unschedule_hook( self::CRON_HOOK_NAME );
+	}
+
+	private function is_cron_already_running() {
+		return false !== get_transient( self::CRON_TRANSCIENT_NAME );
+	}
+
+	/**
+	 * Run the cron
+	 * Will run multiple items in the queue
+	 * until the max execution time is reached
+	 */
+	public function run_cron() {
+		if ( $this->is_cron_already_running() ) return;
+		set_transient( self::CRON_TRANSCIENT_NAME, true, 3600 );
+
+		$start_time = time();
+
+		// get max php exec time
+		$max_exec_time = ini_get('max_execution_time');
+		$max_exec_time = $max_exec_time ? $max_exec_time : 60;
+
+		// Remove 5% as a safety margin
+		$max_exec_time = $max_exec_time * 0.95;
+
+		do {
+			$item = $this->get_next_item();
+
+			if ( $item ) $this->njr->revalidate->purge( $item->permalink );
+
+		} while ($item && $max_exec_time > (time() - $start_time) );
+
+
+		delete_transient( self::CRON_TRANSCIENT_NAME );
+
+		$this->schedule_next_cron();
 	}
 }

@@ -2,8 +2,6 @@
 
 namespace NextJsRevalidate;
 
-use DateTime;
-use DateTimeZone;
 use NextJsRevalidate;
 use WP_Post;
 
@@ -12,17 +10,10 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 class Revalidate {
 
-	private $timezone;
-
-	const CRON_HOOK_NAME = 'nextjs-revalidate-queue';
-	const CRON_TRANSCIENT_NAME = 'nextjs_revalidate-doing_cron-queue';
-
 	/**
 	 * Constructor.
 	 */
 	function __construct() {
-		$this->timezone = new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
-
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -241,60 +232,5 @@ class Revalidate {
 		);
 
 		return $sendback;
-	}
-
-	/**
-	 * Schedule the cron for the next sync sync
-	 */
-	public function schedule_next_cron() {
-		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
-
-		// Do not schedule if queue is empty
-
-		if ( $this->njr->queue->get_queue_size() === 0 ) {
-			$this->njr->queue->reset_queue();
-			return;
-		}
-
-		$next_cron_datetime = new DateTime( 'now', $this->timezone );
-		wp_schedule_single_event( $next_cron_datetime->getTimestamp(), self::CRON_HOOK_NAME );
-	}
-
-	public static function unschedule_cron() {
-		wp_unschedule_hook( self::CRON_HOOK_NAME );
-	}
-
-	private function is_cron_already_running() {
-		return false !== get_transient( self::CRON_TRANSCIENT_NAME );
-	}
-
-	/**
-	 * Run the cron
-	 * Will run multiple items in the queue until the max execution time is reached
-	 */
-	public function run_cron() {
-		if ( $this->is_cron_already_running() ) return;
-		set_transient( self::CRON_TRANSCIENT_NAME, true, 3600 );
-
-		$start_time = time();
-
-		// get max php exec time
-		$max_exec_time = ini_get('max_execution_time');
-		$max_exec_time = $max_exec_time ? $max_exec_time : 60;
-
-		// Remove 5% as a safety margin
-		$max_exec_time = $max_exec_time * 0.95;
-
-		do {
-			$item = $this->njr->queue->get_next_item();
-
-			if ( $item ) $this->purge( $item->permalink );
-
-		} while ($item && $max_exec_time > (time() - $start_time) );
-
-
-		delete_transient( self::CRON_TRANSCIENT_NAME );
-
-		$this->schedule_next_cron();
 	}
 }
