@@ -8,6 +8,8 @@ class Logger {
 	public const DEBUG = 1;
 	public const ERROR = 2;
 
+	public const FILENAME = 'nextjs-revalidate.log';
+
 	/**
 	 * Custom logging function
 	 *
@@ -44,7 +46,7 @@ class Logger {
 		$alignment = str_repeat(' ', 16 - strlen($filename));
 
 		$dirs = wp_upload_dir();
-		$logFile = "{$dirs['basedir']}/nextjs-revalidate.log";
+		$logFile = trailingslashit($dirs['basedir']) . self::FILENAME;
 
 		error_log(
 			sprintf(
