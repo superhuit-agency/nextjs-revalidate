@@ -122,4 +122,21 @@ class RevalidateQueue {
 		global $wpdb;
 		return $wpdb->get_results("SELECT * FROM `$this->table_name` ORDER BY `priority` ASC, `id` ASC");
 	}
+
+	/**
+	 * Get the size of the queue
+	 *
+	 * @return int
+	 */
+	public function get_queue_size() {
+		return count( $this->get_queue() );
+	}
+
+	/**
+	 * Reset the table auto increment id counter
+	 */
+	public function reset_queue() {
+		global $wpdb;
+		$wpdb->query("ALTER TABLE `$this->table_name` AUTO_INCREMENT = 1");
+	}
 }

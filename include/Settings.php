@@ -64,14 +64,14 @@ class Settings {
 						submit_button( "Stop / Reset Purge All", 'secondary', 'revalidate_all_stop', false );
 					}
 
-					$revalidate_queue = (new Revalidate())->get_queue();
+					$queue = NextjsRevalidate::init()->queue->get_queue();
 					?>
 					<hr />
 					<h2>Purge queue</h2>
 					<details>
-						<summary><?php printf("%d URLs waiting to be purged", count($revalidate_queue)); ?></summary>
+						<summary><?php printf("%d URLs waiting to be purged", count($queue)); ?></summary>
 						<ul>
-							<?php foreach ($revalidate_queue as $url): ?>
+							<?php foreach ($queue as $url): ?>
 								<li><?php echo $url; ?></li>
 							<?php endforeach; ?>
 						</ul>
@@ -279,20 +279,24 @@ class Settings {
 
 		$plugin_data = get_plugin_data( __FILE__ );
 		$version = intval(str_replace('.', '', $plugin_data['Version']));
-		if ( $version > 141 ) return;
+		if ( $version < 150 ) {
 
-		$revalidate_all_opt = get_option('nextjs_revalidate-allow_purge_all');
-		delete_option('nextjs_revalidate-allow_purge_all');
+			$revalidate_all_opt = get_option('nextjs_revalidate-allow_purge_all');
+			delete_option('nextjs_revalidate-allow_purge_all');
 
-		if ( !empty($revalidate_all_opt) ) {
-			update_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, $revalidate_all_opt );
+			if ( !empty($revalidate_all_opt) ) {
+				update_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, $revalidate_all_opt );
+			}
+
+			$revalidate_all_cron_opt = get_option('nextjs-revalidate-purge_all');
+			delete_option('nextjs-revalidate-purge_all');
+
+			if ( !empty($revalidate_all_cron_opt) ) {
+				update_option( RevalidateAll::OPTION_NAME, $revalidate_all_cron_opt );
+			}
 		}
-
-		$revalidate_all_cron_opt = get_option('nextjs-revalidate-purge_all');
-		delete_option('nextjs-revalidate-purge_all');
-
-		if ( !empty($revalidate_all_cron_opt) ) {
-			update_option( RevalidateAll::OPTION_NAME, $revalidate_all_cron_opt );
+		else if ( $version < 160 ) {
+			delete_option('nextjs-revalidate-queue');
 		}
 	}
 }

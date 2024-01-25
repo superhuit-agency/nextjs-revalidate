@@ -142,12 +142,17 @@ NextJsRevalidate::init();
  * Purge an URL from Next.js cache
  * Triggers a revalidation of the given URL
  *
- * @param  string $url The URL to purge
+ * @param  string $url       The URL to purge
+ * @param  int    $priority  Optional. Used to specify the order in which the url are purged.
+ *                           Lower numbers correspond with earlier purge,
+ *                           and urls with the same priority are executed in the order in which they were added.
+ *                           Default 10.
+ *
  * @return bool        Whether the purge was successful
  */
-function nextjs_revalidate_purge_url( $url ) {
+function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
 	$njr = NextJsRevalidate::init();
-	$njr->revalidate->add_to_queue( $url );
+	$njr->queue->add_item( $url, $priority );
 	return true;
 }
 
