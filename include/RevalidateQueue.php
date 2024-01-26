@@ -223,8 +223,14 @@ class RevalidateQueue {
 			printf(
 				'<div class="notice notice-info nextjs-revalidate-queue__notice"><p>%s</p></div>',
 				sprintf(
-					__( 'Purging caches. Please wait… %s', 'nextjs-revalidate' ),
-					sprintf('<span class="nextjs-revalidate-queue__progress">%d page(s) left to purge</span>', $nb_left )
+					__( 'Purging caches. Please wait… %s%s', 'nextjs-revalidate' ),
+					sprintf('<span class="nextjs-revalidate-queue__progress">%d page(s) left to purge.</span>', $nb_left ),
+					user_can( get_current_user_id(), 'manage_options' )
+						? sprintf(
+							' <a href="%s">%s</a>',
+								admin_url( 'options-general.php?page='. Settings::PAGE_NAME .'#nextjs_revalidate-queue'),
+							__( 'View purge caches queue', 'nextjs-revalidate' )
+					) : ''
 				)
 			);
 		}
