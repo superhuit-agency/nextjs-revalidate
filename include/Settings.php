@@ -2,9 +2,9 @@
 
 namespace NextJsRevalidate;
 
-use NextJsRevalidate;
+use NextJsRevalidate\Abstracts\Base;
 
-class Settings {
+class Settings extends Base {
 
 	const PAGE_NAME = 'nextjs-revalidate-settings';
 
@@ -17,11 +17,6 @@ class Settings {
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
-	 * @var array
-	 */
-	private $settings = [];
-
-	/**
 	 * Settings constructor.
 	 */
 	function __construct() {
@@ -29,6 +24,22 @@ class Settings {
 		add_action( 'admin_init', [$this, 'register_fields'] );
 
 		add_action( 'admin_init', [$this, 'migrate_db'] );
+	}
+
+	public function __get( $name ) {
+
+		$opt_name = null;
+		if      ( $name === 'url'                     ) $opt_name = self::SETTINGS_URL_NAME;
+		else if ( $name === 'secret'                  ) $opt_name = self::SETTINGS_SECRET_NAME;
+		else if ( $name === 'allow_revalidate_all'    ) $opt_name = self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME;
+		else if ( $name === 'revalidate_on_menu_save' ) $opt_name = self::SETTINGS_REVALIDATE_ON_MENU_SAVE;
+		else if ( $name === 'debug'                   ) $opt_name = self::SETTINGS_DEBUG;
+
+		$value = null;
+		if ( !empty($opt_name) ) $value = get_option($opt_name);
+		else                     $value = Parent::__get( $name );
+
+		return $value;
 	}
 
 	/**
@@ -59,7 +70,7 @@ class Settings {
 					do_settings_sections( self::PAGE_NAME );
 					submit_button();
 
-					$queue = NextJsRevalidate::init()->queue->get_queue();
+					$queue = $this->queue->get_queue();
 					$nb_in_queue = count($queue);
 					?>
 					<section id="nextjs_revalidate-queue">
@@ -264,30 +275,7 @@ class Settings {
 		);
 	}
 
-	public function __get( $name ) {
-		$setting_name = null;
-		switch ($name) {
-			case 'url':
-				$setting_name = self::SETTINGS_URL_NAME;
-				break;
-			case 'secret':
-				$setting_name = self::SETTINGS_SECRET_NAME;
-				break;
-			case 'allow_revalidate_all':
-				$setting_name = self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME;
-				break;
-			case 'revalidate_on_menu_save':
-				$setting_name = self::SETTINGS_REVALIDATE_ON_MENU_SAVE;
-				break;
-			case 'debug':
-				$setting_name = self::SETTINGS_DEBUG;
-				break;
-		}
 
-		return empty($setting_name)
-			? null
-			: get_option($setting_name);
-	}
 
 	public static function delete_settings() {
 		return

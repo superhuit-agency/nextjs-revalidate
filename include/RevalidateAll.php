@@ -2,11 +2,11 @@
 
 namespace NextJsRevalidate;
 
-use NextJsRevalidate;
+use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
-class RevalidateAll {
+class RevalidateAll extends Base {
 	use SendbackUrl;
 
 	public function __construct() {
@@ -16,16 +16,6 @@ class RevalidateAll {
 		add_action( 'admin_init', [$this, 'revalidate_all_pages_action'] );
 
 		add_action( 'wp_update_nav_menu', [$this, 'revalidate_all_after_menu_update'] );
-	}
-
-	function __get( $name ) {
-		$njr = NextJsRevalidate::init();
-
-		if      ( $name === 'queue' )      return $njr->queue;
-		else if ( $name === 'settings' )   return $njr->settings;
-		else if ( $name === 'revalidate' ) return $njr->revalidate;
-
-		return null;
 	}
 
 	/**

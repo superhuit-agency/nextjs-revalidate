@@ -2,14 +2,14 @@
 
 namespace NextJsRevalidate;
 
-use NextJsRevalidate;
+use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Post;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
-class Revalidate {
+class Revalidate extends Base {
 	use SendbackUrl;
 
 	/**
@@ -27,11 +27,6 @@ class Revalidate {
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
 	}
 
-	function __get( $name ) {
-		if ( $name === 'njr' ) return NextJsRevalidate::init();
-		return null;
-	}
-
 	function on_post_save( $post_id ) {
 		// Bail for post type not viewable, nor autosave or revision, as in some cases it saves a draft!
 		if ( !is_post_publicly_viewable($post_id) || wp_is_post_revision($post_id) || wp_is_post_autosave($post_id) ) return;
@@ -42,13 +37,12 @@ class Revalidate {
 		// Ensure we do not fire this action twice. Safekeeping
 		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
-		$this->njr->queue->add_item( get_permalink( $post_id ) );
+		$this->queue->add_item( get_permalink( $post_id ) );
 	}
 
 	function purge( $permalink ) {
 
-		$njr = NextJsRevalidate::init();
-		if ( !$njr->settings->is_configured() ) return false;
+		if ( !$this->settings->is_configured() ) return false;
 
 		try {
 			$response = wp_remote_get(
@@ -64,22 +58,18 @@ class Revalidate {
 	}
 
 	function build_revalidate_uri( $permalink ) {
-		$njr = NextJsRevalidate::init();
 		return add_query_arg(
 			[
 				'path'   => wp_make_link_relative( $permalink ),
-				'secret' => $njr->settings->secret
+				'secret' => $this->settings->secret
 			],
-			$njr->settings->url
+			$this->settings->url
 		);
 	}
 
 	function add_revalidate_row_action( $actions, $post ) {
-
 		if ( $post instanceof WP_Post || is_array( $actions ) ) {
-
-			$njr = NextJsRevalidate::init();
-			if ( $njr->settings->is_configured() ) {
+			if ( $this->settings->is_configured() ) {
 
 				$actions['revalidate'] = sprintf(
 					'<a href="%s" aria-label="%s">%s</a>',
@@ -119,7 +109,7 @@ class Revalidate {
 		 */
 		$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $_GET['post'] );
 
-		if ( false !== $permalink ) $is_added = $this->njr->queue->add_item( $permalink );
+		if ( false !== $permalink ) $is_added = $this->queue->add_item( $permalink );
 
 		$sendback  = $this->get_sendback_url();
 
@@ -134,8 +124,7 @@ class Revalidate {
 	 * All public post types, except "attachment" one
 	 */
 	function register_bulk_actions() {
-		$njr = NextJsRevalidate::init();
-		if ( !$njr->settings->is_configured() ) return false;
+		if ( !$this->settings->is_configured() ) return false;
 
 		$post_types = get_post_types([ 'public' => true ]);
 
@@ -169,7 +158,7 @@ class Revalidate {
 				$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $_GET['post'] );
 
 				if ( false !== $permalink ) {
-					$this->njr->queue->add_item( $permalink );
+					$this->queue->add_item( $permalink );
 					$purged++;
 				}
 			}

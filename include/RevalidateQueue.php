@@ -4,10 +4,10 @@ namespace NextJsRevalidate;
 
 use DateTime;
 use DateTimeZone;
-use NextJsRevalidate;
+use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\SendbackUrl;
 
-class RevalidateQueue {
+class RevalidateQueue extends Base {
 	use SendbackUrl;
 
 	const CRON_HOOK_NAME = 'nextjs_revalidate-queue';
@@ -36,11 +36,6 @@ class RevalidateQueue {
 		add_action( 'admin_notices', [$this, 'admin_queue_notice'] );
 
 		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron'] );
-	}
-
-	function __get( $name ) {
-		if ( $name === 'njr' ) return NextJsRevalidate::init();
-		return null;
 	}
 
 	/**
@@ -240,7 +235,7 @@ class RevalidateQueue {
 			$item = $this->get_next_item();
 
 			if ( $item ) {
-				$this->njr->revalidate->purge( $item->permalink );
+				$this->revalidate->purge( $item->permalink );
 
 				$t_to_revalidate = microtime(true) - $rev_start;
 				Logger::log("#$id: ✅ Revalidated in {$t_to_revalidate}s {$item->permalink} (priority: {$item->priority})", __FILE__);
