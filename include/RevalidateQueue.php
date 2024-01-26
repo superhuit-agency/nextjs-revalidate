@@ -5,8 +5,10 @@ namespace NextJsRevalidate;
 use DateTime;
 use DateTimeZone;
 use NextJsRevalidate;
+use NextJsRevalidate\Traits\SendbackUrl;
 
 class RevalidateQueue {
+	use SendbackUrl;
 
 	const CRON_HOOK_NAME = 'nextjs_revalidate-queue';
 	const CRON_TRANSCIENT_NAME = 'nextjs_revalidate-running_queue';
@@ -23,9 +25,13 @@ class RevalidateQueue {
 
 	public function __construct() {
 		global $wpdb;
-		$this->table_name = $wpdb->prefix . 'revalidate_queue';
 
+		$this->table_name = $wpdb->prefix . 'revalidate_queue';
 		$this->timezone = new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
+
+		add_action( 'admin_init', [$this, 'action_reset_queue'] );
+		add_action( 'admin_init', [$this, 'ajax_queue_progress'] );
+		add_action( 'admin_notices', [$this, 'admin_queue_notice'] );
 
 		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron'] );
 	}
@@ -142,10 +148,15 @@ class RevalidateQueue {
 	}
 
 	/**
-	 * Reset the table auto increment id counter
+	 * Clear the queue and reset the auto increment
+	 *
+	 * @return void
 	 */
 	private function reset_queue() {
 		global $wpdb;
+
+		$wpdb->query("TRUNCATE TABLE `$this->table_name`");
+
 		$wpdb->query("ALTER TABLE `$this->table_name` AUTO_INCREMENT = 1");
 	}
 
@@ -202,5 +213,61 @@ class RevalidateQueue {
 		delete_transient( self::CRON_TRANSCIENT_NAME );
 
 		$this->schedule_next_cron();
+	}
+
+	function admin_queue_notice() {
+
+		$queue = $this->get_queue();
+		$nb_left = count($queue);
+		if ( $nb_left > 0 ) {
+			printf(
+				'<div class="notice notice-info nextjs-revalidate-queue__notice"><p>%s</p></div>',
+				sprintf(
+					__( 'Purging caches. Please wait… %s', 'nextjs-revalidate' ),
+					sprintf('<span class="nextjs-revalidate-queue__progress">%d page(s) left to purge</span>', $nb_left )
+				)
+			);
+		}
+
+		if ( isset( $_GET['nextjs-revalidate-queue-resetted'] ) ) {
+			printf(
+				'<div class="notice notice-success"><p>%s</p></div>',
+				__( 'Queue correctly resetted.', 'nextjs-revalidate' )
+			);
+		}
+	}
+
+	/**
+	 * Ajax callback to get the queue progress data
+	 */
+	function ajax_queue_progress() {
+		if ( !isset($_GET['action']) || $_GET['action'] !== 'nextjs-revalidate-queue-progress' ) return;
+
+		if ( false === check_ajax_referer( 'nextjs-revalidate-revalidate_queue_progress' ) ) return;
+
+		$queue = $this->get_queue();
+		$nb_left = count($queue);
+
+		$status = $nb_left > 0 ? 'running' : 'done';
+
+		wp_send_json_success( [
+			'status' => $status,
+			'nbLeft' => $nb_left,
+		] );
+		exit;
+	}
+
+	function action_reset_queue() {
+		if ( !(isset($_POST['option_page']) && $_POST['option_page'] === 'nextjs-revalidate-settings') ) return;
+		if ( !isset($_POST['revalidate_reset_queue']) ) return;
+
+		$this->reset_queue();
+
+		$sendback  = $this->get_sendback_url();
+
+		wp_safe_redirect(
+			add_query_arg( [ 'nextjs-revalidate-queue-resetted' => 1 ], $sendback )
+		);
+		exit;
 	}
 }

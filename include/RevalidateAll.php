@@ -63,7 +63,12 @@ class RevalidateAll {
 				'title'  => $name,
 				'href'   => esc_url(
 					wp_nonce_url(
-						add_query_arg( ['action' => 'nextjs-revalidate-revalidate-all', 'nextjs-revalidate-type' => $post_type ] ),
+						add_query_arg(
+							[
+								'action'                 => 'nextjs-revalidate-revalidate-all',
+								'nextjs-revalidate-type' => $post_type
+							]
+						),
 						'nextjs-revalidate-revalidate-all'
 					)
 				),

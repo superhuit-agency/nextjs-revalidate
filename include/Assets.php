@@ -56,7 +56,7 @@ class Assets {
 			wp_register_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
 			wp_localize_script( 'njr-admin-script', 'nextjs_revalidate', [
 				'url'   => admin_url( 'admin-ajax.php' ),
-				'nonce' => wp_create_nonce( 'nextjs-revalidate-revalidate_all_progress' ),
+				'nonce' => wp_create_nonce( 'nextjs-revalidate-revalidate_queue_progress' ),
 			] );
 			wp_enqueue_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
 		}
