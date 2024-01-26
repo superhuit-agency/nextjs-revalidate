@@ -293,8 +293,8 @@ class Settings {
 
 		$plugin_data = get_plugin_data( __FILE__ );
 		$version = intval(str_replace('.', '', $plugin_data['Version']));
-		if ( $version < 150 ) {
 
+		if ( $version < 150 ) {
 			$revalidate_all_opt = get_option('nextjs_revalidate-allow_purge_all');
 			delete_option('nextjs_revalidate-allow_purge_all');
 
@@ -306,11 +306,12 @@ class Settings {
 			delete_option('nextjs-revalidate-purge_all');
 
 			if ( !empty($revalidate_all_cron_opt) ) {
-				update_option( RevalidateAll::OPTION_NAME, $revalidate_all_cron_opt );
+				update_option( 'nextjs-revalidate-revalidate_all', $revalidate_all_cron_opt );
 			}
 		}
 		else if ( $version < 160 ) {
 			delete_option('nextjs-revalidate-queue');
+			delete_option('nextjs-revalidate-revalidate_all');
 		}
 	}
 }
