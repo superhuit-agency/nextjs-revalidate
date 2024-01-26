@@ -1,55 +1,138 @@
-#nextjs_revalidate-queue {
-	margin-left: -20px;
-	margin-right: -20px;
-	padding: 20px;
-	background-color: white;
+.njr-settings {
+	margin-right: 20px;
 
-	table {
-		min-width: 100%;
-		margin: 1rem 0;
-		text-indent: 0;
-		border-color: inherit;
-		border-collapse: collapse;
+	.njr-settings__tab-list {
+		border-bottom: 1px solid #ccc;
 
-		tbody {
+		nav {
+			display: flex;
+			margin-bottom: -1px;
+			gap: 32px;
+		}
+
+		button {
+			--color-focus: rgb(0, 95, 204);
+			--color-selected: rgb(79 70 229);
+
+			/* reset */
+			background-color: transparent;
+			border: 0;
+			border-radius: 0;
+			outline: 0;
+			appearance: none;
+			padding: 0;
+			cursor: pointer;
+			/* ** */
+
+			display: inline-flex;
+			color: rgb(107 114 128);
+			font-weight: 500;
+			font-size: 0.875rem;
+			line-height: 1.25rem;
+			padding: 1rem 0.25rem;
+			border-color: transparent;
+			border-bottom-width: 2px;
+			white-space: nowrap;
+			color: inherit;
+			text-decoration: inherit;
+			border-style: solid;
+			gap: 0.75rem;
+
+			.badge {
+				color: rgb(17 24 39);
+				font-weight: 500;
+				font-size: 0.75rem;
+				line-height: 1rem;
+				padding: 0.125rem 0.625rem;
+				background-color: #ccc;
+				border-radius: 9999px;
+				pointer-events: none;
+			}
+		}
+
+		button:hover {
+			color: rgb(55 65 81);
+			border-color: #aaa;
+			border-bottom-width: 2px;
+		}
+
+		button:focus-visible {
+			outline-offset: 1px;
+			outline: var(--color-focus) auto 1px;
+		}
+
+		button[aria-selected="true"] {
+			color: var(--color-selected);
+			border-color: rgb(99 102 241);
+			border-bottom-width: 2px;
+
+			.badge {
+				color: var(--color-selected);
+				background-color: rgb(224 231 255);
+			}
+		}
+	}
+
+	.njr-settings__form {
+		> section {
+			padding: 20px;
+			background-color: white;
+			border-radius: 0 0 5px 5px;
+		}
+	}
+
+	#tab-panel--queue {
+		table {
+			min-width: 100%;
+			margin: 1rem 0;
+			text-indent: 0;
+			border-color: inherit;
+			border-collapse: collapse;
+
+			thead {
+				tr {
+					border-bottom: 1px solid #ccc;
+				}
+			}
+
+			tbody {
+				tr {
+					border-bottom: 1px solid #ddd;
+				}
+			}
+
 			tr {
-				border: 0 solid #e5e7eb;
-				border-top-width: 1px;
-				border-bottom-width: 1px;
+				th {
+					padding: 0.875rem 0.75rem;
+					color: rgb(17 24 39);
+					font-weight: 500;
+					font-size: 0.875rem;
+					line-height: 1.25rem;
+					text-align: left;
+				}
 
-				&:first-child {
-					border-top-color: rgb(209 213 219);
+				td {
+					padding: 1rem 0.75rem;
+					color: rgb(17 24 39);
+					font-size: 0.875rem;
+					line-height: 1.25rem;
+					white-space: nowrap;
+				}
+
+				th:first-child,
+				td:first-child {
+					padding-left: 0px;
+				}
+
+				th:last-child,
+				td:last-child {
+					padding-right: 0px;
 				}
 			}
 		}
+	}
 
-		tr {
-			th {
-				padding: 0.875rem 0.75rem;
-				color: rgb(17 24 39);
-				font-weight: 500;
-				font-size: 0.875rem;
-				line-height: 1.25rem;
-				text-align: left;
-			}
-
-			td {
-				padding: 1rem 0.75rem;
-				color: rgb(17 24 39);
-				font-size: 0.875rem;
-				line-height: 1.25rem;
-				white-space: nowrap;
-			}
-
-			th:first-child,
-			td:first-child {
-				padding-left: 0px;
-			}
-
-			th:last-child,
-			td:last-child {
-				padding-right: 0px;
-			}
-		}
+	section[role="tabpanel"][aria-hidden="true"] {
+		display: none;
 	}
 }

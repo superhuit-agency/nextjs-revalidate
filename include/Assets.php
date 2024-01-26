@@ -48,6 +48,7 @@ class Assets {
 		$this->assets['admin']['js']  = !empty($manifest->{'admin.js'})  ? $assets_uri . $manifest->{'admin.js'}  : null;
 		// $this->assets['admin']['css']  = !empty($manifest->{'admin.css'})  ? $assets_uri . $manifest->{'admin.css'}  : null;
 
+		$this->assets['settings']['js']  = !empty($manifest->{'settings.js'})  ? $assets_uri . $manifest->{'settings.js'}  : null;
 		$this->assets['settings']['css']  = !empty($manifest->{'settings.css'})  ? $assets_uri . $manifest->{'settings.css'}  : null;
 	}
 
@@ -66,6 +67,10 @@ class Assets {
 	function enqueue_settings_assets( $hook ) {
 		if( 'settings_page_'.Settings::PAGE_NAME !== $hook ) return;
 
+		if ( !empty($this->assets['settings']['js']) ) {
+			wp_register_script( 'njr-settings-script', $this->assets['settings']['js'], [], null, true );
+			wp_enqueue_script( 'njr-settings-script', $this->assets['settings']['js'], [], null, true );
+		}
 		if ( !empty($this->assets['settings']['css']) ) wp_enqueue_style( 'njr-settings-styles', $this->assets['settings']['css'] );
 	}
 

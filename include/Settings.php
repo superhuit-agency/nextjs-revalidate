@@ -59,21 +59,45 @@ class Settings extends Base {
 	 * Render the page
 	 */
 	public function render_page() {
-		?>
-		<div class="wrap">
-			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
 
-			<form method="post" action="options.php">
+		$queue = $this->queue->get_queue();
+		$nb_in_queue = count($queue);
+
+		$sections = [
+			[ 'id' => 'api',            'title' => __('Next.js API', 'nextjs-revalidate')     ],
+			[ 'id' => 'allow_all_opts', 'title' => __('Allow purge all', 'nextjs-revalidate') ],
+			[ 'id' => 'on_menu_save',   'title' => __('On menu update', 'nextjs-revalidate')  ],
+			[ 'id' => 'debug',          'title' => __('Debug', 'nextjs-revalidate')           ],
+			[ 'id' => 'queue',          'title' => __('Queue', 'nextjs-revalidate') . sprintf('<span class="badge">%s</span>', $nb_in_queue) ],
+		];
+		?>
+		<div class="wrap njr-settings">
+			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
+			<div class="njr-settings__tab-list" role="tablist" aria-label="<?php _e( 'NextJS-Revalidate settings tabs', 'nextjs-revalidate' ); ?>">
+				<nav>
+					<?php foreach($sections as $i => $section): ?>
+						<button
+							role="tab"
+							type="button"
+							class="njr-settings__tab"
+							tabindex="<?php echo $i === 0 ? '0' : '-1' ?>"
+							aria-selected="<?php echo $i === 0 ? 'true' : 'false' ?>"
+							id="<?php printf('tab--%s', $section['id']) ?>"
+							aria-controls="<?php printf('tab-panel--%s', $section['id']) ?>"
+						>
+							<?php echo $section['title'] ?>
+						</button>
+					<?php endforeach ?>
+				</nav>
+			</div>
+			<form class="njr-settings__form" method="post" action="options.php">
 				<?php
 					// This prints out all hidden setting fields
 					settings_fields( self::SETTINGS_GROUP );
+					// Prints all registered section for this page
 					do_settings_sections( self::PAGE_NAME );
-					submit_button();
-
-					$queue = $this->queue->get_queue();
-					$nb_in_queue = count($queue);
 					?>
-					<section id="nextjs_revalidate-queue">
+					<section id="tab-panel--queue" role="tabpanel" tabindex="-1" aria-labelledby="tab--queue" aria-hidden="true">
 						<h2><?php _e('Purge queue', 'nextjs-revalidate'); ?></h2>
 						<p>
 							<strong><?php printf( _n( '%d URL waiting to be purged', '%d URLs waiting to be purged', $nb_in_queue, 'nextjs-revalidate'), $nb_in_queue ); ?></strong>
@@ -96,6 +120,8 @@ class Settings extends Base {
 							</tbody>
 						</table>
 					</section>
+
+					<?php submit_button(); ?>
 			</form>
 		</div>
 		<?php
@@ -113,7 +139,11 @@ class Settings extends Base {
 			'nextjs-revalidate-section',
 			__('Next.js API config', 'nextjs-revalidate'),
 			null,
-			self::PAGE_NAME
+			self::PAGE_NAME,
+			[
+				'before_section' => '<section aria-hidden="false" id="tab-panel--api" role="tabpanel" tabindex="-1" aria-labelledby="tab--api">',
+				'after_section'  => '</section>',
+			]
 		);
 
 		add_settings_field(
@@ -154,7 +184,11 @@ class Settings extends Base {
 			function() {
 				printf( '<p>%s</p>', __('Define which post type has the option to have all posts purged in the admin bar.', 'nextjs-revalidate') );
 			},
-			self::PAGE_NAME
+			self::PAGE_NAME,
+			[
+				'before_section' => '<section aria-hidden="true" id="tab-panel--allow_all_opts" role="tabpanel" tabindex="-1" aria-labelledby="tab--allow_all_opts">',
+				'after_section'  => '</section>',
+			]
 		);
 
 		$post_types = get_post_types([ 'public' => true ]);
@@ -199,11 +233,15 @@ class Settings extends Base {
 		// On menu save section settings
 		add_settings_section(
 			'nextjs-revalidate-section-revalidate-on-menu-save',
-			__('On menu update revalidations', 'nextjs-revalidate'),
+			__('On menu update options', 'nextjs-revalidate'),
 			function() {
 				printf( '<p>%s</p>', __('Define which post type will be revalidated when updating a menu.', 'nextjs-revalidate') );
 			},
-			self::PAGE_NAME
+			self::PAGE_NAME,
+			[
+				'before_section' => '<section aria-hidden="true" id="tab-panel--on_menu_save" role="tabpanel" tabindex="-1" aria-labelledby="tab--on_menu_save">',
+				'after_section'  => '</section>',
+			]
 		);
 
 		register_setting( self::SETTINGS_GROUP, self::SETTINGS_REVALIDATE_ON_MENU_SAVE );
@@ -246,11 +284,15 @@ class Settings extends Base {
 		// Debug section settings
 		add_settings_section(
 			'nextjs-revalidate-section-debug',
-			__('Debug section', 'nextjs-revalidate'),
+			__('Debug options', 'nextjs-revalidate'),
 			function() {
 				printf( '<p>%s</p>', __('Some configuration for easier debug.', 'nextjs-revalidate') );
 			},
-			self::PAGE_NAME
+			self::PAGE_NAME,
+			[
+				'before_section' => '<section aria-hidden="true" id="tab-panel--debug" role="tabpanel" tabindex="-1" aria-labelledby="tab--debug">',
+				'after_section'  => '</section>',
+			]
 		);
 		register_setting( self::SETTINGS_GROUP, self::SETTINGS_DEBUG );
 
@@ -274,8 +316,6 @@ class Settings extends Base {
 			]
 		);
 	}
-
-
 
 	public static function delete_settings() {
 		return
