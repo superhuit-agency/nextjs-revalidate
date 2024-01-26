@@ -193,6 +193,9 @@ class RevalidateQueue {
 
 		$this->schedule_next_cron();
 
+		Logger::log( '------', __FILE__ );
+		Logger::log( "🆕 revalidate cron (nb running: $nb_running_cron)", __FILE__ );
+
 		return $nb_running_cron;
 	}
 
@@ -203,6 +206,8 @@ class RevalidateQueue {
 		$nb_running_cron--;
 		if ( $nb_running_cron > 0 ) set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
 		else delete_transient( self::CRON_TRANSCIENT_NAME );
+
+		Logger::log( "🗑️ (remove) revalidate cron (nb still running: $nb_running_cron)", __FILE__ );
 
 		return true;
 	}
@@ -216,19 +221,30 @@ class RevalidateQueue {
 		$n_cron = $this->add_running_cron();
 		if ( false === $n_cron ) return;
 
+		$id = uniqid();
 		$start_time = time();
+
+		Logger::log( "#$id: Start revalidate queue", __FILE__ );
 
 		// get max php exec time
 		$max_exec_time = ini_get('max_execution_time');
 		$max_exec_time = $max_exec_time ? $max_exec_time : 60;
 
+		Logger::log( "#$id: Revalidate queue will be running for max $max_exec_time seconds" , __FILE__ );
+
 		// Remove 5% as a safety margin
 		$max_exec_time = $max_exec_time * 0.95;
 
 		do {
+			$rev_start = microtime(true);
 			$item = $this->get_next_item();
 
-			if ( $item ) $this->njr->revalidate->purge( $item->permalink );
+			if ( $item ) {
+				$this->njr->revalidate->purge( $item->permalink );
+
+				$t_to_revalidate = microtime(true) - $rev_start;
+				Logger::log("#$id: ✅ Revalidated in {$t_to_revalidate}s {$item->permalink} (priority: {$item->priority})", __FILE__);
+			}
 
 		} while ($item && $max_exec_time > (time() - $start_time) );
 
