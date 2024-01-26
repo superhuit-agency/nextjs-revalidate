@@ -118,7 +118,7 @@ class NextJsRevalidate {
 	 */
 	function deactivate() {
 		ScheduledPurges::unschedule_cron();
-		Revalidate::unschedule_cron();
+		$this->queue->unschedule_cron();
 	}
 
 	/**
