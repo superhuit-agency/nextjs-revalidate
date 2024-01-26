@@ -14,6 +14,7 @@ class Assets {
 	function __construct() {
 		add_action( 'init', [$this, 'register_assets'] );
 		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_admin_assets'] );
+		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_settings_assets'] );
 	}
 
 	function register_assets() {
@@ -21,8 +22,8 @@ class Assets {
 		$manifest = null;
 		$assets_uri = '';
 		$this->assets = [
-			'editor' => [],
-			'admin'  => [],
+			'admin'    => [],
+			'settings' => [],
 		];
 
 		// In dev mode
@@ -46,6 +47,8 @@ class Assets {
 
 		$this->assets['admin']['js']  = !empty($manifest->{'admin.js'})  ? $assets_uri . $manifest->{'admin.js'}  : null;
 		// $this->assets['admin']['css']  = !empty($manifest->{'admin.css'})  ? $assets_uri . $manifest->{'admin.css'}  : null;
+
+		$this->assets['settings']['css']  = !empty($manifest->{'settings.css'})  ? $assets_uri . $manifest->{'settings.css'}  : null;
 	}
 
 	function enqueue_admin_assets() {
@@ -53,11 +56,17 @@ class Assets {
 			wp_register_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
 			wp_localize_script( 'njr-admin-script', 'nextjs_revalidate', [
 				'url'   => admin_url( 'admin-ajax.php' ),
-				'nonce' => wp_create_nonce( 'nextjs-revalidate-revalidate_all_progress' ),
+				'nonce' => wp_create_nonce( 'nextjs-revalidate-revalidate_queue_progress' ),
 			] );
 			wp_enqueue_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
 		}
 		if ( !empty($this->assets['admin']['css']) ) wp_enqueue_style( 'njr-admin-styles', $this->assets['admin']['css'] );
+	}
+
+	function enqueue_settings_assets( $hook ) {
+		if( 'settings_page_'.Settings::PAGE_NAME !== $hook ) return;
+
+		if ( !empty($this->assets['settings']['css']) ) wp_enqueue_style( 'njr-settings-styles', $this->assets['settings']['css'] );
 	}
 
 	/**

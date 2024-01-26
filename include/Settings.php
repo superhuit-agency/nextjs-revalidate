@@ -26,7 +26,6 @@ class Settings {
 	function __construct() {
 		add_action( 'admin_menu', [$this, 'add_page'] );
 		add_action( 'admin_init', [$this, 'register_fields'] );
-		add_action( 'admin_init', [$this, 'stop_revalidate_all'] );
 
 		add_action( 'admin_init', [$this, 'migrate_db'] );
 	}
@@ -59,23 +58,32 @@ class Settings {
 					do_settings_sections( self::PAGE_NAME );
 					submit_button();
 
-					$njr = NextJsRevalidate::init();
-					if ( $njr->RevalidateAll->is_revalidating_all() ) {
-						submit_button( "Stop / Reset Purge All", 'secondary', 'revalidate_all_stop', false );
-					}
-
-					$revalidate_queue = (new Revalidate())->get_queue();
+					$queue = NextJsRevalidate::init()->queue->get_queue();
+					$nb_in_queue = count($queue);
 					?>
-					<hr />
-					<h2>Purge queue</h2>
-					<details>
-						<summary><?php printf("%d URLs waiting to be purged", count($revalidate_queue)); ?></summary>
-						<ul>
-							<?php foreach ($revalidate_queue as $url): ?>
-								<li><?php echo $url; ?></li>
-							<?php endforeach; ?>
-						</ul>
-					</details>
+					<section id="nextjs_revalidate-queue">
+						<h2><?php _e('Purge queue', 'nextjs-revalidate'); ?></h2>
+						<p>
+							<strong><?php printf( _n( '%d URL waiting to be purged', '%d URLs waiting to be purged', $nb_in_queue, 'nextjs-revalidate'), $nb_in_queue ); ?></strong>
+							<?php if ( $nb_in_queue > 0 ) submit_button( "Reset queue (stop purging URLs in the queue)", 'secondary', 'revalidate_reset_queue', false ); ?>
+						</p>
+						<table>
+							<thead>
+								<th><?php _e('Id', 'nextjs-revalidate'); ?></th>
+								<th><?php _e('Priority', 'nextjs-revalidate'); ?></th>
+								<th><?php _e('URL', 'nextjs-revalidate'); ?></th>
+							</thead>
+							<tbody>
+								<?php foreach ($queue as $item): ?>
+								<tr>
+									<td><?php echo $item->id; ?></td>
+									<td><?php echo $item->priority; ?></td>
+									<td><?php echo $item->permalink; ?></td>
+								</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</section>
 			</form>
 		</div>
 		<?php
@@ -263,14 +271,6 @@ class Settings {
 
 	}
 
-	public function stop_revalidate_all() {
-		if ( !(isset($_POST['option_page']) && $_POST['option_page'] === 'nextjs-revalidate-settings') ) return;
-		if ( !isset($_POST['revalidate_all_stop']) ) return;
-
-		$njr = NextJsRevalidate::init();
-		$njr->RevalidateAll->stop_revalidate_all();
-	}
-
 	/**
 	 * Migrate the database options
 	 * according to the version of the plugin
@@ -279,20 +279,25 @@ class Settings {
 
 		$plugin_data = get_plugin_data( __FILE__ );
 		$version = intval(str_replace('.', '', $plugin_data['Version']));
-		if ( $version > 141 ) return;
 
-		$revalidate_all_opt = get_option('nextjs_revalidate-allow_purge_all');
-		delete_option('nextjs_revalidate-allow_purge_all');
+		if ( $version < 150 ) {
+			$revalidate_all_opt = get_option('nextjs_revalidate-allow_purge_all');
+			delete_option('nextjs_revalidate-allow_purge_all');
 
-		if ( !empty($revalidate_all_opt) ) {
-			update_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, $revalidate_all_opt );
+			if ( !empty($revalidate_all_opt) ) {
+				update_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, $revalidate_all_opt );
+			}
+
+			$revalidate_all_cron_opt = get_option('nextjs-revalidate-purge_all');
+			delete_option('nextjs-revalidate-purge_all');
+
+			if ( !empty($revalidate_all_cron_opt) ) {
+				update_option( 'nextjs-revalidate-revalidate_all', $revalidate_all_cron_opt );
+			}
 		}
-
-		$revalidate_all_cron_opt = get_option('nextjs-revalidate-purge_all');
-		delete_option('nextjs-revalidate-purge_all');
-
-		if ( !empty($revalidate_all_cron_opt) ) {
-			update_option( RevalidateAll::OPTION_NAME, $revalidate_all_cron_opt );
+		else if ( $version < 160 ) {
+			delete_option('nextjs-revalidate-queue');
+			delete_option('nextjs-revalidate-revalidate_all');
 		}
 	}
 }

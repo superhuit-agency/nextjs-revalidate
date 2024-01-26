@@ -2,30 +2,20 @@
 
 namespace NextJsRevalidate;
 
-use DateTime;
-use DateTimeZone;
 use NextJsRevalidate;
+use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Post;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 class Revalidate {
-
-	private $timezone;
-
-	const OPTION_NAME = 'nextjs-revalidate-queue';
-	const CRON_HOOK_NAME = 'nextjs-revalidate-queue';
-	const CRON_TRANSCIENT_NAME = 'nextjs_revalidate-doing_cron-queue';
-
-	const MAX_NB_RUNNING_CRON = 4;
+	use SendbackUrl;
 
 	/**
 	 * Constructor.
 	 */
 	function __construct() {
-		$this->timezone = new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
-
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -35,9 +25,11 @@ class Revalidate {
 		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
 
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
+	}
 
-		add_action( self::CRON_HOOK_NAME, [ $this, 'run_cron' ] );
-		$this->schedule_next_cron();
+	function __get( $name ) {
+		if ( $name === 'njr' ) return NextJsRevalidate::init();
+		return null;
 	}
 
 	function on_post_save( $post_id ) {
@@ -50,7 +42,7 @@ class Revalidate {
 		// Ensure we do not fire this action twice. Safekeeping
 		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
-		$this->add_to_queue( get_permalink( $post_id ) );
+		$this->njr->queue->add_item( get_permalink( $post_id ) );
 	}
 
 	function purge( $permalink ) {
@@ -119,19 +111,20 @@ class Revalidate {
 		$permalink = get_permalink( $_GET['post'] );
 
 		/**
-		 * Fires before adding the post to the revalidation queue.
+		 * Filters the permalink to be added to the purge queue.
+		 * Return false to prevent the permalink to be added to the purge queue.
 		 *
-		 * @param int $post_id The post ID.
 		 * @param string|false $permalink The post permalink. False if the post is not public.
+		 * @param int          $post_id   The post ID.
 		 */
-		do_action( 'nextjs_revalidate_purge_action', $_GET['post'], $permalink );
+		$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $_GET['post'] );
 
-		if ( false !== $permalink ) $this->add_to_queue( $permalink );
+		if ( false !== $permalink ) $is_added = $this->njr->queue->add_item( $permalink );
 
 		$sendback  = $this->get_sendback_url();
 
 		wp_safe_redirect(
-			add_query_arg( [ 'nextjs-revalidate-purged' => (false !== $permalink ? $_GET['post'] : 0) ], $sendback )
+			add_query_arg( [ 'nextjs-revalidate-purged' => $_GET['post'] ], $sendback )
 		);
 		exit;
 	}
@@ -167,15 +160,16 @@ class Revalidate {
 				$permalink = get_permalink( $post_id );
 
 				/**
-				 * Fires before adding the post to the revalidation queue.
+				 * Filters the permalink to be added to the purge queue.
+				 * Return false to prevent the permalink to be added to the purge queue.
 				 *
-				 * @param int $post_id The post ID.
 				 * @param string|false $permalink The post permalink. False if the post is not public.
+				 * @param int          $post_id   The post ID.
 				 */
-				do_action( 'nextjs_revalidate_purge_action', $post_id, $permalink );
+				$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $_GET['post'] );
 
 				if ( false !== $permalink ) {
-					$this->add_to_queue( $permalink );
+					$this->njr->queue->add_item( $permalink );
 					$purged++;
 				}
 			}
@@ -214,176 +208,5 @@ class Revalidate {
 				)
 			);
 		}
-	}
-
-	function get_sendback_url( $sendback = null) {
-		if ( empty($sendback) ) $sendback  = wp_get_referer();
-
-		if ( ! $sendback ) {
-			$sendback = admin_url( 'edit.php' );
-			$post_type = get_post_type($_GET['post']);
-			if ( ! empty( $post_type ) ) {
-				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
-			}
-		}
-
-		$sendback = remove_query_arg(
-			[ 'action',
-				'trashed',
-				'untrashed',
-				'deleted',
-				'ids',
-				'nextjs-revalidate-purged',
-				'nextjs-revalidate-bulk-purged'
-			],
-			$sendback
-		);
-
-		return $sendback;
-	}
-
-	/**
-	 * Schedule the cron for the next sync sync
-	 */
-	private function schedule_next_cron() {
-		if ( wp_next_scheduled(self::CRON_HOOK_NAME) ) return;
-
-		// Do not schedule if queue is empty
-		global $wpdb;
-		$queue = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM $wpdb->options WHERE option_name = %s", self::OPTION_NAME ) );
-		$queue = maybe_unserialize( $queue );
-		if ( !is_array($queue) || count($queue) === 0 ) return;
-
-		$next_cron_datetime = new DateTime( 'now', $this->timezone );
-		wp_schedule_single_event( $next_cron_datetime->getTimestamp(), self::CRON_HOOK_NAME );
-	}
-
-	public static function unschedule_cron() {
-		wp_unschedule_hook( self::CRON_HOOK_NAME );
-	}
-
-	private function add_running_cron() {
-		$nb_running_cron = get_transient( self::CRON_TRANSCIENT_NAME );
-		$nb_running_cron = intval(false === $nb_running_cron ? 0 : $nb_running_cron);
-
-		if ( $nb_running_cron >= self::MAX_NB_RUNNING_CRON ) return false;
-
-		$nb_running_cron++;
-		set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
-
-		$this->schedule_next_cron();
-
-		return $nb_running_cron;
-	}
-
-	private function remove_running_cron() {
-		$nb_running_cron = get_transient( self::CRON_TRANSCIENT_NAME );
-		$nb_running_cron = intval(false === $nb_running_cron ? 0 : $nb_running_cron);
-
-		$nb_running_cron--;
-		if ( $nb_running_cron > 0 ) set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
-		else delete_transient( self::CRON_TRANSCIENT_NAME );
-
-		return true;
-	}
-
-	/**
-	 * Run the cron
-	 * Will run multiple items in the queue until the max execution time is reached
-	 */
-	public function run_cron() {
-		$n_cron = $this->add_running_cron();
-		if ( false === $n_cron ) return;
-
-		$start_time = time();
-
-		// get max php exec time
-		$max_exec_time = ini_get('max_execution_time');
-		$max_exec_time = $max_exec_time ? $max_exec_time : 60;
-
-		// Remove 5% as a safety margin
-		$max_exec_time = $max_exec_time * 0.95;
-
-		do {
-			$permalink = $this->get_next_item_in_queue();
-
-			if ( $permalink ) $this->purge( $permalink );
-
-		} while ($permalink && $max_exec_time > (time() - $start_time) );
-
-		$this->remove_running_cron();
-
-		$this->schedule_next_cron();
-	}
-
-	private function get_next_item_in_queue() {
-		global $wpdb;
-
-		$wpdb->query('START TRANSACTION');
-
-		$queue = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM $wpdb->options WHERE option_name = %s FOR UPDATE", self::OPTION_NAME ) );
-		$queue = maybe_unserialize( $queue );
-
-		$permalink = array_shift( $queue );
-
-		$wpdb->update(
-			$wpdb->options,
-			[ 'option_value' => maybe_serialize( $queue ) ],
-			[ 'option_name'  => self::OPTION_NAME ]
-		);
-
-		$wpdb->query('COMMIT');
-
-		return $permalink;
-	}
-
-	public function get_queue($force_from_db = false) {
-		if($force_from_db) {
-			wp_cache_delete(SELF::OPTION_NAME, 'options' );
-		}
-
-		return get_option( self::OPTION_NAME, [] );
-	}
-
-	private function save_queue( $value ) {
-		return update_option( self::OPTION_NAME, $value, false );
-	}
-
-	public function add_to_queue( $permalink )  {
-		global $wpdb;
-
-		$wpdb->query('START TRANSACTION');
-
-		$queue_option = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM $wpdb->options WHERE option_name = %s FOR UPDATE", self::OPTION_NAME));
-		$queue = maybe_unserialize($queue_option);
-
-		if (!is_array($queue)) {
-			$queue = [];
-			$wpdb->insert(
-				$wpdb->options,
-				[
-					'option_name'  => self::OPTION_NAME,
-					'option_value' => maybe_serialize( [] )
-				]
-			);
-		}
-
-		if (!in_array($permalink, $queue)) {
-			$queue[] = $permalink;
-
-			$wpdb->update(
-				$wpdb->options,
-				[ 'option_value' => maybe_serialize( $queue ) ],
-				[ 'option_name'  => self::OPTION_NAME ]
-			);
-		}
-
-		$wpdb->query('COMMIT');
-
-		// No need to schedule a cron if queue is empty
-		if (empty($queue)) return;
-
-		// Make sure a cron is schedule
-		$this->schedule_next_cron();
 	}
 }

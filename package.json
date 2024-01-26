@@ -12,6 +12,8 @@
   },
   "devDependencies": {
     "clean-webpack-plugin": "^4.0.0",
+    "css-loader": "^6.9.1",
+    "mini-css-extract-plugin": "^2.7.7",
     "ts-loader": "^9.4.2",
     "typescript": "^5.0.4",
     "webpack": "^5.82.1",

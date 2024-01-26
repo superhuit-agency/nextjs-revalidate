@@ -39,12 +39,14 @@ use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\Cron\ScheduledPurges;
+use NextJsRevalidate\RevalidateQueue;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 define( 'NJR_PATH', __DIR__ );
 define( 'NJR_URI', plugin_dir_url(__FILE__) );
+define( 'NJR_VERSION', '1.5.0' );
 
 // Load dependencies
 // ====
@@ -67,7 +69,8 @@ class NextJsRevalidate {
 	private Revalidate $revalidate;
 	private Settings $settings;
 	private ScheduledPurges $cronScheduledPurges;
-	private RevalidateAll $RevalidateAll;
+	private RevalidateAll $revalidateAll;
+	private RevalidateQueue $queue;
 
 	private static NextJsRevalidate $instance;
 
@@ -88,7 +91,8 @@ class NextJsRevalidate {
 		$this->settings            = new Settings();
 		$this->revalidate          = new Revalidate();
 		$this->cronScheduledPurges = new ScheduledPurges();
-		$this->RevalidateAll       = new RevalidateAll();
+		$this->revalidateAll       = new RevalidateAll();
+		$this->queue               = new RevalidateQueue();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -105,6 +109,8 @@ class NextJsRevalidate {
 	function activate() {
 		$this->cronScheduledPurges->schedule_cron();
 		$this->settings->define_settings();
+
+		$this->queue->create_table();
 	}
 
 	/**
@@ -120,6 +126,9 @@ class NextJsRevalidate {
 	 */
 	public static function uninstall() {
 		Settings::delete_settings();
+
+		$queue = new RevalidateQueue();
+		$queue->delete_table();
 	}
 
 }
@@ -134,12 +143,17 @@ NextJsRevalidate::init();
  * Purge an URL from Next.js cache
  * Triggers a revalidation of the given URL
  *
- * @param  string $url The URL to purge
+ * @param  string $url       The URL to purge
+ * @param  int    $priority  Optional. Used to specify the order in which the url are purged.
+ *                           Lower numbers correspond with earlier purge,
+ *                           and urls with the same priority are executed in the order in which they were added.
+ *                           Default 10.
+ *
  * @return bool        Whether the purge was successful
  */
-function nextjs_revalidate_purge_url( $url ) {
+function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
 	$njr = NextJsRevalidate::init();
-	$njr->revalidate->add_to_queue( $url );
+	$njr->queue->add_item( $url, $priority );
 	return true;
 }
 
