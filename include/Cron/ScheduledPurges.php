@@ -29,7 +29,7 @@ class ScheduledPurges extends Base {
 			$next_purge_datetime = new DateTime( $datetime );
 			if ( $next_purge_datetime <= $now ) {
 				foreach ($urls as $url) {
-					$this->revalidate->purge( $url );
+					$this->queue->add_item( $url, true );
 				}
 			}
 			else {
