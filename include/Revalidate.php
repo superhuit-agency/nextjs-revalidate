@@ -3,12 +3,14 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate;
+use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Post;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 class Revalidate {
+	use SendbackUrl;
 
 	/**
 	 * Constructor.
@@ -208,29 +210,5 @@ class Revalidate {
 		}
 	}
 
-	function get_sendback_url( $sendback = null) {
-		if ( empty($sendback) ) $sendback  = wp_get_referer();
 
-		if ( ! $sendback ) {
-			$sendback = admin_url( 'edit.php' );
-			$post_type = get_post_type($_GET['post']);
-			if ( ! empty( $post_type ) ) {
-				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
-			}
-		}
-
-		$sendback = remove_query_arg(
-			[ 'action',
-				'trashed',
-				'untrashed',
-				'deleted',
-				'ids',
-				'nextjs-revalidate-purged',
-				'nextjs-revalidate-bulk-purged'
-			],
-			$sendback
-		);
-
-		return $sendback;
-	}
 }

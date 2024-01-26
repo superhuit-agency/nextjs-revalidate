@@ -3,9 +3,11 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate;
+use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
 class RevalidateAll {
+	use SendbackUrl;
 
 	public function __construct() {
 		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
@@ -98,7 +100,7 @@ class RevalidateAll {
 		$nb_added = $this->revalidate_all( $_GET['nextjs-revalidate-type'] );
 		$sendback = add_query_arg(
 			[ 'nextjs-revalidate-revalidate-all' => $nb_added ],
-			$this->revalidate->get_sendback_url()
+			$this->get_sendback_url()
 		);
 
 		wp_safe_redirect( $sendback );
