@@ -8,11 +8,16 @@
   "license": "GPL-3.0-or-later",
   "scripts": {
     "build": "webpack --mode production",
-    "dev": "webpack --mode development --watch"
+    "dev": "yarn start & webpack --mode development --watch",
+    "start": "wp-env start --xdebug && yarn start:revalidateServer",
+    "stop": "wp-env stop",
+    "start:revalidateServer": "node ./config/revalidate-server.js"
   },
   "devDependencies": {
+    "@wordpress/env": "^9.2.0",
     "clean-webpack-plugin": "^4.0.0",
     "css-loader": "^6.9.1",
+    "express": "^4.18.2",
     "mini-css-extract-plugin": "^2.7.7",
     "ts-loader": "^9.4.2",
     "typescript": "^5.0.4",

@@ -1,0 +1,13 @@
+{
+	"plugins": [
+		"."
+	],
+	"port": 8080,
+	"testsPort": 8888,
+	"config": {
+		"WP_DEBUG_DISPLAY": true
+	},
+	"lifecycleScripts": {
+		"afterStart": "./config/afterstart.sh"
+	}
+}
