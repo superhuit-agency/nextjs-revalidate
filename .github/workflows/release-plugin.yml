@@ -48,12 +48,15 @@ jobs:
           rsync -r \
             --exclude .git \
             --exclude .github \
-            --exclude .gitignore \
+            --exclude .vscode \
             --exclude .editorconfig \
+            --exclude .gitignore \
+            --exclude .nvmrc \
+            --exclude .wp-env.json \
             --exclude composer.json \
             --exclude composer.lock \
-            --exclude .nvmrc \
             --exclude node_modules \
+            --exclude src \
             --exclude webpack.config.js \
             --exclude yarn.lock \
           . ./nextjs-revalidate
