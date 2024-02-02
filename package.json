@@ -8,9 +8,12 @@
   "license": "GPL-3.0-or-later",
   "scripts": {
     "build": "webpack --mode production",
-    "dev": "npx --yes @wordpress/env start && webpack --mode development --watch"
+    "dev": "yarn start && webpack --mode development --watch",
+    "start": "wp-env start",
+    "stop": "wp-env stop"
   },
   "devDependencies": {
+    "@wordpress/env": "^9.2.0",
     "clean-webpack-plugin": "^4.0.0",
     "css-loader": "^6.9.1",
     "mini-css-extract-plugin": "^2.7.7",
