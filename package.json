@@ -8,7 +8,7 @@
   "license": "GPL-3.0-or-later",
   "scripts": {
     "build": "webpack --mode production",
-    "dev": "webpack --mode development --watch"
+    "dev": "npx --yes @wordpress/env start && webpack --mode development --watch"
   },
   "devDependencies": {
     "clean-webpack-plugin": "^4.0.0",
