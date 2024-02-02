@@ -9,7 +9,7 @@
   "scripts": {
     "build": "webpack --mode production",
     "dev": "yarn start && webpack --mode development --watch",
-    "start": "wp-env start",
+    "start": "wp-env start --xdebug",
     "stop": "wp-env stop"
   },
   "devDependencies": {
