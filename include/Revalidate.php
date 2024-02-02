@@ -2,6 +2,7 @@
 
 namespace NextJsRevalidate;
 
+use Exception;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Post;
@@ -27,9 +28,70 @@ class Revalidate extends Base {
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
 	}
 
+	/**
+	 * Determine if the given post should be revalidated.
+	 *
+	 * Note: the post could be not publicly viewable, but we may possibly
+	 *       revalidate it anyway if it was previously publicly viewable
+	 *       e.g. a post was published, but then switched back to
+	 *            draft or pending.
+	 *       e.g. If a post is private or password protected,
+	 *            we should revalidate it.
+	 */
+	function should_revalidate( $post_id ) {
+
+		$should_revalidate_post = true;
+
+		$isPubliclyViewable = is_post_publicly_viewable($post_id);
+		$isAutosave = wp_is_post_autosave($post_id) !== false;
+
+		try {
+			if ( ! $isPubliclyViewable ) {
+				// if the post is not publicly viewable, and it's an autosave, we should not revalidate it.
+				if ( $isAutosave ) throw new Exception("not viewvable", 1);
+
+				$parent_post_id = wp_is_post_revision($post_id);
+
+				if ( false !== $parent_post_id ) {
+					$parent_status = get_post_status( $parent_post_id );
+
+					// Bypass if Parent is published, private or password protected, we should revalidate it
+					if ( !in_array($parent_status, ['publish', 'private']) ) {
+
+						throw new Exception("not viewvable", 1);
+
+						// TODO: This code below ti to allow to revalidate previously published post
+						//       But it's not working as expected, because when retrieving the permalink
+						//       of a draft/pending post the permalink is not the correct one
+						// $parent_post = get_post($parent_post_id);
+						// // Check if the parent has a valid gmt date, if not it means it never has been published
+						// if ( '0000-00-00 00:00:00' === $parent_post->post_date_gmt ) {
+						// 	throw new Exception("not viewvable", 1);
+						// }
+					}
+				}
+				else {
+					throw new Exception("not viewvable", 1);
+				}
+			}
+		} catch (\Throwable $th) {
+			$should_revalidate_post = false;
+		}
+
+		/**
+		 * Filters whether to revalidate the given post on save.
+		 *
+		 * @param bool $should_revalidate_post Whether to revalidate the post on save.
+		 * @param int  $post_id                The post ID.
+		 */
+		return apply_filters( 'nextjs_revalidate_purge_should_revalidate_post_on_save', $should_revalidate_post, $post_id );
+	}
+
 	function on_post_save( $post_id ) {
-		// Bail for post type not viewable, nor autosave or revision, as in some cases it saves a draft!
-		if ( !is_post_publicly_viewable($post_id) || wp_is_post_revision($post_id) || wp_is_post_autosave($post_id) ) return;
+		$should_revalidate_post = $this->should_revalidate( $post_id );
+
+		// Bail for not viewable post
+		if ( !$should_revalidate_post ) return;
 
 		// Bail early if current request is for saving the metaboxes. (To not duplicate the purge query)
 		if ( isset($_REQUEST['meta-box-loader']) ) return;
