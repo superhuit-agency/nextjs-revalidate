@@ -2,6 +2,7 @@
 
 namespace NextJsRevalidate;
 
+use Exception;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Post;
@@ -27,9 +28,78 @@ class Revalidate extends Base {
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
 	}
 
+	/**
+	 * Determine if the given post should be revalidated.
+	 *
+	 * Note: the post could be not publicly viewable, but we may possibly
+	 *       revalidate it anyway if it was previously publicly viewable
+	 *       e.g. a post was published, but then switched back to
+	 *            draft or pending.
+	 *       e.g. If a post is private or password protected,
+	 *            we should revalidate it.
+	 */
+	function should_revalidate( $post_id ) {
+
+		$should_revalidate_post = true;
+
+		$isPubliclyViewable = is_post_publicly_viewable($post_id);
+		$isAutosave = wp_is_post_autosave($post_id) !== false;
+
+		file_put_contents(__DIR__.'/DEBUG.LOG', "== isPubliclyViewable: ". var_export($isPubliclyViewable, true)."\n", FILE_APPEND);
+		file_put_contents(__DIR__.'/DEBUG.LOG', "== isAutosave: ". var_export($isAutosave, true)."\n", FILE_APPEND);
+		try {
+			if ( ! $isPubliclyViewable ) {
+				// if the post is not publicly viewable, and it's an autosave, we should not revalidate it.
+				if ( $isAutosave ) throw new Exception("not viewvable", 1);
+
+				$status = get_post_status( $post_id );
+				$parent_post_id = wp_is_post_revision($post_id);
+
+				file_put_contents(__DIR__.'/DEBUG.LOG', "== status: ". var_export($status, true)."\n", FILE_APPEND);
+				file_put_contents(__DIR__.'/DEBUG.LOG', "== parent_post_id: ". var_export($parent_post_id, true)."\n", FILE_APPEND);
+
+				if ( false !== $parent_post_id ) {
+					$isParentPubliclyViewable = is_post_publicly_viewable($parent_post_id);
+					$parent_status = get_post_status( $parent_post_id );
+
+					// is Parent is published, private or password protected, we should revalidate the post (do not enter in the if)
+					if ( !in_array($parent_status, ['publish', 'private', 'password']) ) {
+						// $parent_post = get_post($parent_post_id);
+						throw new Exception("not viewvable", 1);
+					} else if ( in_array($status, ['draft', 'pending']) ) {
+						$post = get_post($post_id);
+						file_put_contents(__DIR__.'/DEBUG.LOG', "== post_date_gmt: ". var_export($post->post_date_gmt, true)."\n", FILE_APPEND);
+						if ( '0000-00-00 00:00:00' === $post->post_date_gmt ) {
+							throw new Exception("not viewvable", 1);
+						}
+					}
+				}
+			}
+		} catch (\Throwable $th) {
+			$should_revalidate_post = false;
+		}
+
+		/**
+		 * Filters whether to revalidate the given post on save.
+		 *
+		 * @param bool $should_revalidate_post Whether to revalidate the post on save.
+		 * @param int  $post_id                The post ID.
+		 */
+		return apply_filters( 'nextjs_revalidate_purge_should_revalidate_post_on_save', $should_revalidate_post, $post_id );
+
+	}
+
 	function on_post_save( $post_id ) {
-		// Bail for post type not viewable, nor autosave or revision, as in some cases it saves a draft!
-		if ( !is_post_publicly_viewable($post_id) || wp_is_post_revision($post_id) || wp_is_post_autosave($post_id) ) return;
+		$title = get_the_title($post_id);
+
+		file_put_contents(__DIR__.'/DEBUG.LOG', "======= on_post_save =======\n", FILE_APPEND);
+		file_put_contents(__DIR__.'/DEBUG.LOG', "== title: ". var_export($title, true)."\n", FILE_APPEND);
+
+		$should_revalidate_post = $this->should_revalidate( $post_id );
+		file_put_contents(__DIR__.'/DEBUG.LOG', "================= should_revalidate_post: ". var_export($should_revalidate_post, true)."\n", FILE_APPEND);
+
+		// Bail for not viewable post
+		if ( !$should_revalidate_post ) return;
 
 		// Bail early if current request is for saving the metaboxes. (To not duplicate the purge query)
 		if ( isset($_REQUEST['meta-box-loader']) ) return;
