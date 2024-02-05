@@ -99,7 +99,9 @@ class Revalidate extends Base {
 		// Ensure we do not fire this action twice. Safekeeping
 		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
-		$this->queue->add_item( get_permalink( $post_id ) );
+		$this->queue->add_item(
+			$this->get_post_permalink( $post_id, false )
+		);
 	}
 
 	function purge( $permalink ) {
@@ -160,7 +162,7 @@ class Revalidate extends Base {
 
 		check_admin_referer( "nextjs-revalidate-purge_{$_GET['post']}" );
 
-		$permalink = get_permalink( $_GET['post'] );
+		$permalink = $this->get_post_permalink( $_GET['post'] );
 
 		/**
 		 * Filters the permalink to be added to the purge queue.
@@ -208,7 +210,7 @@ class Revalidate extends Base {
 
 			$purged = 0;
 			foreach ($post_ids as $post_id) {
-				$permalink = get_permalink( $post_id );
+				$permalink = $this->get_post_permalink( $post_id );
 
 				/**
 				 * Filters the permalink to be added to the purge queue.
@@ -259,5 +261,33 @@ class Revalidate extends Base {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Get the post permalink.
+	 *
+	 * If the post_id is a revision, we should get the permalink from the parent post_id
+	 * for instance when saving, the post_id is the revision id, but we want to purge the parent post permalink
+	 *
+	 * @param int  $post_id         The post ID.
+	 * @param bool $check_if_public Optional. Whether to check if the post is public. Default true.
+	 *
+	 * @return string|false The post permalink. False if the post is not public.
+	 */
+	public function get_post_permalink( $post_id, $check_if_public = true ) {
+
+		if ( $check_if_public ) {
+			$is_public = $this->should_revalidate( $post_id );
+			if ( !$is_public ) return false;
+		}
+
+		// If post_id is a revision, we should get the permalink from the parent post_id
+		$parent_post_id = wp_is_post_revision($post_id);
+		$post_id_for_permalink = ( false !== $parent_post_id
+			? $parent_post_id
+			: $post_id
+		);
+
+		return get_permalink( $post_id_for_permalink );
 	}
 }

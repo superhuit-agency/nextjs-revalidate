@@ -150,7 +150,7 @@ class RevalidateAll extends Base {
 			]);
 
 			foreach ($posts as $post_id) {
-				$this->queue->add_item( get_permalink( $post_id ) );
+				$this->queue->add_item( $this->revalidate->get_post_permalink( $post_id ) );
 				$count++;
 			}
 		}
