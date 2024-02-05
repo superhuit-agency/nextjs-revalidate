@@ -10,7 +10,9 @@
 			"request": "launch",
 			"port": 9003,
 			"pathMappings": {
-				"/var/www/html/wp-content/plugins/nextjs-revalidate": "${workspaceFolder}/"
+				"/var/www/html/wp-content/plugins/nextjs-revalidate": "${workspaceFolder}/",
+				"/var/www/html/wp-admin": "${workspaceFolder}/vendor/johnpbloch/wordpress-core/wp-admin",
+				"/var/www/html/wp-includes": "${workspaceFolder}/vendor/johnpbloch/wordpress-core/wp-includes"
 			}
 		}
 	]
