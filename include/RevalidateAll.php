@@ -146,7 +146,7 @@ class RevalidateAll extends Base {
 				'post_type'      => $post_type,
 				'posts_per_page' => -1,
 				'fields'         => 'ids',
-				'post_status'    => 'publish',
+				'post_status'    => ['publish', 'private'],
 			]);
 
 			foreach ($posts as $post_id) {
