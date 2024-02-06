@@ -56,7 +56,7 @@ jobs:
             --exclude composer.json \
             --exclude composer.lock \
             --exclude node_modules \
-            --exclude src \
+            --exclude /src \
             --exclude webpack.config.js \
             --exclude yarn.lock \
           . ./nextjs-revalidate
