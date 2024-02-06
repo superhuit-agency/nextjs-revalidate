@@ -44,9 +44,10 @@ class Revalidate extends Base {
 
 		$isPubliclyViewable = is_post_publicly_viewable($post_id);
 		$isAutosave = wp_is_post_autosave($post_id) !== false;
+		$status = get_post_status( $post_id );
 
 		try {
-			if ( ! $isPubliclyViewable ) {
+			if ( ! $isPubliclyViewable && !in_array($status, ['publish', 'private']) ) {
 				// if the post is not publicly viewable, and it's an autosave, we should not revalidate it.
 				if ( $isAutosave ) throw new Exception("not viewvable", 1);
 
