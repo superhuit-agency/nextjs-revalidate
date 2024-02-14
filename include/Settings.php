@@ -82,7 +82,7 @@ class Settings extends Base {
 							class="njr-settings__tab"
 							tabindex="<?php echo $i === 0 ? '0' : '-1' ?>"
 							aria-selected="<?php echo $i === 0 ? 'true' : 'false' ?>"
-							id="<?php printf('tab--%s', $section['id']) ?>"
+							id="<?php printf('tab-%s', $section['id']) ?>"
 							aria-controls="<?php printf('tab-panel--%s', $section['id']) ?>"
 						>
 							<?php echo $section['title'] ?>
@@ -97,7 +97,7 @@ class Settings extends Base {
 					// Prints all registered section for this page
 					do_settings_sections( self::PAGE_NAME );
 					?>
-					<section id="tab-panel--queue" role="tabpanel" tabindex="-1" aria-labelledby="tab--queue" aria-hidden="true">
+					<section id="tab-panel--queue" role="tabpanel" tabindex="-1" aria-labelledby="tab-queue" aria-hidden="true">
 						<h2><?php _e('Purge queue', 'nextjs-revalidate'); ?></h2>
 						<p>
 							<strong><?php printf( _n( '%d URL waiting to be purged', '%d URLs waiting to be purged', $nb_in_queue, 'nextjs-revalidate'), $nb_in_queue ); ?></strong>
@@ -135,13 +135,14 @@ class Settings extends Base {
 
 
 		// API section settings
+
 		add_settings_section(
 			'nextjs-revalidate-section',
 			__('Next.js API config', 'nextjs-revalidate'),
 			null,
 			self::PAGE_NAME,
 			[
-				'before_section' => '<section aria-hidden="false" id="tab-panel--api" role="tabpanel" tabindex="-1" aria-labelledby="tab--api">',
+				'before_section' => '<section aria-hidden="false" id="tab-panel--api" role="tabpanel" tabindex="-1" aria-labelledby="tab-api">',
 				'after_section'  => '</section>',
 			]
 		);
@@ -186,7 +187,7 @@ class Settings extends Base {
 			},
 			self::PAGE_NAME,
 			[
-				'before_section' => '<section aria-hidden="true" id="tab-panel--allow_all_opts" role="tabpanel" tabindex="-1" aria-labelledby="tab--allow_all_opts">',
+				'before_section' => '<section aria-hidden="true" id="tab-panel--allow_all_opts" role="tabpanel" tabindex="-1" aria-labelledby="tab-allow_all_opts">',
 				'after_section'  => '</section>',
 			]
 		);
@@ -239,7 +240,7 @@ class Settings extends Base {
 			},
 			self::PAGE_NAME,
 			[
-				'before_section' => '<section aria-hidden="true" id="tab-panel--on_menu_save" role="tabpanel" tabindex="-1" aria-labelledby="tab--on_menu_save">',
+				'before_section' => '<section aria-hidden="true" id="tab-panel--on_menu_save" role="tabpanel" tabindex="-1" aria-labelledby="tab-on_menu_save">',
 				'after_section'  => '</section>',
 			]
 		);
@@ -290,7 +291,7 @@ class Settings extends Base {
 			},
 			self::PAGE_NAME,
 			[
-				'before_section' => '<section aria-hidden="true" id="tab-panel--debug" role="tabpanel" tabindex="-1" aria-labelledby="tab--debug">',
+				'before_section' => '<section aria-hidden="true" id="tab-panel--debug" role="tabpanel" tabindex="-1" aria-labelledby="tab-debug">',
 				'after_section'  => '</section>',
 			]
 		);

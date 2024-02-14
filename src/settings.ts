@@ -1,7 +1,6 @@
 import "./settings.css";
 
-function changeTabs(e: MouseEvent) {
-	const target = e.target as HTMLElement;
+function changeTabs(target: HTMLElement) {
 	const nav = target.parentNode;
 	const form = document.querySelector(".njr-settings__form");
 
@@ -21,6 +20,8 @@ function changeTabs(e: MouseEvent) {
 		.forEach((p) =>
 			p.setAttribute("aria-hidden", p.id !== newAtiveTabId ? "true" : "false")
 		);
+
+	window.location.hash = `#${target.getAttribute('id')}`;
 }
 
 function init() {
@@ -29,7 +30,7 @@ function init() {
 
 	// Add a click event handler to each tab
 	tabs.forEach((tab) => {
-		tab.addEventListener("click", changeTabs);
+		tab.addEventListener("click", (e: MouseEvent) => changeTabs(e.target as HTMLElement));
 	});
 
 	// Enable arrow navigation between tabs in the tab list
@@ -60,6 +61,11 @@ function init() {
 			newActiveTab.focus();
 		}
 	});
+
+	if ( !!window.location.hash ) {
+		const tabToFocus = document.querySelector(window.location.hash) as HTMLElement;
+		if (tabToFocus) changeTabs(tabToFocus);
+	}
 }
 
 window.addEventListener("load", function () {

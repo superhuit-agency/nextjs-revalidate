@@ -260,7 +260,7 @@ class RevalidateQueue extends Base {
 					user_can( get_current_user_id(), 'manage_options' )
 						? sprintf(
 							' <a href="%s">%s</a>',
-								admin_url( 'options-general.php?page='. Settings::PAGE_NAME .'#nextjs_revalidate-queue'),
+								admin_url( 'options-general.php?page='. Settings::PAGE_NAME .'#tab-queue'),
 							__( 'View purge caches queue', 'nextjs-revalidate' )
 					) : ''
 				)
