@@ -28,6 +28,6 @@
         "johnpbloch/wordpress-core": "6.1"
     },
     "require": {
-        "kuuak/wordpress-setting-fields": "^1.1"
+        "superhuit-agency/wordpress-setting-fields": "^1.1"
     }
 }
