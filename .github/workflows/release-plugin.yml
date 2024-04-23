@@ -1,5 +1,5 @@
 ---
-name: 'Release NEXT.js revalidate plugin'
+name: "Release NEXT.js revalidate plugin"
 
 on:
   push:
@@ -15,11 +15,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      
+
       # PHP Composer dependencies
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '7.4'
+          php-version: "7.4"
           coverage: none
         env:
           COMPOSER_TOKEN: ${{ github.token }}
@@ -37,7 +37,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 18
-          cache: 'yarn'
+          cache: "yarn"
       - name: Install dependencies & build assets
         run: |
           yarn install --frozen-lockfile
@@ -60,7 +60,7 @@ jobs:
             --exclude webpack.config.js \
             --exclude yarn.lock \
           . ./nextjs-revalidate
-          
+
       - name: Archive Release
         uses: montudor/action-zip@v1
         with:
@@ -71,7 +71,7 @@ jobs:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
           files: |
-            nextjs-revalidate.zip
+            nextjs-revalidate-${{  github.ref_name }}.zip
 
       - name: Upload to release-belt
         uses: easingthemes/ssh-deploy@main
