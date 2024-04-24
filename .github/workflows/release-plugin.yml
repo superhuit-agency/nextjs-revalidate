@@ -59,12 +59,12 @@ jobs:
             --exclude /src \
             --exclude webpack.config.js \
             --exclude yarn.lock \
-          . ./nextjs-revalidate
+          . ./nextjs-revalidate-${{  github.ref_name }}
 
       - name: Archive Release
         uses: montudor/action-zip@v1
         with:
-          args: zip -qq -r nextjs-revalidate.zip nextjs-revalidate
+          args: zip -qq -r nextjs-revalidate-${{  github.ref_name }}.zip nextjs-revalidate-${{  github.ref_name }}
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
@@ -80,5 +80,5 @@ jobs:
           REMOTE_USER: ${{ secrets.RELEASE_BELT_USER }}
           REMOTE_HOST: ${{ secrets.RELEASE_BELT_HOST }}
           REMOTE_PORT: ${{ secrets.RELEASE_BELT_PORT }}
-          SOURCE: nextjs-revalidate.zip
+          SOURCE: nextjs-revalidate-${{  github.ref_name }}.zip
           TARGET: "${{ secrets.RELEASE_BELT_PATH }}/releases/wordpress-plugin/superhuit/nextjs-revalidate-${{  github.ref_name }}.zip"
