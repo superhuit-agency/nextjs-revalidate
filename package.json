@@ -1,6 +1,6 @@
 {
   "name": "nextjs-revalidate",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "description": "Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area. It also automatically purges & re-builds when a page/post/... is save or updated.",
   "main": "src/index.ts",
   "repository": "git@github.com:superhuit-agency/nextjs-revalidate.git",
