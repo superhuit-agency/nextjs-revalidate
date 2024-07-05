@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Next.js revalidate\n"
-"POT-Creation-Date: 2024-01-09 09:57+0100\n"
+"POT-Creation-Date: 2024-07-05 11:36+0200\n"
 "PO-Revision-Date: 2022-12-26 11:44+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -10,7 +10,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
-"X-Generator: Poedit 3.2\n"
+"X-Generator: Poedit 3.4.4\n"
 "X-Poedit-Basepath: ..\n"
 "X-Poedit-Flags-xgettext: --add-comments=translators:\n"
 "X-Poedit-WPHeader: nextjs-revalidate.php\n"
@@ -24,113 +24,185 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-2: dist\n"
 "X-Poedit-SearchPathExcluded-3: node_modules\n"
 
-#: include/Revalidate.php:101
+#: include/Revalidate.php:150
 #, php-format
 msgid "Purge cache of post “%s”"
 msgstr ""
 
-#: include/Revalidate.php:102
+#: include/Revalidate.php:151
 msgid "Purge cache"
 msgstr ""
 
-#: include/Revalidate.php:156
+#: include/Revalidate.php:205
 msgid "Purge caches"
 msgstr ""
 
-#: include/Revalidate.php:195
+#: include/Revalidate.php:245
 #, php-format
 msgid "“%s” cache will be purged shortly."
 msgstr ""
 
-#: include/Revalidate.php:196 include/Revalidate.php:211
+#: include/Revalidate.php:246 include/Revalidate.php:261
 msgid "Unable to purge cache. Please try again or contact an administrator."
 msgstr ""
 
-#: include/Revalidate.php:210
+#: include/Revalidate.php:260
 #, php-format
 msgid "%d cache will be purged shortly."
 msgid_plural "%d caches will be purged shortly."
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/RevalidateAll.php:64
+#: include/RevalidateAll.php:33
 msgctxt "Admin top bar menu"
 msgid "Purge caches"
 msgstr ""
 
-#: include/RevalidateAll.php:74
+#: include/RevalidateAll.php:43
 msgctxt "Admin top bar menu"
 msgid "All"
 msgstr ""
 
-#: include/RevalidateAll.php:92
+#: include/RevalidateAll.php:66
 msgctxt "Admin top bar menu"
 msgid ""
 "Purging all cache may take some time according to the number of pages to "
 "purge."
 msgstr ""
 
-#: include/RevalidateAll.php:104
-msgid ""
-"Purging all caches. is already running. Please wait until the end to "
-"restart the purge."
-msgstr ""
-
-#: include/RevalidateAll.php:112
+#: include/RevalidateAll.php:81
 #, php-format
-msgid "Purging all caches. Please wait… %s"
+msgid ""
+"Purge all: %d pages added to purge. Please wait until all pages are purged."
 msgstr ""
 
-#: include/Settings.php:39
+#: include/RevalidateQueue.php:258
+#, php-format
+msgid "Purging caches. Please wait… %s%s"
+msgstr ""
+
+#: include/RevalidateQueue.php:264
+msgid "View purge caches queue"
+msgstr ""
+
+#: include/RevalidateQueue.php:273
+msgid "Queue correctly resetted."
+msgstr ""
+
+#: include/Settings.php:50
 msgid "Next.js revalidate settings"
 msgstr ""
 
 #. Plugin Name of the plugin/theme
-#: include/Settings.php:40
+#: include/Settings.php:51
 msgid "Next.js revalidate"
 msgstr ""
 
-#: include/Settings.php:91
+#: include/Settings.php:67
+msgid "Next.js API"
+msgstr ""
+
+#: include/Settings.php:68
+msgid "Allow purge all"
+msgstr ""
+
+#: include/Settings.php:69
+msgid "On menu update"
+msgstr ""
+
+#: include/Settings.php:70
+msgid "Debug"
+msgstr ""
+
+#: include/Settings.php:71
+msgid "Queue"
+msgstr ""
+
+#: include/Settings.php:76
+msgid "NextJS-Revalidate settings tabs"
+msgstr ""
+
+#: include/Settings.php:101
+msgid "Purge queue"
+msgstr ""
+
+#: include/Settings.php:103
+#, php-format
+msgid "%d URL waiting to be purged"
+msgid_plural "%d URLs waiting to be purged"
+msgstr[0] ""
+msgstr[1] ""
+
+#: include/Settings.php:108
+msgid "Id"
+msgstr ""
+
+#: include/Settings.php:109
+msgid "Priority"
+msgstr ""
+
+#: include/Settings.php:110
+msgid "URL"
+msgstr ""
+
+#: include/Settings.php:141
 msgid "Next.js API config"
 msgstr ""
 
-#: include/Settings.php:98
+#: include/Settings.php:152
 msgid "Revalidate url"
 msgstr ""
 
-#: include/Settings.php:114
+#: include/Settings.php:168
 msgid "Revalidate Secret"
 msgstr ""
 
-#: include/Settings.php:129
+#: include/Settings.php:184
 msgid "Allow purge all options"
 msgstr ""
 
-#: include/Settings.php:131
+#: include/Settings.php:186
 msgid ""
 "Define which post type has the option to have all posts purged in the "
 "admin bar."
 msgstr ""
 
-#: include/Settings.php:161 include/Settings.php:206
+#: include/Settings.php:220 include/Settings.php:271
 msgid "All post types"
 msgstr ""
 
-#: include/Settings.php:170 include/Settings.php:215
+#: include/Settings.php:229 include/Settings.php:280
 msgid ""
 "Warning: according to the number of post types & posts for each post type "
 "this action can be very slow."
 msgstr ""
 
-#: include/Settings.php:176
-msgid "On menu update revalidations"
+#: include/Settings.php:237
+msgid "On menu update options"
 msgstr ""
 
-#: include/Settings.php:178
+#: include/Settings.php:239
 msgid "Define which post type will be revalidated when updating a menu."
 msgstr ""
 
-#: nextjs-revalidate.php:55
+#: include/Settings.php:288
+msgid "Debug options"
+msgstr ""
+
+#: include/Settings.php:290
+msgid "Some configuration for easier debug."
+msgstr ""
+
+#: include/Settings.php:304
+msgid "Enable logs"
+msgstr ""
+
+#: include/Settings.php:314
+#, php-format
+msgid "Logs will be saved to file lacated in <code>%s</code>"
+msgstr ""
+
+#: nextjs-revalidate.php:57
 msgid "Please install composer dependencies for Next.js Revalidate to work"
 msgstr ""
 
