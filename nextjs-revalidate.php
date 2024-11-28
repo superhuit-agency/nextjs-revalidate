@@ -39,6 +39,7 @@ use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\Cron\ScheduledPurges;
+use NextJsRevalidate\RestApi;
 use NextJsRevalidate\RevalidateQueue;
 
 // Exit if accessed directly.
@@ -71,7 +72,7 @@ class NextJsRevalidate {
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
 	private RevalidateQueue $queue;
-
+	private RestApi $restApi;
 	private static NextJsRevalidate $instance;
 
 	public static function init(): NextJsRevalidate {
@@ -93,6 +94,7 @@ class NextJsRevalidate {
 		$this->cronScheduledPurges = new ScheduledPurges();
 		$this->revalidateAll       = new RevalidateAll();
 		$this->queue               = new RevalidateQueue();
+		$this->restApi             = new RestApi();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );

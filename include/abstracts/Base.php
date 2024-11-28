@@ -20,6 +20,7 @@ abstract class Base {
 		else if ( $name === 'settings' )      return $njr->settings;
 		else if ( $name === 'revalidate' )    return $njr->revalidate;
 		else if ( $name === 'revalidateAll' ) return $njr->revalidateAll;
+		else if ( $name === 'restApi' )       return $njr->restApi;
 
 		return $this->$name ?? null;
 	}
