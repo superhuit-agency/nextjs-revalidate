@@ -90,10 +90,15 @@ class Revalidate extends Base {
 
 	function on_post_save( $post_id, $post, $update, $post_before ) {
 		$should_revalidate_post = $this->should_revalidate( $post_id );
+		$post_permalink =	$this->get_post_permalink( $post_id, false );
 
 		// If the post was previously published, and is now draft, we should revalidate it
 		if (isset($post_before) && $post_before->post_status === 'publish' && $post->post_status === 'draft') {
 			$should_revalidate_post = true;
+		
+			// We take the permalink from the previous post, in order to get the correct permalink
+			// (otherwise it would be the draft permalink like "/?page_id=9999/" which doesn't work with the revalidate API)
+			$post_permalink = get_permalink($post_before);
 		}
 
 		// Bail for not viewable post
@@ -106,7 +111,7 @@ class Revalidate extends Base {
 		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
 
 		$this->queue->add_item(
-			$this->get_post_permalink( $post_id, false )
+			$post_permalink
 		);
 	}
 
