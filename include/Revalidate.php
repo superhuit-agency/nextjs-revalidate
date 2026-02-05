@@ -17,7 +17,7 @@ class Revalidate extends Base {
 	 * Constructor.
 	 */
 	function __construct() {
-		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
+		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99, 4 );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -88,8 +88,13 @@ class Revalidate extends Base {
 		return apply_filters( 'nextjs_revalidate_purge_should_revalidate_post_on_save', $should_revalidate_post, $post_id );
 	}
 
-	function on_post_save( $post_id ) {
+	function on_post_save( $post_id, $post, $update, $post_before ) {
 		$should_revalidate_post = $this->should_revalidate( $post_id );
+
+		// If the post was previously published, and is now draft, we should revalidate it
+		if (isset($post_before) && $post_before->post_status === 'publish' && $post->post_status === 'draft') {
+			$should_revalidate_post = true;
+		}
 
 		// Bail for not viewable post
 		if ( !$should_revalidate_post ) return;
