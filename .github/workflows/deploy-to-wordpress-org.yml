@@ -1,0 +1,73 @@
+---
+name: "Deploy to WordPress.org plugin repository"
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  deploy:
+    name: "Deploy to WordPress.org"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # PHP Composer dependencies
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "7.4"
+          coverage: none
+        env:
+          COMPOSER_TOKEN: ${{ github.token }}
+      - id: composer-cache
+        uses: actions/cache@v3
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-
+      - shell: bash
+        run: composer install --no-dev --prefer-dist --no-progress
+
+      - name: Install node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "yarn"
+      - name: Install dependencies & build assets
+        run: |
+          yarn install --frozen-lockfile
+          yarn build
+
+      - name: Prepare build directory
+        shell: bash
+        run: |
+          rsync -r \
+            --exclude .git \
+            --exclude .github \
+            --exclude .vscode \
+            --exclude .editorconfig \
+            --exclude .gitignore \
+            --exclude .nvmrc \
+            --exclude .wp-env.json \
+            --exclude composer.json \
+            --exclude composer.lock \
+            --exclude node_modules \
+            --exclude package.json \
+            --exclude tsconfig.json \
+            --exclude /src \
+            --exclude webpack.config.js \
+            --exclude yarn.lock \
+          ./ ./build
+
+      - name: Deploy to WordPress.org
+        uses: 10up/action-wordpress-plugin-deploy@stable
+        env:
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SLUG: nextjs-revalidate
+          BUILD_DIR: ./build
