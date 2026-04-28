@@ -44,6 +44,8 @@ class RevalidateAll extends Base {
 			}
 			else {
 				$post_type_object = get_post_type_object( $post_type );
+				// Do not continue if post_type_object is null. I can happen if the post type is not publicly_queryable
+				if (!$post_type_object) continue;
 				$name = $post_type_object->labels->name;
 			}
 
