@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name:       Next.js revalidate
- * Plugin URI:        https://github.com/com:superhuit-agency/nextjs-revalidate.git
+ * Plugin URI:        https://github.com/superhuit-agency/nextjs-revalidate.git
  * Description:       Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area. It also automatically purges & re-builds when a page/post/... is save or updated.
  * Author:            superhuit
  * Author URI:        https://www.superhuit.ch
- * Version:           1.6.8
+ * Version:           1.6.9
  * license:           GPLv3
  * License URI:       https://www.gnu.org/licenses/gpl-3.0.html
  * Requires PHP:      7.4
