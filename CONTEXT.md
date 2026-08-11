@@ -50,6 +50,23 @@ would sensibly keep.
 > The option table is authoritative for **reads** only. Registration, seeding and
 > teardown still enumerate the settings separately; unifying them is #24's to do.
 
+**Configured site**:
+A site holding both of the settings a revalidation cannot be delivered without —
+the revalidate URL and the secret. The precondition for every revalidation, and a
+per-site property: on a network each site is configured or not on its own, and a
+newly created site starts unconfigured by design. Half-configured is unconfigured.
+_Avoid_: Set up, installed — site setup is the plugin preparing a site, which
+says nothing about whether an operator has since supplied these two values.
+
+**Refusal**:
+Declining to enqueue a revalidation that could not be delivered, in preference to
+accepting one and dropping it later. The response to an unconfigured site.
+Distinct from **failure**, which is a revalidation that was enqueued, attempted
+against the front-end, and did not succeed — a refused revalidation never reaches
+the queue at all.
+_Avoid_: Skip, ignore — both suggest the revalidation was unimportant rather than
+undeliverable.
+
 ### Versioning and migration
 
 **Plugin version**:
