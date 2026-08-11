@@ -43,23 +43,28 @@ jobs:
           npm ci
           npm run build
 
-      - shell: bash
+      # The payload is an allowlist: only the paths named below ship, everything
+      # else in the checkout stays behind. Adding a file to the repo root can no
+      # longer leak it into the zip. Forgetting a path the plugin needs at runtime
+      # breaks it visibly in testing, and rsync exits non-zero on a path that is
+      # missing entirely — a failed asset build fails the release instead of
+      # quietly publishing a zip without dist/.
+      #
+      # Add an entry here only when the plugin needs it at runtime. Development
+      # tooling (src/, config/, webpack.config.js, package.json, tsconfig.json,
+      # composer.json, .wp-env.json), documentation and agent files do not.
+      - name: Assemble plugin payload
+        shell: bash
         run: |
-          rsync -r \
-            --exclude .git \
-            --exclude .github \
-            --exclude .vscode \
-            --exclude .editorconfig \
-            --exclude .gitignore \
-            --exclude .nvmrc \
-            --exclude .wp-env.json \
-            --exclude composer.json \
-            --exclude composer.lock \
-            --exclude node_modules \
-            --exclude /src \
-            --exclude webpack.config.js \
-            --exclude package-lock.json \
-          . ./nextjs-revalidate
+          mkdir -p nextjs-revalidate
+          rsync -r --files-from=- . ./nextjs-revalidate <<'EOF'
+          nextjs-revalidate.php
+          readme.txt
+          include/
+          dist/
+          languages/
+          vendor/
+          EOF
 
       - name: Archive Release
         uses: montudor/action-zip@v1
