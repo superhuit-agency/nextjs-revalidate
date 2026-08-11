@@ -8,8 +8,8 @@
   "license": "GPL-3.0-or-later",
   "scripts": {
     "build": "webpack --mode production",
-    "dev": "yarn start & webpack --mode development --watch",
-    "start": "wp-env start --xdebug && yarn start:revalidateServer",
+    "dev": "npm run start & webpack --mode development --watch",
+    "start": "wp-env start --xdebug && npm run start:revalidateServer",
     "stop": "wp-env stop",
     "start:revalidateServer": "node ./config/revalidate-server.js"
   },

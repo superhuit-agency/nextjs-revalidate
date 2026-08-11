@@ -36,12 +36,12 @@ jobs:
       - name: Install node
         uses: actions/setup-node@v3
         with:
-          node-version: 18
-          cache: "yarn"
+          node-version: 24
+          cache: "npm"
       - name: Install dependencies & build assets
         run: |
-          yarn install --frozen-lockfile
-          yarn build
+          npm ci
+          npm run build
 
       - shell: bash
         run: |
@@ -58,7 +58,7 @@ jobs:
             --exclude node_modules \
             --exclude /src \
             --exclude webpack.config.js \
-            --exclude yarn.lock \
+            --exclude package-lock.json \
           . ./nextjs-revalidate
 
       - name: Archive Release
