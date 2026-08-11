@@ -12,6 +12,7 @@
     "plan": "node run.mts --plan",
     "prepare-branches": "node run.mts --prepare",
     "implement": "node run.mts --implement",
+    "finalize": "node run.mts --finalize",
     "test": "node --test 'test/**/*.test.mts'",
     "typecheck": "tsc --noEmit"
   },

@@ -14,11 +14,14 @@ cp .sandcastle/.env.example .sandcastle/.env   # then fill in one key — see "C
 .sandcastle/sandbox/build.sh             # once, and after a .nvmrc change
 
 node .sandcastle/run.mts --dry-run                  # what would be worked
-node .sandcastle/run.mts --implement --issue 35     # work one issue for real
+node .sandcastle/run.mts --implement --issue 35     # work one issue, stop before origin
+node .sandcastle/run.mts --finalize --issue 35      # the full pass, ending in a PR
 ```
 
-`--implement` leaves commits on `sandcastle/issue-35` and nothing else: no
-push, no PR, and your own checkout untouched on whatever branch it was on.
+`--implement` leaves commits on `sandcastle/issue-35` and nothing else: nothing
+on origin, no PR, and your own checkout untouched on whatever branch it was on.
+`--finalize` goes one step further and ends with a PR into `main` waiting for a
+human. It never merges.
 
 ## Why this is a separate package
 
@@ -140,22 +143,25 @@ throwaway clone if that matters.
 
 ## Modes
 
-Four, each one step further than the last. **None of them pushes, and none
-opens a PR** — that is the finalize phase (#44).
+Five, each one step further than the last. **Only `--finalize` reaches origin
+or opens a PR**, and even it never merges.
 
 ```sh
 node .sandcastle/run.mts --dry-run     # the batch it would work
 node .sandcastle/run.mts --plan        # + the plan, validated
 node .sandcastle/run.mts --prepare     # + each work branch made current
 node .sandcastle/run.mts --implement   # + implementers in containers, gated
+node .sandcastle/run.mts --finalize    # + branches to origin, PRs into main
 node .sandcastle/run.mts --plan --json
-node .sandcastle/run.mts --implement --issue 35    # one issue only; repeatable
+node .sandcastle/run.mts --finalize --issue 35     # one issue only; repeatable
 ```
 
 `--dry-run` and `--plan` are read-only. `--prepare` is the first mode that
 writes anything, and what it writes is *local branches only*. `--implement` is
-the first that starts a container and the first that writes code. Running with
-no mode is an error, so an operator can never think a real pass has happened.
+the first that starts a container and the first that writes code. `--finalize`
+is the full pass — it implies `--implement` — and the only one anything outside
+this machine sees. Running with no mode is an error, so an operator can never
+think a real pass has happened.
 
 `--issue N` restricts the batch to the issues you name. A number that is not
 in the planned batch is fatal rather than a warning: pointing the harness at
@@ -284,6 +290,48 @@ and block the next pass's freshness step.
 
 Per-item logs land in `.sandcastle/logs/issue-<n>.log` (gitignored).
 
+## The finalize phase
+
+Deterministic code, not an agent. For each item the gate left **green**, in
+order: the branch goes to origin through the chokepoint, any PR on that head is
+looked up, one is opened if there is none, and the issue is handed back to a
+human. Items that were `gate-failed`, `no-commits`, `gate-missing` or `error`
+are not finalized at all — a PR into `main` is the harness asking a human to
+merge, and it has no business asking that of work it could not verify. Those
+keep their branch, their label and their issue for the next cycle.
+
+Three details, each expensive to get wrong:
+
+- **PR existence is checked across every state** — the same `findExistingPr()`
+  the re-pick guard uses. A *closed* PR on a work branch never triggers a
+  re-create attempt; a human decided against that branch, and re-creating would
+  be the harness arguing with them.
+- **A rejected update to origin fails loudly.** It becomes an `error` outcome
+  carrying git's own stderr and takes the run's exit code with it. Nothing
+  retries, and nothing anywhere passes `--force`.
+- **The PR is not a draft.** Nothing in this repo filters on draft state — no
+  PR CI, no preview environments — so drafting would only add a click between
+  the harness and the human it is handing to.
+
+### The handoff, and why the issue stays open
+
+On an open PR, finalize swaps `ready-for-agent` → `ready-for-human` in one
+`gh issue edit` call and leaves a comment linking the PR. **The issue is not
+closed** — the harness never closes a standalone issue. The PR body carries
+`Closes #<n>`, so GitHub closes it when a human merges, and that merge is the
+only thing that ever reaches `main`.
+
+Re-running the harness immediately picks up nothing, and *two independent
+things* each guarantee that: the ready label is gone, and the open PR trips the
+re-pick guard. Either alone is enough, which is why a failed label swap is
+reported and fails the run but is not a correctness problem.
+
+| Outcome | Meaning |
+| --- | --- |
+| `pr-opened` | branch on origin, non-draft PR into the base, issue handed off |
+| `pr-exists` | a PR was already on this head. Open → hand off anyway (a handoff that failed last pass); closed or merged → leave it alone |
+| `error` | the update to origin was refused, or `gh` failed. The batch carried on; the run exits non-zero |
+
 ## The push chokepoint
 
 There is no branch protection on this repo and there will not be: the harness
@@ -301,8 +349,8 @@ The harness never runs `git checkout` in it. Pushing a branch and opening a PR
 both work without checking out; anything that genuinely needs a working tree
 gets its own worktree under `.sandcastle/worktrees/` (gitignored, removed after
 use) — including the worktrees sandcastle itself mounts into the containers.
-`--prepare` and `--implement` both verify this at the end of the run and exit
-non-zero if the checkout moved or its working tree changed.
+Every writing mode verifies this at the end of the run and exits non-zero if
+the checkout moved or its working tree changed.
 
 ## Test and typecheck
 

@@ -2,20 +2,21 @@
 /**
  * AFK agent harness entry point.
  *
- * Four modes, each one step further than the last:
+ * Five modes, each one step further than the last:
  *
  *   --dry-run    print the batch of issues it would work
  *   --plan       + turn the batch into a plan and validate it
  *   --prepare    + bring each work branch to a correct starting point
  *   --implement  + run implementers in containers, gate the result
+ *   --finalize   + put green branches on origin and open a PR into main
  *
  * `--prepare` is the first mode that writes anything, and what it writes is
  * local branches only. `--implement` is the first that starts a container and
- * the first that writes code — and it still pushes nothing and opens no PR:
- * commits land on the local work branch and stop there. The finalize and merge
- * phases land in later issues; until they exist, running with no mode is an
- * error rather than a no-op, so an operator can never think a real pass has
- * happened.
+ * the first that writes code — and it still puts nothing on origin and opens
+ * no PR: commits land on the local work branch and stop there. `--finalize` is
+ * the full pass, and it ends where the harness is supposed to end: a PR waiting
+ * for a human. It still never merges. Running with no mode is an error rather
+ * than a no-op, so an operator can never think a real pass has happened.
  */
 import { BASE_BRANCH, CONCURRENCY, READY_LABEL } from './lib/config.mts';
 import { currentBranch, ensureLocalBranch, fetch, git } from './lib/git.mts';
@@ -25,13 +26,25 @@ import type { FreshnessOutcome } from './lib/freshness.mts';
 import { currentRepo } from './lib/gh.mts';
 import { gather } from './lib/gather.mts';
 import type { Candidate } from './lib/gather.mts';
+import {
+	finalizeBatch,
+	isFailure,
+	itemsToFinalize,
+	realFinalizeDeps,
+	renderFinalizeOutcomes,
+} from './lib/finalize.mts';
 import { implementItem, pool, realDeps, renderOutcomes } from './lib/implement.mts';
 import type { ImplementOutcome } from './lib/implement.mts';
 import { PlanAbort, knownEpicBranches, planBatch, renderPlan, validatePlan } from './lib/plan.mts';
 import type { PlanItem } from './lib/plan.mts';
 import { renderJson, renderText } from './lib/report.mts';
 
-type Mode = 'dry-run' | 'plan' | 'prepare' | 'implement';
+type Mode = 'dry-run' | 'plan' | 'prepare' | 'implement' | 'finalize';
+
+/** Modes that start containers and write code — `--finalize` implies `--implement`. */
+function runsImplementers(mode: Mode): boolean {
+	return mode === 'implement' || mode === 'finalize';
+}
 
 type Options = {
 	mode: Mode | null;
@@ -54,6 +67,8 @@ function parseArgs(argv: string[]): Options {
 			options.mode = 'prepare';
 		} else if (arg === '--implement') {
 			options.mode = 'implement';
+		} else if (arg === '--finalize') {
+			options.mode = 'finalize';
 		} else if (arg === '--json') {
 			options.json = true;
 		} else if (arg === '--repo') {
@@ -84,19 +99,22 @@ function parseArgs(argv: string[]): Options {
 function usage(): void {
 	console.error(
 		[
-			'Usage: node .sandcastle/run.mts (--dry-run | --plan | --prepare | --implement)',
+			'Usage: node .sandcastle/run.mts (--dry-run | --plan | --prepare | --implement | --finalize)',
 			'                                [--issue N]... [--json] [--repo owner/name]',
 			'',
 			'  --dry-run    Print the batch of issues that would be worked, then exit.',
-			'               Takes no action: no branches, no pushes, no containers.',
+			'               Takes no action: no branches, nothing on origin, no containers.',
 			'  --plan       Also build the plan and validate it. Read-only; a plan',
 			'               violating a hard rule aborts the entire run.',
 			'  --prepare    Also bring each work branch to a correct starting point.',
-			'               Writes local branches only — still nothing pushed, still',
-			'               no container.',
+			'               Writes local branches only — still nothing on origin,',
+			'               still no container.',
 			'  --implement  Also run an implementer in a container per item and gate',
 			'               the result. Commits land on the local work branch; still',
-			'               nothing pushed and no PR opened.',
+			'               nothing on origin and no PR opened.',
+			'  --finalize   The full pass: also send every gate-green branch to origin,',
+			'               open a non-draft PR into the base branch and hand the issue',
+			'               back to a human. Never merges anything.',
 			'  --issue N    Restrict the batch to this issue. Repeatable. Without it,',
 			'               every eligible standalone issue is worked.',
 			'  --json       Emit the batch as JSON instead of text.',
@@ -147,7 +165,7 @@ async function main(): Promise<void> {
 	const options = parseArgs(process.argv.slice(2));
 
 	if (options.mode === null) {
-		console.error('Pick a mode: --dry-run, --plan, --prepare or --implement.');
+		console.error('Pick a mode: --dry-run, --plan, --prepare, --implement or --finalize.');
 		usage();
 		process.exit(2);
 	}
@@ -169,7 +187,7 @@ async function main(): Promise<void> {
 	}
 
 	if (options.mode === 'dry-run') {
-		console.error('\ndry run — no branches created, nothing pushed, no containers started.');
+		console.error('\ndry run — no branches created, nothing on origin, no containers started.');
 		return;
 	}
 
@@ -186,7 +204,7 @@ async function main(): Promise<void> {
 	console.log(`\nPlan — validated:\n${renderPlan(plan)}`);
 
 	if (options.mode === 'plan') {
-		console.error('\nplan only — no branches created, nothing pushed, no containers started.');
+		console.error('\nplan only — no branches created, nothing on origin, no containers started.');
 		return;
 	}
 
@@ -198,7 +216,7 @@ async function main(): Promise<void> {
 	// Auth is settled before any branch is touched, not at the first container:
 	// a batch prepared and then abandoned on a missing token is worse than one
 	// that never started.
-	if (options.mode === 'implement') {
+	if (runsImplementers(options.mode)) {
 		const auth = containerAuth(cwd);
 		if (!auth.ok) {
 			console.error(`\nerror: container auth to Claude is not configured — ${auth.reason}`);
@@ -227,8 +245,9 @@ async function main(): Promise<void> {
 		if (outcome.action !== 'skipped') ready.push(item);
 	}
 
-	if (options.mode === 'implement') {
-		await implement(cwd, ready, result.eligible);
+	if (runsImplementers(options.mode)) {
+		const outcomes = await implement(cwd, ready, result.eligible);
+		if (options.mode === 'finalize') finalize(cwd, repo, ready, outcomes);
 	}
 
 	// The primary checkout is untouchable — nothing above ran `git checkout` in
@@ -245,12 +264,21 @@ async function main(): Promise<void> {
 
 	if (options.mode === 'prepare') {
 		console.error(
-			`\nprepared — nothing pushed, no containers started. Primary checkout untouched, still on ${startedOn}.`
+			`\nprepared — nothing on origin, no containers started. Primary checkout untouched, still on ${startedOn}.`
 		);
 		return;
 	}
 
-	console.error(`\nPrimary checkout untouched, still on ${startedOn}. Nothing was pushed and no PR was opened.`);
+	if (options.mode === 'finalize') {
+		console.error(
+			`\nPrimary checkout untouched, still on ${startedOn}. Nothing was merged into ${BASE_BRANCH} — a human does that.`
+		);
+		return;
+	}
+
+	console.error(
+		`\nPrimary checkout untouched, still on ${startedOn}. Nothing reached origin and no PR was opened.`
+	);
 }
 
 /**
@@ -258,10 +286,14 @@ async function main(): Promise<void> {
  * container costs roughly a gigabyte, and a batch large enough to matter would
  * otherwise put the host into swap.
  */
-async function implement(cwd: string, items: readonly PlanItem[], eligible: readonly Candidate[]): Promise<void> {
+async function implement(
+	cwd: string,
+	items: readonly PlanItem[],
+	eligible: readonly Candidate[]
+): Promise<ImplementOutcome[]> {
 	if (items.length === 0) {
 		console.error('\nnothing to implement — no item reached a correct starting point.');
-		return;
+		return [];
 	}
 
 	const bodies = new Map(eligible.map((candidate) => [candidate.number, candidate.body]));
@@ -280,6 +312,44 @@ async function implement(cwd: string, items: readonly PlanItem[], eligible: read
 	// A batch where nothing landed is a failed run, not a quiet success — the
 	// operator came back to commits or they did not.
 	if (done.length === 0) process.exitCode = 1;
+
+	return outcomes;
+}
+
+/**
+ * Finalize the gate-green items: branch to origin, PR into the base, issue
+ * handed back. Deterministic code — no agent is involved, and nothing here
+ * merges anything.
+ */
+function finalize(
+	cwd: string,
+	repo: string,
+	items: readonly PlanItem[],
+	outcomes: readonly ImplementOutcome[]
+): void {
+	const finalizable = itemsToFinalize(items, outcomes);
+
+	if (finalizable.length === 0) {
+		console.error('\nnothing to finalize — no item came out of the gate green.');
+		return;
+	}
+
+	console.log(`\nFinalizing ${finalizable.length} of ${outcomes.length} item(s):`);
+	const deps = realFinalizeDeps(cwd, repo, (message) => console.log(`  ${message}`));
+	const results = finalizeBatch(deps, finalizable);
+
+	console.log(`\nHandoff:\n${renderFinalizeOutcomes(results)}`);
+
+	const opened = results.filter((result) => result.status === 'pr-opened');
+	const failed = results.filter(isFailure);
+	console.log(`\n${opened.length} PR(s) opened, waiting for a human. Nothing was merged.`);
+
+	// Loud: a refused update to origin, or a PR nobody was told about, is a
+	// failed run even though the batch carried on past it.
+	if (failed.length > 0) {
+		console.error(`\nerror: ${failed.length} item(s) did not finish — see the handoff above.`);
+		process.exitCode = 1;
+	}
 }
 
 await main();

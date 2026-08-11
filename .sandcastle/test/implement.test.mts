@@ -236,21 +236,37 @@ describe('the budget the ticket set', () => {
 	});
 });
 
-describe('nothing in this code path pushes or opens a PR', () => {
-	it('has no gh pr write command anywhere in the harness', () => {
+describe('nothing outside finalize opens a PR, and finalize only ever opens one', () => {
+	function harnessSources(): { name: string; path: string }[] {
 		const libDir = fileURLToPath(new URL('../lib/', import.meta.url));
-		const sources = [
+		return [
 			...readdirSync(libDir)
 				.filter((name) => name.endsWith('.mts'))
 				.map((name) => ({ name: `lib/${name}`, path: join(libDir, name) })),
 			{ name: 'run.mts', path: fileURLToPath(new URL('../run.mts', import.meta.url)) },
 		];
+	}
 
-		const offenders = sources
-			.filter((source) => /['"`]pr['"`]\s*,\s*['"`](create|merge|edit|close|ready)['"`]/.test(readFileSync(source.path, 'utf8')))
+	it('has no gh pr write command outside lib/finalize.mts', () => {
+		const offenders = harnessSources()
+			.filter((source) => source.name !== 'lib/finalize.mts')
+			.filter((source) =>
+				/['"`]pr['"`]\s*,\s*['"`](create|merge|edit|close|ready)['"`]/.test(readFileSync(source.path, 'utf8'))
+			)
 			.map((source) => source.name);
 
 		assert.deepEqual(offenders, [], `PRs are the finalize phase's business; found in ${offenders.join(', ')}`);
+	});
+
+	it('never merges, closes or undrafts a PR, finalize included', () => {
+		// `pr create` is the harness's whole PR vocabulary. A merge from here
+		// would put code on main without a human, which is the one thing the
+		// design forbids outright.
+		const offenders = harnessSources()
+			.filter((source) => /['"`]pr['"`]\s*,\s*['"`](merge|close|ready)['"`]/.test(readFileSync(source.path, 'utf8')))
+			.map((source) => source.name);
+
+		assert.deepEqual(offenders, [], `only a human merges; found in ${offenders.join(', ')}`);
 	});
 });
 
