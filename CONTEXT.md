@@ -114,3 +114,29 @@ _Avoid_: Loop, batch, iterate
 A network with more sites than can be swept within one request, per core's
 `wp_is_large_network()`. Sweeps decline rather than truncate, and the operator is
 told to act per-site instead.
+
+### Composition and hooks
+
+**Composition root**:
+The one place that decides which of this plugin's objects exist, in what order,
+and when they register their hooks — `NextJsRevalidate::__construct()`. Nothing
+else constructs a long-lived object.
+_Avoid_: Bootstrap, container, plugin init — `init()` is the static accessor that
+returns the already-built root, not the thing that builds it.
+
+**Hook registration**:
+Attaching a class's callbacks to WordPress actions and filters. A separate act
+from constructing that class, performed once, by the composition root. The order
+is load-bearing: WordPress runs same-hook, same-priority callbacks in
+registration order, and ten of this plugin's callbacks sit on `admin_init` at
+priority 10.
+_Avoid_: Wiring, binding, hooking up
+
+**Hookable**:
+A class that registers WordPress hooks, declaring so by implementing the
+interface of that name. Constructing one has no effect on global state;
+`register_hooks()` is the only thing that does. Every class the composition root
+constructs is Hookable, and a Hookable is always safe to construct for a single
+method call.
+_Avoid_: Listener, subscriber, observer — all imply a dispatcher this plugin does
+not have.
