@@ -29,6 +29,13 @@ _Avoid_: Job list, backlog
 A revalidation registered to happen at a future time rather than immediately,
 used for content with a publication or expiry date.
 
+**Failure**:
+A revalidation that was enqueued, attempted against the front-end, and did not
+succeed. Recorded and dropped rather than retried: delivery is at most once, so a
+failure is the end of that revalidation's life. Distinct from a **refusal**,
+which is declined before it ever enters the queue.
+_Avoid_: Error, rejected, unsuccessful purge
+
 ### Settings
 
 **Setting**:
