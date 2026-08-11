@@ -11,6 +11,7 @@
     "dry-run": "node run.mts --dry-run",
     "plan": "node run.mts --plan",
     "prepare-branches": "node run.mts --prepare",
+    "implement": "node run.mts --implement",
     "test": "node --test 'test/**/*.test.mts'",
     "typecheck": "tsc --noEmit"
   },

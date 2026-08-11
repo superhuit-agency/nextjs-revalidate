@@ -1,7 +1,16 @@
 # Sandbox image for the AFK agent harness.
 #
 # Carries the two runtimes `scripts/gate.sh` needs: Node — whichever version
-# the plugin is pinned to — and PHP 7.4 for the gate's `php -l` step.
+# the plugin is pinned to — and PHP 7.4 for the gate's `php -l` step. On top of
+# those it carries the Claude Code CLI, which is what sandcastle invokes inside
+# the container, and an `agent` user whose UID/GID match the host's so the
+# bind-mounted worktree needs no runtime chown.
+#
+# What is deliberately NOT here: `gh`, and any credential for it. The implement
+# phase never pushes and never opens a PR — an agent that cannot reach GitHub
+# cannot do either by accident. Auth to Claude arrives as an environment
+# variable at `docker run` time, from the gitignored `.sandcastle/.env`; nothing
+# secret is baked into the image.
 #
 # The Node version is deliberately NOT written here. It arrives as a build
 # argument that `build.sh` reads from `.nvmrc`, so the image tracks the pin
@@ -53,7 +62,37 @@ RUN set -eux; \
 	node --version; \
 	npm --version
 
-# Where the harness mounts the work branch's checkout.
-WORKDIR /workspace
+# --- the agent user --------------------------------------------------------
+#
+# sandcastle's docker provider runs the container as `--user <uid>:<gid>` and
+# refuses to start when the image's own UID differs, so the UID has to be baked
+# in at build time. `build.sh` defaults these to the host user's, which is also
+# what makes the bind-mounted worktree writable without a chown.
+#
+# The base image already has a `node` user; renaming it is cheaper than adding
+# another, and `-o` allows a GID that is already taken (macOS `staff` is 20,
+# which is `dialout` on Debian).
+ARG AGENT_UID=1000
+ARG AGENT_GID=1000
+RUN set -eux; \
+	groupmod -o -g "${AGENT_GID}" node; \
+	usermod -o -u "${AGENT_UID}" -g "${AGENT_GID}" -d /home/agent -m -l agent node
 
-CMD ["bash"]
+USER ${AGENT_UID}:${AGENT_GID}
+ENV HOME=/home/agent
+WORKDIR /home/agent
+
+# Claude Code, installed as the agent user so it lands in the home directory the
+# container actually runs with. Installed last: it is the layer that changes
+# most often, and everything above it is worth caching.
+RUN curl -fsSL https://claude.ai/install.sh | bash
+ENV PATH=/home/agent/.local/bin:$PATH
+RUN claude --version
+
+# sandcastle bind-mounts the work branch's worktree at /home/agent/workspace and
+# overrides the working directory to it at container start. Nothing is copied in
+# at build time, so ordinary code changes need no rebuild.
+#
+# The container is started with no command — it has to stay alive for sandcastle
+# to exec into, which is what this entrypoint is for.
+ENTRYPOINT ["sleep", "infinity"]

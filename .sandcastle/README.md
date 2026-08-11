@@ -6,6 +6,20 @@ isolated container and opens a PR into `main`. It **never** merges into
 
 Design and invariants live in issue #33.
 
+## Quick start
+
+```sh
+npm --prefix .sandcastle install         # once
+cp .sandcastle/.env.example .sandcastle/.env   # then fill in one key — see "Container auth"
+.sandcastle/sandbox/build.sh             # once, and after a .nvmrc change
+
+node .sandcastle/run.mts --dry-run                  # what would be worked
+node .sandcastle/run.mts --implement --issue 35     # work one issue for real
+```
+
+`--implement` leaves commits on `sandcastle/issue-35` and nothing else: no
+push, no PR, and your own checkout untouched on whatever branch it was on.
+
 ## Why this is a separate package
 
 `@ai-hero/sandcastle` is **not** a root dependency. It gets its own
@@ -32,11 +46,52 @@ npm --prefix .sandcastle install
 
 This does not touch the root `package-lock.json`.
 
+## Container auth to Claude
+
+**An environment variable out of the gitignored `.sandcastle/.env`. Host
+credentials are not mounted.** This was the spec's one open item; what
+sandcastle 0.12.0 supports settles it.
+
+Its env resolver reads `.sandcastle/.env` and, for every key *named there*,
+takes the file's value or falls back to `process.env`. So:
+
+- a key the file does not name never reaches the container, however loudly
+  your shell exports it — the harness checks this on the host and refuses the
+  run rather than letting it fail three layers down;
+- a key named with an empty value means "take it from the shell running the
+  harness", which is the way to keep the secret out of any file at all.
+
+There is no credential-mount path. `docker({ mounts })` would take an
+arbitrary host directory, but on macOS Claude Code keeps subscription
+credentials in the login Keychain — there is no file to mount.
+`claude setup-token` turns the same subscription into a long-lived token,
+which *is* just a string, and that is what the container gets.
+
+```sh
+cp .sandcastle/.env.example .sandcastle/.env
+claude setup-token          # paste the result into CLAUDE_CODE_OAUTH_TOKEN
+```
+
+Either key works, `CLAUDE_CODE_OAUTH_TOKEN` first:
+
+| Key | Bills |
+| --- | --- |
+| `CLAUDE_CODE_OAUTH_TOKEN` | the operator's Claude subscription |
+| `ANTHROPIC_API_KEY` | the API account |
+
+Nothing secret is baked into the image; the value arrives as a
+`docker run -e` when the container starts. `.sandcastle/.env` is gitignored
+and is the only place a secret lives — `.env.example` is the tracked template.
+
 ## Sandbox image
 
-The image implementers run inside. It carries two runtimes: Node — whichever
-version `.nvmrc` pins — and PHP 7.4, which is what `scripts/gate.sh` lints
-against.
+The image implementers run inside. It carries three things: Node — whichever
+version `.nvmrc` pins — PHP 7.4, which is what `scripts/gate.sh` lints
+against, and the Claude Code CLI, which is what sandcastle invokes.
+
+What it deliberately does **not** carry is `gh`, or any credential for it. The
+implement phase never pushes and never opens a PR, and an agent that cannot
+reach GitHub cannot do either by accident.
 
 ```sh
 .sandcastle/sandbox/build.sh
@@ -45,6 +100,12 @@ against.
 Tags `nextjs-revalidate-sandbox:node<version>` and
 `nextjs-revalidate-sandbox:latest`. Extra arguments pass through to
 `docker build` (`--no-cache`, …); `IMAGE_NAME` overrides the name.
+
+**The image is built for one host user.** sandcastle runs the container as
+your UID/GID and refuses an image built with a different one, so `build.sh`
+bakes in `id -u` / `id -g` (overridable as `AGENT_UID` / `AGENT_GID`). That is
+also what makes the bind-mounted worktree writable with no runtime `chown`.
+An image is not shareable between operators with different UIDs — rebuild.
 
 **The Node version is not in the Dockerfile.** `build.sh` reads it from
 `.nvmrc` and passes it as `NODE_VERSION`. So a Node bump lands as an ordinary
@@ -66,29 +127,40 @@ time — so ordinary code changes need no rebuild.
 To run the gate in it by hand, exactly as the harness will:
 
 ```sh
-docker run --rm -v "$PWD":/workspace -w /workspace \
-  nextjs-revalidate-sandbox:latest ./scripts/gate.sh
+docker run --rm -v "$PWD":/home/agent/workspace -w /home/agent/workspace \
+  --entrypoint ./scripts/gate.sh nextjs-revalidate-sandbox:latest
 ```
+
+`--entrypoint` is not optional: the image's entrypoint is `sleep infinity`, so
+that the container stays alive for sandcastle to `docker exec` into. A command
+appended the usual way would become an argument to `sleep` instead of running.
 
 Note this installs Linux `node_modules` over your host tree; run it on a
 throwaway clone if that matters.
 
 ## Modes
 
-Three, each one step further than the last. None of them starts a container,
-and none of them pushes.
+Four, each one step further than the last. **None of them pushes, and none
+opens a PR** — that is the finalize phase (#44).
 
 ```sh
-node .sandcastle/run.mts --dry-run    # the batch it would work
-node .sandcastle/run.mts --plan       # + the plan, validated
-node .sandcastle/run.mts --prepare    # + each work branch made current
+node .sandcastle/run.mts --dry-run     # the batch it would work
+node .sandcastle/run.mts --plan        # + the plan, validated
+node .sandcastle/run.mts --prepare     # + each work branch made current
+node .sandcastle/run.mts --implement   # + implementers in containers, gated
 node .sandcastle/run.mts --plan --json
+node .sandcastle/run.mts --implement --issue 35    # one issue only; repeatable
 ```
 
 `--dry-run` and `--plan` are read-only. `--prepare` is the first mode that
-writes anything, and what it writes is *local branches only*. Running with no
-mode is an error — the execute path lands with the implement phase (#43) — so
-an operator can never think a real pass has happened.
+writes anything, and what it writes is *local branches only*. `--implement` is
+the first that starts a container and the first that writes code. Running with
+no mode is an error, so an operator can never think a real pass has happened.
+
+`--issue N` restricts the batch to the issues you name. A number that is not
+in the planned batch is fatal rather than a warning: pointing the harness at
+one issue and getting a silent no-op reads as "the run happened and did
+nothing".
 
 ## What the dry run selects
 
@@ -152,6 +224,66 @@ force-push to land, and that destroys an open PR's review comments.
 carrying unpushed commits — a blind `git branch -f <b> origin/<b>` silently
 discards squash-merges from earlier cycles.
 
+## The implement phase
+
+One item, one sandbox. sandcastle cuts a worktree on the item's work branch,
+bind-mounts it into the image and runs an implementer against the issue.
+Commits land on the local work branch and stop there.
+
+An item whose freshness step was **skipped** — a rebase or merge that
+conflicted — is not implemented. Its branch was left exactly as found, so it
+is not at a correct starting point, and building on it would build on a stale
+base.
+
+Budget, all of it in `lib/config.mts`:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| concurrency | 3 | ~1 GB per container against 11.67 GiB; a realistic batch is 2–4 items |
+| `maxIterations` | 30 | agent invocations before the harness gives up on an item |
+| `idleTimeoutSeconds` | 600 | silence from the agent before its iteration fails |
+| model | Opus 5 | see below |
+
+With a syntax-only gate and no PR CI, implementer judgement is the only real
+quality control this pipeline has, and the backlog is small enough that the
+cost of the strongest model is bounded. Downgrading it does not make the gate
+any stricter.
+
+### The gate is the arbiter, and the harness runs it
+
+The agent is told to run `scripts/gate.sh` before signalling completion, but
+that is the agent's self-check. What decides an item is done is
+`sandbox.exec()` — the harness running the same gate itself, in the same
+container, after the agent has stopped. An agent that signals completion over
+a red gate produces a `gate-failed` item, and the outcome says so in as many
+words.
+
+Because the gate is tracked in the repo rather than in a gitignored directory,
+the freshness rule keeps every work branch's copy current and nothing needs
+seeding into the worktree. **That premise has a precondition: the gate has to
+be on the base branch.** A work branch cut from a `main` that does not carry
+`scripts/gate.sh` cannot be gated at all, so the harness probes for it before
+running it and reports `gate-missing` — no verdict exists, and it is the
+setup's fault rather than the implementer's. Calling that a failed gate would
+blame the agent for it.
+
+Five outcomes per item:
+
+| Outcome | Meaning |
+| --- | --- |
+| `implemented` | commits on the branch, gate green |
+| `gate-failed` | commits on the branch, gate red — left for the next cycle or a human |
+| `gate-missing` | the gate is not on this branch; nothing was gated. Land it on the base first |
+| `no-commits` | the agent wrote nothing; a green gate on an untouched tree proves nothing |
+| `error` | the sandbox or the run failed; the batch carried on without it |
+
+A batch where nothing reached `implemented` exits non-zero. One bad item never
+takes the batch down: a failure becomes an outcome, and the sandbox is torn
+down on every path — a leaked container would hold the work branch checked out
+and block the next pass's freshness step.
+
+Per-item logs land in `.sandcastle/logs/issue-<n>.log` (gitignored).
+
 ## The push chokepoint
 
 There is no branch protection on this repo and there will not be: the harness
@@ -168,8 +300,9 @@ out to `git push`. Agents never invoke `git push` or `gh pr` at all.
 The harness never runs `git checkout` in it. Pushing a branch and opening a PR
 both work without checking out; anything that genuinely needs a working tree
 gets its own worktree under `.sandcastle/worktrees/` (gitignored, removed after
-use). `--prepare` verifies this at the end of the run and exits non-zero if the
-checkout moved or its working tree changed.
+use) — including the worktrees sandcastle itself mounts into the containers.
+`--prepare` and `--implement` both verify this at the end of the run and exit
+non-zero if the checkout moved or its working tree changed.
 
 ## Test and typecheck
 
@@ -182,7 +315,12 @@ The tests build real scratch repositories with a real `origin` in `$TMPDIR` —
 the freshness rules are entirely about what git does to real refs, and a mocked
 git would prove nothing. They touch neither this repo nor the network.
 
+The implement phase takes its sandbox from an injected dependency, so its tests
+put a fake one in front of it and assert the thing that matters — that the
+gate's verdict decides, not the agent's claim — with no container, no network
+and no API key.
+
 ## Untracked paths
 
 `logs/`, `worktrees/`, `node_modules/` and `.env` — see `.sandcastle/.gitignore`.
-Everything else here is tracked.
+Everything else here is tracked, `.env.example` included.

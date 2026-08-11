@@ -1,0 +1,264 @@
+/**
+ * The implement phase, exercised without a container.
+ *
+ * `implementItem()` takes its sandbox from a dependency, so these tests can put
+ * a fake one in front of it and assert on the thing that actually matters: that
+ * the *gate's* verdict decides an item is done, not the agent's claim.
+ */
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, it } from 'node:test';
+import { COMPLETION_SIGNAL, CONCURRENCY, IDLE_TIMEOUT_SECONDS, IMPLEMENTER_MODEL, MAX_ITERATIONS } from '../lib/config.mts';
+import { classifyRun, implementItem, pool, promptArgsFor, tailOf } from '../lib/implement.mts';
+import type { ImplementDeps, SandboxSeam } from '../lib/implement.mts';
+import type { PlanItem } from '../lib/plan.mts';
+
+const ITEM: PlanItem = {
+	issue: 7,
+	title: 'Do the thing',
+	role: 'standalone',
+	workBranch: 'sandcastle/issue-7',
+	mergeInto: null,
+	base: 'main',
+};
+
+type FakeOptions = {
+	commits?: number;
+	signalled?: boolean;
+	gateExitCode?: number;
+	/** The gate script is absent from the branch, so the probe fails. */
+	gateAbsent?: boolean;
+	runThrows?: string;
+};
+
+type Recorded = {
+	runOptions: Parameters<SandboxSeam['run']>[0][];
+	execCommands: string[];
+	closed: number;
+};
+
+function fakeDeps(options: FakeOptions = {}): { deps: ImplementDeps; recorded: Recorded } {
+	const recorded: Recorded = { runOptions: [], execCommands: [], closed: 0 };
+
+	const deps: ImplementDeps = {
+		repoRoot: '/repo',
+		agent: { name: 'fake' },
+		promptFile: '/repo/.sandcastle/prompts/implement.md',
+		log: () => {},
+		createSandbox: async ({ branch }) => ({
+			branch,
+			async run(runOptions) {
+				recorded.runOptions.push(runOptions);
+				if (options.runThrows) throw new Error(options.runThrows);
+				const commits = options.commits ?? 1;
+				return {
+					commits: Array.from({ length: commits }, (_, index) => ({ sha: `sha${index}` })),
+					iterations: [{}],
+					...(options.signalled === false ? {} : { completionSignal: COMPLETION_SIGNAL }),
+					logFilePath: '/repo/.sandcastle/logs/issue-7.log',
+				};
+			},
+			async exec(command) {
+				recorded.execCommands.push(command);
+				// A real shell answers the probe and the gate itself separately.
+				if (command.startsWith('test -x')) {
+					return { stdout: '', stderr: '', exitCode: options.gateAbsent ? 1 : 0 };
+				}
+				const exitCode = options.gateExitCode ?? 0;
+				return { stdout: exitCode === 0 ? '==> Gate passed' : 'tsc error', stderr: '', exitCode };
+			},
+			async close() {
+				recorded.closed += 1;
+				return {};
+			},
+		}),
+	};
+
+	return { deps, recorded };
+}
+
+describe('the gate is the arbiter', () => {
+	it('runs the gate itself, in the sandbox, after the agent has stopped', async () => {
+		const { deps, recorded } = fakeDeps();
+
+		const outcome = await implementItem(deps, ITEM, 'body');
+
+		assert.deepEqual(recorded.execCommands, ['test -x ./scripts/gate.sh', './scripts/gate.sh']);
+		assert.equal(outcome.status, 'implemented');
+		assert.equal(outcome.gate?.passed, true);
+	});
+
+	it('reports an absent gate as missing rather than failed, and never runs it', async () => {
+		// The case a real run hit: a work branch cut from a base that does not
+		// carry scripts/gate.sh yet. There is no verdict, and it is not the
+		// implementer's fault — calling it `gate-failed` would say it was.
+		const { deps, recorded } = fakeDeps({ gateAbsent: true });
+
+		const outcome = await implementItem(deps, ITEM, 'body');
+
+		assert.equal(outcome.status, 'gate-missing');
+		assert.equal(outcome.gate?.missing, true);
+		assert.deepEqual(recorded.execCommands, ['test -x ./scripts/gate.sh'], 'no point running what is not there');
+	});
+
+	it('overrules an agent that signalled completion over a red gate', async () => {
+		const { deps } = fakeDeps({ gateExitCode: 1, signalled: true });
+
+		const outcome = await implementItem(deps, ITEM, 'body');
+
+		assert.equal(outcome.signalled, true, 'the agent did claim to be done');
+		assert.equal(outcome.status, 'gate-failed');
+		assert.equal(outcome.gate?.exitCode, 1);
+	});
+
+	it('calls an item with no commits unworked, however green the gate', () => {
+		assert.equal(classifyRun(0, { passed: true, exitCode: 0, tail: '', missing: false }), 'no-commits');
+		assert.equal(classifyRun(1, { passed: true, exitCode: 0, tail: '', missing: false }), 'implemented');
+		assert.equal(classifyRun(1, { passed: false, exitCode: 2, tail: '', missing: false }), 'gate-failed');
+	});
+
+	it('lets a missing gate outrank every other reading of the run', () => {
+		const absent = { passed: false, exitCode: 1, tail: '', missing: true };
+
+		assert.equal(classifyRun(0, absent), 'gate-missing');
+		assert.equal(classifyRun(5, absent), 'gate-missing');
+	});
+});
+
+describe('implementItem — one bad item never takes the batch down', () => {
+	it('turns a failure into an outcome instead of throwing', async () => {
+		const { deps } = fakeDeps({ runThrows: 'container died' });
+
+		const outcome = await implementItem(deps, ITEM, 'body');
+
+		assert.equal(outcome.status, 'error');
+		assert.match(outcome.error ?? '', /container died/);
+	});
+
+	it('tears the sandbox down on the failure path too', async () => {
+		const { deps, recorded } = fakeDeps({ runThrows: 'container died' });
+
+		await implementItem(deps, ITEM, 'body');
+
+		assert.equal(recorded.closed, 1, 'a leaked container holds the work branch checked out');
+	});
+
+	it('runs the agent with the budget the ticket set', async () => {
+		const { deps, recorded } = fakeDeps();
+
+		await implementItem(deps, ITEM, 'body');
+
+		const [runOptions] = recorded.runOptions;
+		assert.equal(runOptions?.maxIterations, MAX_ITERATIONS);
+		assert.equal(runOptions?.idleTimeoutSeconds, IDLE_TIMEOUT_SECONDS);
+		assert.equal(runOptions?.completionSignal, COMPLETION_SIGNAL);
+	});
+});
+
+describe('promptArgsFor', () => {
+	it('carries the issue and the branch the agent is on', () => {
+		const args = promptArgsFor(ITEM, '  Body text  ');
+
+		assert.equal(args.ISSUE_NUMBER, '7');
+		assert.equal(args.ISSUE_TITLE, 'Do the thing');
+		assert.equal(args.ISSUE_BODY, 'Body text');
+		assert.equal(args.WORK_BRANCH, 'sandcastle/issue-7');
+		assert.equal(args.BASE, 'main');
+	});
+
+	it('says so rather than passing an empty body', () => {
+		assert.equal(promptArgsFor(ITEM, '   ').ISSUE_BODY, '(the issue has no body)');
+	});
+
+	it('supplies every placeholder the prompt template references', () => {
+		const template = readFileSync(fileURLToPath(new URL('../prompts/implement.md', import.meta.url)), 'utf8');
+		const referenced = new Set([...template.matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)].map((match) => match[1]));
+		const supplied = new Set(Object.keys(promptArgsFor(ITEM, 'body')));
+
+		const missing = [...referenced].filter((key) => key !== undefined && !supplied.has(key));
+		assert.deepEqual(missing, [], 'sandcastle fails the run on an unsubstituted placeholder');
+	});
+
+	it('is the completion signal the prompt asks the agent to emit', () => {
+		const template = readFileSync(fileURLToPath(new URL('../prompts/implement.md', import.meta.url)), 'utf8');
+		assert.ok(template.includes(COMPLETION_SIGNAL), `prompt must ask for ${COMPLETION_SIGNAL}`);
+	});
+
+	it('tells the agent not to push and not to open a PR', () => {
+		const template = readFileSync(fileURLToPath(new URL('../prompts/implement.md', import.meta.url)), 'utf8');
+		assert.match(template, /never `git push`/i);
+		assert.match(template, /never open a pull request/i);
+	});
+});
+
+describe('pool', () => {
+	it('never has more than the limit in flight', async () => {
+		let inFlight = 0;
+		let peak = 0;
+
+		await pool(Array.from({ length: 9 }, (_, index) => index), 3, async (item) => {
+			inFlight += 1;
+			peak = Math.max(peak, inFlight);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			inFlight -= 1;
+			return item;
+		});
+
+		assert.equal(peak, 3);
+	});
+
+	it('returns results in input order regardless of completion order', async () => {
+		const results = await pool([30, 10, 20], 3, async (item) => {
+			await new Promise((resolve) => setTimeout(resolve, item));
+			return item;
+		});
+
+		assert.deepEqual(results, [30, 10, 20]);
+	});
+
+	it('handles a batch smaller than the limit', async () => {
+		assert.deepEqual(await pool([1], 3, async (item) => item * 2), [2]);
+	});
+
+	it('refuses a limit below one rather than hanging', async () => {
+		await assert.rejects(() => pool([1], 0, async (item) => item), /at least 1/);
+	});
+});
+
+describe('the budget the ticket set', () => {
+	it('is three containers, 30 iterations, a 600s idle timeout and Opus 5', () => {
+		assert.equal(CONCURRENCY, 3);
+		assert.equal(MAX_ITERATIONS, 30);
+		assert.equal(IDLE_TIMEOUT_SECONDS, 600);
+		assert.equal(IMPLEMENTER_MODEL, 'claude-opus-5');
+	});
+});
+
+describe('nothing in this code path pushes or opens a PR', () => {
+	it('has no gh pr write command anywhere in the harness', () => {
+		const libDir = fileURLToPath(new URL('../lib/', import.meta.url));
+		const sources = [
+			...readdirSync(libDir)
+				.filter((name) => name.endsWith('.mts'))
+				.map((name) => ({ name: `lib/${name}`, path: join(libDir, name) })),
+			{ name: 'run.mts', path: fileURLToPath(new URL('../run.mts', import.meta.url)) },
+		];
+
+		const offenders = sources
+			.filter((source) => /['"`]pr['"`]\s*,\s*['"`](create|merge|edit|close|ready)['"`]/.test(readFileSync(source.path, 'utf8')))
+			.map((source) => source.name);
+
+		assert.deepEqual(offenders, [], `PRs are the finalize phase's business; found in ${offenders.join(', ')}`);
+	});
+});
+
+describe('tailOf', () => {
+	it('keeps the last lines, which is where a gate failure says why', () => {
+		const output = Array.from({ length: 100 }, (_, index) => `line ${index}`).join('\n');
+		const tail = tailOf(output, 3);
+
+		assert.deepEqual(tail.split('\n'), ['line 97', 'line 98', 'line 99']);
+	});
+});

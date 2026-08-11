@@ -11,9 +11,16 @@
 #
 # Any extra arguments are passed through to `docker build`.
 #
+# The image is also built for *this host user*: sandcastle runs the container as
+# the host's UID/GID and refuses an image built with a different one, so the UID
+# is a build argument too. An image built by one operator is therefore not
+# reusable by another with a different UID — rebuild rather than share.
+#
 # Environment:
 #   IMAGE_NAME  image name to tag (default: nextjs-revalidate-sandbox)
 #   DOCKER_BIN  container CLI to use (default: docker)
+#   AGENT_UID   UID baked into the image (default: the host user's)
+#   AGENT_GID   GID baked into the image (default: the host user's)
 
 set -euo pipefail
 
@@ -22,6 +29,8 @@ REPO_ROOT="$(cd "$SANDBOX_DIR/../.." && pwd)"
 
 IMAGE_NAME="${IMAGE_NAME:-nextjs-revalidate-sandbox}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
+AGENT_UID="${AGENT_UID:-$(id -u)}"
+AGENT_GID="${AGENT_GID:-$(id -g)}"
 
 die() { printf '\033[31merror: %s\033[0m\n' "$1" >&2; exit 1; }
 
@@ -40,12 +49,15 @@ esac
 
 # Tag both the version and `latest`: the version tag makes it obvious which
 # Node an image carries, `latest` is what the harness refers to.
-printf '\n\033[1m==> Building %s on Node %s\033[0m\n' "$IMAGE_NAME" "$node_version"
+printf '\n\033[1m==> Building %s on Node %s as %s:%s\033[0m\n' \
+	"$IMAGE_NAME" "$node_version" "$AGENT_UID" "$AGENT_GID"
 
 # The build context is this directory, not the repo: nothing is copied into the
 # image — the checkout is mounted at run time.
 "$DOCKER_BIN" build \
 	--build-arg "NODE_VERSION=$node_version" \
+	--build-arg "AGENT_UID=$AGENT_UID" \
+	--build-arg "AGENT_GID=$AGENT_GID" \
 	--tag "$IMAGE_NAME:node$node_version" \
 	--tag "$IMAGE_NAME:latest" \
 	"$@" \
