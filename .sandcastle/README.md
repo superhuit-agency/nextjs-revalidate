@@ -180,9 +180,13 @@ Start from open issues labelled `ready-for-agent`, then prune:
   back to a `Blocked by: #<n>` body line where dependencies are unavailable.
   A candidate is eligible only when every blocker is closed. An unresolvable
   blocker counts as open.
-- **already worked** — the *re-pick guard*: any PR on `sandcastle/issue-<n>`,
-  in any state including closed. This is load-bearing; it is what holds when
-  the label swap fails, so do not quietly weaken it.
+- **already worked** — the *re-pick guard*: any PR on the issue's own head, in
+  any state including closed. That head is `sandcastle/epic-<n>` for an issue
+  with sub-issues and `sandcastle/issue-<n>` otherwise; reading the wrong one
+  would leave the guard blind to every epic. This is load-bearing; it is what
+  holds when the label swap fails, so do not quietly weaken it. A **child**
+  never gets a PR, so the guard cannot hold for it — the merge phase closing
+  the issue is what keeps it from being re-picked.
 
 Parenthood is read while gathering and decides *where* the work lives, never
 whether it happens: native sub-issue links are canonical, a `Sub-issue of #N` /
@@ -211,9 +215,21 @@ half matters: `ready-for-agent` is per-issue and a parent need not carry it —
 still knowable and creatable from the parent's number alone. What the guard
 still refuses is a `mergeInto` no gathered issue justifies.
 
-Items are executed **epics first, then standalones, then children**. A child is
-cut from its epic branch, so the epic has to reach a correct starting point and
-land its own work before a child sits on top of it.
+Because the plan is built by deterministic code rather than by an agent, that
+check is a regression net: `planBatch` derives `mergeInto` from the same parent
+link `knownEpicBranches` reads, so it cannot disagree with itself. The half
+that *can* fire at runtime is later — once the epic branches have really been
+created, a child pointing at one that is not there aborts the run.
+
+Items are executed in **two waves**: everything that owns its own branch
+(epics, standalones) first, children second. The split is not cosmetic — a
+child's branch is cut *after* the first wave has committed, so it starts from
+an epic branch that already carries the epic's own work. Cutting every branch
+up front would put children on a stale base, which is the thing the freshness
+rules exist to prevent.
+
+The unknown-epic abort fires between the two: any child whose epic branch was
+not actually created aborts the **entire run**, per invariant 4.
 
 ## Epics and sub-issues
 

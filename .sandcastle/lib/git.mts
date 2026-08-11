@@ -129,10 +129,22 @@ export function ensureLocalBranch(cwd: string, branch: string): EnsureLocalBranc
  * without a remote.
  */
 export function pushArgs(branch: string): string[] {
-	if (!branch.startsWith(BRANCH_PREFIX)) {
-		throw new Error(`refusing to push ${branch}: only ${BRANCH_PREFIX}* branches may be pushed`);
-	}
+	assertWritableBranch(branch, 'push');
 	return ['push', '--set-upstream', 'origin', branch];
+}
+
+/**
+ * The prefix rule itself, in one place.
+ *
+ * `pushBranch()` is not quite the only way a ref reaches origin: GitHub's
+ * `createLinkedBranch` mutation creates one server-side, and it goes nowhere
+ * near git. That call carries the same rule (see `lib/epic.mts`), and it
+ * carries it by calling this — so the prefix can only ever be changed here.
+ */
+export function assertWritableBranch(branch: string, verb: string): void {
+	if (!branch.startsWith(BRANCH_PREFIX)) {
+		throw new Error(`refusing to ${verb} ${branch}: only ${BRANCH_PREFIX}* branches may be written to origin`);
+	}
 }
 
 /**

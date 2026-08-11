@@ -59,6 +59,15 @@ export type ImplementOutcome = {
 	error?: string;
 };
 
+/**
+ * The issues the gate left green. What "the harness may act on this" means,
+ * in one place: the merge phase and the finalize phase both start here, and
+ * they must not drift apart on it.
+ */
+export function greenIssues(outcomes: readonly ImplementOutcome[]): Set<number> {
+	return new Set(outcomes.filter((outcome) => outcome.status === 'implemented').map((outcome) => outcome.issue));
+}
+
 /** How many trailing lines of gate output an outcome carries. */
 const GATE_TAIL_LINES = 40;
 

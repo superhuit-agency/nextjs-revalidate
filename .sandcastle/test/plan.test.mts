@@ -148,14 +148,15 @@ describe('epicIssuesFor — which issues need an epic branch', () => {
 			item({ issue: 2, role: 'standalone' }),
 			item({ issue: 3, role: 'child', mergeInto: 'sandcastle/epic-9', base: 'sandcastle/epic-9' }),
 		];
+		const result = gathered([candidate({ number: 1, children: [3] }), candidate({ number: 2 }), candidate({ number: 3, parent: 9 })]);
 
 		// #9 is not in the batch — a parent need not carry ready-for-agent —
 		// and its branch still has to exist for #3 to be cut from.
-		assert.deepEqual(epicIssuesFor(items, (issue) => (issue === 3 ? 9 : null)), [1, 9]);
+		assert.deepEqual(epicIssuesFor(items, result), [1, 9]);
 	});
 
 	it('is empty for a batch of standalones', () => {
-		assert.deepEqual(epicIssuesFor([item({ issue: 2 })], () => null), []);
+		assert.deepEqual(epicIssuesFor([item({ issue: 2 })], gathered([candidate({ number: 2 })])), []);
 	});
 });
 

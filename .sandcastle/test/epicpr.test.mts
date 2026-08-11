@@ -14,6 +14,7 @@ import {
 	epicPrBody,
 	fallbackNarrative,
 	narrativeArgs,
+	realBodyFor,
 	stripClosingKeywords,
 	writeEpicNarrative,
 } from '../lib/epicpr.mts';
@@ -138,6 +139,25 @@ describe('epicNarrativePrompt', () => {
 describe('fallbackNarrative', () => {
 	it('says what it is, so a reviewer is not left thinking an agent wrote it', () => {
 		assert.match(fallbackNarrative(EPIC, CONTEXT), /the agent that writes epic PR bodies was unavailable/i);
+	});
+});
+
+describe('realBodyFor — which body an item gets', () => {
+	it('gives a standalone the deterministic body without asking any agent', () => {
+		let asked = false;
+		const body = realBodyFor({
+			cwd: process.cwd(),
+			log: () => {},
+			standalone: (item) => `standalone body for #${item.issue}`,
+			issueBody: () => {
+				asked = true;
+				return '';
+			},
+			mergedInto: () => [],
+		});
+
+		assert.equal(body({ ...EPIC, issue: 7, role: 'standalone', workBranch: 'sandcastle/issue-7' }), 'standalone body for #7');
+		assert.equal(asked, false, 'nothing about an epic is read for a standalone');
 	});
 });
 

@@ -20,6 +20,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { PR_BODY_MODEL, PR_BODY_TIMEOUT_MS } from './config.mts';
+import { messageOf } from './errors.mts';
 import { git } from './git.mts';
 import type { PlanItem } from './plan.mts';
 
@@ -143,7 +144,7 @@ export function writeEpicNarrative(deps: NarrativeDeps, item: PlanItem, context:
 		}
 		return written;
 	} catch (error) {
-		deps.log(`#${item.issue}: the PR-body agent failed (${(error as Error).message}); using the deterministic body`);
+		deps.log(`#${item.issue}: the PR-body agent failed (${messageOf(error)}); using the deterministic body`);
 		return fallbackNarrative(item, context);
 	}
 }
@@ -163,6 +164,39 @@ export function readEpicContext(
 		commits: log.split('\n').filter((subject) => subject.trim().length > 0),
 		merged,
 		issueBody,
+	};
+}
+
+/**
+ * The PR body for any item: deterministic for a standalone, agent-written for
+ * an epic. This is the factory the finalize phase takes its `body` seam from —
+ * assembling it lives here with the rest of the epic-body machinery rather
+ * than in the CLI, the same way every other phase keeps its own wiring.
+ */
+export type BodySources = {
+	cwd: string;
+	/** Sub-issues whose work reached this epic branch this pass, with titles. */
+	mergedInto: (branch: string) => EpicContext['merged'];
+	/** The epic issue's own body — what it asked for. */
+	issueBody: (issue: number) => string;
+	/** The body for anything that is not an epic. */
+	standalone: (item: PlanItem) => string;
+	log: (message: string) => void;
+};
+
+export function realBodyFor(sources: BodySources): (item: PlanItem) => string {
+	const deps = realNarrativeDeps(sources.log);
+
+	return (item) => {
+		if (item.role !== 'epic') return sources.standalone(item);
+
+		const context = readEpicContext(
+			sources.cwd,
+			item,
+			sources.issueBody(item.issue),
+			sources.mergedInto(item.workBranch)
+		);
+		return epicPrBody(item, writeEpicNarrative(deps, item, context));
 	};
 }
 

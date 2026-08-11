@@ -22,6 +22,7 @@
  *   as far as a child's code ever gets on its own. The closing comment names
  *   the branch, so the trail from a closed child to the PR is one hop.
  */
+import { messageOf } from './errors.mts';
 import { git, gitTry, pushBranch, withWorktree } from './git.mts';
 import { gh } from './gh.mts';
 import type { PlanItem } from './plan.mts';
@@ -52,10 +53,6 @@ export type MergeDeps = {
 	closeIssue: (issue: number, comment: string) => void;
 	log: (message: string) => void;
 };
-
-function messageOf(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
 
 /** The items a merge pass acts on: children the gate left green. */
 export function childrenToMerge(items: readonly PlanItem[], green: ReadonlySet<number>): PlanItem[] {

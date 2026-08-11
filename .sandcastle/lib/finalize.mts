@@ -30,19 +30,17 @@
  * would be enough.
  */
 import { HANDOFF_LABEL, READY_LABEL } from './config.mts';
+import { messageOf } from './errors.mts';
 import { findExistingPr } from './gather.mts';
 import type { ExistingPr } from './gather.mts';
 import { gh } from './gh.mts';
 import { pushBranch } from './git.mts';
+import { greenIssues } from './implement.mts';
 import type { ImplementOutcome } from './implement.mts';
 import type { PlanItem } from './plan.mts';
 
 /** A PR the harness just opened, as read back from `gh pr create`. */
 export type OpenedPr = { number: number; url: string };
-
-function messageOf(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * What happened to the issue after the PR was settled. Separate from the PR's
@@ -101,9 +99,7 @@ export type FinalizeDeps = {
  * has already taken it there. The epic's PR is the one that reaches `main`.
  */
 export function itemsToFinalize(items: readonly PlanItem[], outcomes: readonly ImplementOutcome[]): PlanItem[] {
-	const green = new Set(
-		outcomes.filter((outcome) => outcome.status === 'implemented').map((outcome) => outcome.issue)
-	);
+	const green = greenIssues(outcomes);
 	return items.filter((item) => item.role !== 'child' && green.has(item.issue));
 }
 

@@ -1,5 +1,5 @@
 import { ghJson, ghJsonTry } from './gh.mts';
-import { READY_LABEL, workBranchForIssue } from './config.mts';
+import { READY_LABEL, epicBranchForIssue, workBranchForIssue } from './config.mts';
 
 export type Blocker = {
 	number: number;
@@ -182,6 +182,20 @@ export function parentFromBody(body: string): number | null {
 }
 
 /**
+ * The branch an issue's work lives on, which is what the re-pick guard looks
+ * for a PR on. An epic's is its epic branch — that is the head its PR is
+ * opened from, and a guard reading `sandcastle/issue-<n>` for an epic would
+ * find nothing and re-pick a fully worked epic on every run.
+ *
+ * A child's is its own work branch, same as a standalone's. A child never gets
+ * a PR at all, so the guard cannot hold for it — the merge phase closing the
+ * issue is what keeps it from being re-picked.
+ */
+export function branchForCandidate(issueNumber: number, children: readonly number[]): string {
+	return children.length > 0 ? epicBranchForIssue(issueNumber) : workBranchForIssue(issueNumber);
+}
+
+/**
  * The re-pick guard. Any PR on the issue's work branch — open, merged or
  * closed — means the issue has already been worked. Load-bearing: this is
  * what holds when the label swap fails, so it must not be weakened.
@@ -211,8 +225,11 @@ export function gather(repo: string, warn: (message: string) => void): GatherRes
 	const pruned: Pruned[] = [];
 
 	for (const issue of issues) {
-		const workBranch = workBranchForIssue(issue.number);
+		// Relations come first because they decide the branch name: an epic's
+		// head is `sandcastle/epic-<n>`, and looking for a PR on the wrong head
+		// would leave the re-pick guard blind to every epic.
 		const relations = fetchRelations(repo, issue, warn);
+		const workBranch = branchForCandidate(issue.number, relations.children);
 		const blockers = fetchBlockers(repo, issue);
 		const existingPr = findExistingPr(repo, workBranch);
 

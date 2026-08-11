@@ -25,7 +25,8 @@ import { BASE_BRANCH, CONCURRENCY, READY_LABEL } from './lib/config.mts';
 import { currentBranch, ensureLocalBranch, fetch, git } from './lib/git.mts';
 import { containerAuth } from './lib/auth.mts';
 import { ensureEpicBranches, realEpicDeps } from './lib/epic.mts';
-import { epicPrBody, readEpicContext, realNarrativeDeps, writeEpicNarrative } from './lib/epicpr.mts';
+import type { EpicBranch } from './lib/epic.mts';
+import { realBodyFor } from './lib/epicpr.mts';
 import { ensureFreshBranch } from './lib/freshness.mts';
 import type { FreshnessOutcome } from './lib/freshness.mts';
 import { currentRepo } from './lib/gh.mts';
@@ -39,7 +40,7 @@ import {
 	realFinalizeDeps,
 	renderFinalizeOutcomes,
 } from './lib/finalize.mts';
-import { implementItem, pool, realDeps, renderOutcomes } from './lib/implement.mts';
+import { greenIssues, implementItem, pool, realDeps, renderOutcomes } from './lib/implement.mts';
 import type { ImplementOutcome } from './lib/implement.mts';
 import { childrenToMerge, isMergeFailure, mergeChildren, realMergeDeps, renderMergeOutcomes } from './lib/merge.mts';
 import type { MergeOutcome } from './lib/merge.mts';
@@ -255,20 +256,32 @@ async function main(): Promise<void> {
 		);
 	}
 
-	prepareEpicBranches(cwd, repo, items, result);
+	const epics = prepareEpicBranches(cwd, repo, items, result);
+	assertEpicBranchesReady(items, epics);
+
+	// Two waves, and the split is the point. Everything that owns its own
+	// branch goes first; children go second, *after* the first wave has
+	// committed — so a child is cut from an epic branch that already carries
+	// the epic's own work, rather than from a bare one. Cutting them all up
+	// front would put the child on a stale base, which is exactly what the
+	// freshness rules exist to prevent.
+	const first = items.filter((item) => item.role !== 'child');
+	const children = items.filter((item) => item.role === 'child');
 
 	console.log('\nBranch freshness:');
-	const ready: PlanItem[] = [];
-	for (const item of items) {
-		const outcome = ensureFreshBranch(cwd, item.workBranch, item.base);
-		console.log(`  ${item.workBranch}: ${describeFreshness(outcome)}`);
-		// A skipped branch was left exactly as found and is not at a correct
-		// starting point; implementing on it would build on a stale base.
-		if (outcome.action !== 'skipped') ready.push(item);
-	}
+	const ready = freshen(cwd, first);
 
-	if (runsImplementers(options.mode)) {
+	if (!runsImplementers(options.mode)) {
+		ready.push(...freshen(cwd, children));
+	} else {
 		const outcomes = await implement(cwd, ready, result.eligible);
+
+		const readyChildren = children.length > 0 ? (console.log('\nBranch freshness — children:'), freshen(cwd, children)) : [];
+		ready.push(...readyChildren);
+		outcomes.push(...(await implement(cwd, readyChildren, result.eligible)));
+
+		reportImplemented(outcomes);
+
 		if (options.mode === 'finalize') {
 			// Children reach their epic branch first, so the epic's PR carries
 			// them. Then the PRs — for epics and standalones only.
@@ -321,11 +334,14 @@ async function main(): Promise<void> {
  * parent very often is not itself `ready-for-agent`, and the child still has to
  * be cut from somewhere.
  */
-function prepareEpicBranches(cwd: string, repo: string, items: readonly PlanItem[], result: GatherResult): void {
-	const parents = new Map(result.eligible.map((candidate) => [candidate.number, candidate.parent]));
-	const issues = epicIssuesFor(items, (issue) => parents.get(issue) ?? null);
-
-	if (issues.length === 0) return;
+function prepareEpicBranches(
+	cwd: string,
+	repo: string,
+	items: readonly PlanItem[],
+	result: GatherResult
+): EpicBranch[] {
+	const issues = epicIssuesFor(items, result);
+	if (issues.length === 0) return [];
 
 	console.log('\nEpic branches:');
 	const deps = realEpicDeps(cwd, repo, BASE_BRANCH, (message) => console.log(`  ${message}`));
@@ -335,6 +351,64 @@ function prepareEpicBranches(cwd: string, repo: string, items: readonly PlanItem
 	// and the freshness step reads those to decide rebase-versus-merge.
 	fetch(cwd);
 	for (const epic of branches) ensureLocalBranch(cwd, epic.branch);
+
+	return branches;
+}
+
+/**
+ * The unknown-epic guard, at the point it can actually fire.
+ *
+ * `validatePlan()` checks a child's `mergeInto` against the branches the
+ * *gathered context* implies, which for a plan this code built is true by
+ * construction — it is a regression net, not a runtime possibility. This is
+ * the reachable half: the branches that really exist, as GitHub just reported
+ * them. A child whose epic branch could not be created or came back under
+ * another name has nowhere to be cut from, and per invariant 4 that aborts the
+ * **entire run** rather than skipping the item.
+ */
+function assertEpicBranchesReady(items: readonly PlanItem[], epics: readonly EpicBranch[]): void {
+	const available = new Set(epics.map((epic) => epic.branch));
+	const orphaned = items.filter((item) => item.role === 'child' && !available.has(item.mergeInto ?? ''));
+
+	if (orphaned.length === 0) return;
+
+	console.error(
+		[
+			`\nerror: ${orphaned.length} child(ren) point at an epic branch that does not exist; aborting the entire run:`,
+			...orphaned.map((item) => `  #${item.issue} (${item.workBranch}) — mergeInto ${item.mergeInto} was never created`),
+		].join('\n')
+	);
+	process.exit(3);
+}
+
+/**
+ * Bring a wave of branches to a correct starting point, dropping any the
+ * freshness rules had to skip: such a branch was left exactly as found, so it
+ * is not at a correct starting point and implementing on it would build on a
+ * stale base.
+ */
+function freshen(cwd: string, items: readonly PlanItem[]): PlanItem[] {
+	const ready: PlanItem[] = [];
+
+	for (const item of items) {
+		const outcome = ensureFreshBranch(cwd, item.workBranch, item.base);
+		console.log(`  ${item.workBranch}: ${describeFreshness(outcome)}`);
+		if (outcome.action !== 'skipped') ready.push(item);
+	}
+
+	return ready;
+}
+
+/**
+ * The verdict over both waves. A batch where nothing landed is a failed run,
+ * not a quiet success — the operator came back to commits or they did not.
+ */
+function reportImplemented(outcomes: readonly ImplementOutcome[]): void {
+	if (outcomes.length === 0) return;
+
+	const done = outcomes.filter((outcome) => outcome.status === 'implemented');
+	console.log(`\n${done.length} of ${outcomes.length} item(s) implemented with the gate green.`);
+	if (done.length === 0) process.exitCode = 1;
 }
 
 /**
@@ -349,10 +423,7 @@ function merge(
 	items: readonly PlanItem[],
 	outcomes: readonly ImplementOutcome[]
 ): MergeOutcome[] {
-	const green = new Set(
-		outcomes.filter((outcome) => outcome.status === 'implemented').map((outcome) => outcome.issue)
-	);
-	const children = childrenToMerge(items, green);
+	const children = childrenToMerge(items, greenIssues(outcomes));
 
 	if (children.length === 0) return [];
 
@@ -365,7 +436,7 @@ function merge(
 	// the epic issue is worked. Not an error — but not something to discover by
 	// noticing a PR that never appeared.
 	const epicBranches = new Set(items.filter((item) => item.role === 'epic').map((item) => item.workBranch));
-	for (const branch of new Set(results.filter((r) => r.status === 'merged').map((r) => r.epic))) {
+	for (const branch of new Set(results.filter((outcome) => outcome.status === 'merged').map((outcome) => outcome.epic))) {
 		if (!epicBranches.has(branch)) {
 			console.log(`\nnote: ${branch} is not in this batch, so no PR is opened for it this pass.`);
 		}
@@ -378,33 +449,6 @@ function merge(
 	}
 
 	return results;
-}
-
-/**
- * Build the PR body for an item. Deterministic for a standalone; for an epic,
- * an agent writes the narrative from the branch's own history and the harness
- * wraps it in the parts that carry meaning — `Closes #<epic>` above all.
- */
-function prBodyFor(
-	cwd: string,
-	items: readonly PlanItem[],
-	merges: readonly MergeOutcome[],
-	result: GatherResult
-): (item: PlanItem) => string {
-	const titles = new Map(items.map((item) => [item.issue, item.title]));
-	const bodies = new Map(result.eligible.map((candidate) => [candidate.number, candidate.body]));
-	const deps = realNarrativeDeps((message) => console.log(`  ${message}`));
-
-	return (item) => {
-		if (item.role !== 'epic') return prBody(item);
-
-		const merged = merges
-			.filter((outcome) => outcome.status === 'merged' && outcome.epic === item.workBranch)
-			.map((outcome) => ({ issue: outcome.issue, title: titles.get(outcome.issue) ?? `issue ${outcome.issue}` }));
-
-		const context = readEpicContext(cwd, item, bodies.get(item.issue) ?? '', merged);
-		return epicPrBody(item, writeEpicNarrative(deps, item, context));
-	};
 }
 
 /**
@@ -432,13 +476,6 @@ async function implement(
 
 	console.log(`\nOutcomes:\n${renderOutcomes(outcomes)}`);
 
-	const done = outcomes.filter((outcome) => outcome.status === 'implemented');
-	console.log(`\n${done.length} of ${outcomes.length} item(s) implemented with the gate green.`);
-
-	// A batch where nothing landed is a failed run, not a quiet success — the
-	// operator came back to commits or they did not.
-	if (done.length === 0) process.exitCode = 1;
-
 	return outcomes;
 }
 
@@ -463,11 +500,24 @@ function finalize(
 	}
 
 	console.log(`\nFinalizing ${finalizable.length} of ${outcomes.length} item(s):`);
+	const log = (message: string) => console.log(`  ${message}`);
+	const titles = new Map(items.map((item) => [item.issue, item.title]));
+	const bodies = new Map(result.eligible.map((candidate) => [candidate.number, candidate.body]));
+
 	const deps = realFinalizeDeps(
 		cwd,
 		repo,
-		(message) => console.log(`  ${message}`),
-		prBodyFor(cwd, items, merges, result)
+		log,
+		realBodyFor({
+			cwd,
+			log,
+			standalone: prBody,
+			issueBody: (issue) => bodies.get(issue) ?? '',
+			mergedInto: (branch) =>
+				merges
+					.filter((outcome) => outcome.status === 'merged' && outcome.epic === branch)
+					.map((outcome) => ({ issue: outcome.issue, title: titles.get(outcome.issue) ?? `issue ${outcome.issue}` })),
+		})
 	);
 	const results = finalizeBatch(deps, finalizable);
 

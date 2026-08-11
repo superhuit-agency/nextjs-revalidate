@@ -116,14 +116,19 @@ export function orderForExecution(items: readonly PlanItem[]): PlanItem[] {
 	return [...items].sort((left, right) => ORDER[left.role] - ORDER[right.role] || left.issue - right.issue);
 }
 
-/** The epic issues a batch needs branches for — its own epics, and every child's parent. */
-export function epicIssuesFor(items: readonly PlanItem[], parentOf: (issue: number) => number | null): number[] {
+/**
+ * The epic issues a batch needs branches for — the epics in it, and every
+ * child's parent. Reads the parent link back off the gathered candidate, the
+ * same place `knownEpicBranches()` gets it.
+ */
+export function epicIssuesFor(items: readonly PlanItem[], result: GatherResult): number[] {
+	const parents = new Map(result.eligible.map((candidate) => [candidate.number, candidate.parent]));
 	const issues = new Set<number>();
 
 	for (const item of items) {
 		if (item.role === 'epic') issues.add(item.issue);
 		if (item.role === 'child') {
-			const parent = parentOf(item.issue);
+			const parent = parents.get(item.issue) ?? null;
 			if (parent !== null) issues.add(parent);
 		}
 	}

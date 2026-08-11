@@ -19,10 +19,15 @@
  *   validator would abort the run over it. That is a human's branch for the
  *   same issue, and the harness says so out loud rather than adopting it or
  *   failing three layers down.
+ *
+ * `createLinkedBranch` is the one way a ref reaches origin without going
+ * through `pushBranch()` — it happens server-side, at GitHub. So it asserts
+ * the same rule, through the same `assertWritableBranch()` the chokepoint
+ * uses, rather than restating it.
  */
 import { BRANCH_PREFIX, epicBranchForIssue } from './config.mts';
 import { gh, ghJson } from './gh.mts';
-import { git, originBranchExists } from './git.mts';
+import { assertWritableBranch, git, originBranchExists } from './git.mts';
 
 /** Where an epic branch came from. */
 export type EpicSource =
@@ -88,9 +93,7 @@ export function parseEpicRefs(payload: RelayResponse, issue: number): EpicRefs {
  * only rule that matters about a branch name.
  */
 export function createLinkedBranchArgs(refs: EpicRefs, name: string, oid: string): string[] {
-	if (!name.startsWith(BRANCH_PREFIX)) {
-		throw new Error(`refusing to create ${name}: only ${BRANCH_PREFIX}* branches may be created on origin`);
-	}
+	assertWritableBranch(name, 'create');
 
 	const mutation =
 		'mutation($issueId:ID!,$oid:GitObjectID!,$name:String!,$repositoryId:ID!){' +
