@@ -29,6 +29,27 @@ _Avoid_: Job list, backlog
 A revalidation registered to happen at a future time rather than immediately,
 used for content with a publication or expiry date.
 
+### Settings
+
+**Setting**:
+One named piece of operator-supplied configuration, stored as a single WordPress
+option on the site. Declared once in `Settings`' option table, which pairs the
+name the rest of the plugin reads with the option name it is stored under and the
+value a read yields when the site has no row for it.
+_Avoid_: Option — reserve that for the WordPress storage primitive a setting
+happens to be kept in.
+
+**Empty value**:
+What reading a setting yields on a site that has never stored one. Declared per
+setting, and of the setting's own type — `[]` for the set-shaped settings, `''`
+for the scalar ones — never `false`. A read is therefore always safe to iterate
+or compare without the caller guarding the type first.
+_Avoid_: Default — the value is what *absence* means, not a preference a site
+would sensibly keep.
+
+> The option table is authoritative for **reads** only. Registration, seeding and
+> teardown still enumerate the settings separately; unifying them is #24's to do.
+
 ### Versioning and migration
 
 **Plugin version**:
