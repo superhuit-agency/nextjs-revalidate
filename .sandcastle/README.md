@@ -32,6 +32,47 @@ npm --prefix .sandcastle install
 
 This does not touch the root `package-lock.json`.
 
+## Sandbox image
+
+The image implementers run inside. It carries two runtimes: Node — whichever
+version `.nvmrc` pins — and PHP 7.4, which is what `scripts/gate.sh` lints
+against.
+
+```sh
+.sandcastle/sandbox/build.sh
+```
+
+Tags `nextjs-revalidate-sandbox:node<version>` and
+`nextjs-revalidate-sandbox:latest`. Extra arguments pass through to
+`docker build` (`--no-cache`, …); `IMAGE_NAME` overrides the name.
+
+**The Node version is not in the Dockerfile.** `build.sh` reads it from
+`.nvmrc` and passes it as `NODE_VERSION`. So a Node bump lands as an ordinary
+PR and the harness follows after one rebuild — no edit to the image
+definition. The same holds for the package manager, which the gate detects
+from the lockfile. `.nvmrc` must hold a version number; an alias such as
+`lts/*` has no matching `node:<version>` image tag and `build.sh` refuses it.
+
+PHP 7.4 comes from [Sury](https://packages.sury.org/php/) — it is past
+upstream EOL and not in Debian bookworm. `PHP_BIN` is baked into the image as
+`/usr/bin/php7.4`, the versioned binary rather than the `php` alternative, so
+the gate cannot be silently redirected to a newer parser. The build fails if
+that binary is not 7.4.
+
+Rebuild after: a change to `.nvmrc`, or a change to what the gate needs
+installed. Nothing is copied into the image — the checkout is mounted at run
+time — so ordinary code changes need no rebuild.
+
+To run the gate in it by hand, exactly as the harness will:
+
+```sh
+docker run --rm -v "$PWD":/workspace -w /workspace \
+  nextjs-revalidate-sandbox:latest ./scripts/gate.sh
+```
+
+Note this installs Linux `node_modules` over your host tree; run it on a
+throwaway clone if that matters.
+
 ## Dry run
 
 ```sh
