@@ -143,8 +143,8 @@ throwaway clone if that matters.
 
 ## Modes
 
-Five, each one step further than the last. **Only `--finalize` reaches origin
-or opens a PR**, and even it never merges.
+Five, each one step further than the last. **Only `--finalize` puts code on
+origin or opens a PR**, and even it never merges into `main`.
 
 ```sh
 node .sandcastle/run.mts --dry-run     # the batch it would work
@@ -157,10 +157,13 @@ node .sandcastle/run.mts --finalize --issue 35     # one issue only; repeatable
 ```
 
 `--dry-run` and `--plan` are read-only. `--prepare` is the first mode that
-writes anything, and what it writes is *local branches only*. `--implement` is
-the first that starts a container and the first that writes code. `--finalize`
-is the full pass — it implies `--implement` — and the only one anything outside
-this machine sees. Running with no mode is an error, so an operator can never
+writes anything: local branches, plus — when the batch involves an epic — a
+bare `sandcastle/epic-<n>` created and linked on origin (see [Where the epic
+branch comes from](#where-the-epic-branch-comes-from)). No code, no PR.
+`--implement` is the first that starts a container and the first that writes
+code, and it still puts none of it on origin. `--finalize` is the full pass —
+it implies `--implement` — and the only one that merges children, opens PRs or
+closes anything. Running with no mode is an error, so an operator can never
 think a real pass has happened.
 
 `--issue N` restricts the batch to the issues you name. A number that is not
@@ -181,11 +184,10 @@ Start from open issues labelled `ready-for-agent`, then prune:
   in any state including closed. This is load-bearing; it is what holds when
   the label swap fails, so do not quietly weaken it.
 
-Epic and sub-issue *machinery* is out of scope here (#45). Gathering still
-reports each candidate's parent and children so later phases have it: native
-sub-issue links are canonical, a `Sub-issue of #N` / `Part of #N` body marker
-is a fallback, and when the two disagree native wins and the conflict is
-logged.
+Parenthood is read while gathering and decides *where* the work lives, never
+whether it happens: native sub-issue links are canonical, a `Sub-issue of #N` /
+`Part of #N` body marker is a fallback, and when the two disagree native wins
+and the conflict is logged.
 
 ## The plan, and what it refuses
 
@@ -202,13 +204,82 @@ one of these is not to be partially obeyed:
 `main`: nothing reaches `main` except a human merging a PR. Standalones and
 epics carry `mergeInto: null`.
 
-Today the plan contains **standalone issues only**. Epic and child machinery is
-#45, and a child planned before it exists would be cut from an epic branch
-nothing creates — so those candidates are *deferred*: reported by name, and
-left for the run that can work them. Deferring is a per-item outcome, not an
-abort; #42 and #28 are both children of parents that are not themselves
-`ready-for-agent`, and aborting on them would refuse every run this repo can
-currently produce.
+A branch counts as a **known epic branch** when some gathered candidate has
+sub-issues (its own branch) or has a parent (the parent's branch). The second
+half matters: `ready-for-agent` is per-issue and a parent need not carry it —
+#42 and #28 are both children of parents outside the batch — and the branch is
+still knowable and creatable from the parent's number alone. What the guard
+still refuses is a `mergeInto` no gathered issue justifies.
+
+Items are executed **epics first, then standalones, then children**. A child is
+cut from its epic branch, so the epic has to reach a correct starting point and
+land its own work before a child sits on top of it.
+
+## Epics and sub-issues
+
+`ready-for-agent` always means "implement this issue". Having children or a
+parent only decides where that work lives:
+
+| Shape | Branch | Route to `main` |
+| --- | --- | --- |
+| standalone | `sandcastle/issue-<n>`, cut from `main` | its own PR |
+| **epic** (has sub-issues) | `sandcastle/epic-<n>`, cut from `main` | its own PR, carrying its children |
+| **child** (has a parent) | `sandcastle/issue-<n>`, cut from the epic branch | squash-merged into the epic branch |
+
+An epic's *own* implementation work lands on its epic branch. Parents are not
+containers here — #29 is a parent that also describes real work, and treating
+it as empty would drop that work on the floor.
+
+The one shape left **deferred** is an issue that is both a parent and a child.
+A nested epic has no unambiguous route to `main`, and the harness will not
+guess one.
+
+### Where the epic branch comes from
+
+The name is deterministic — `sandcastle/epic-<N>`, from the issue number, never
+a title slug, which cannot be recomputed after a retitle. Resolution, in order:
+
+1. a branch of that name already **linked** to the issue — reused;
+2. a branch of that name already **on origin** but unlinked (an earlier run
+   that got that far) — adopted;
+3. otherwise `createLinkedBranch`, which creates it on origin *and* links it to
+   the issue in one call.
+
+A linked branch under a **different** name is reported and set aside, not
+adopted: `pushBranch()` would refuse anything outside `sandcastle/`, and the
+plan validator would abort the run over it. That is a human's branch for the
+same issue, and the harness says so rather than failing three layers down.
+
+**This is the one thing `--prepare` does that reaches origin**, because
+creating and linking is a single call and there is no way to get the link
+otherwise. What lands there is a bare branch at `main`'s tip — no code, no PR,
+nothing merged.
+
+### The merge phase
+
+Between implement and finalize, and only under `--finalize` — it puts commits
+on origin and closes issues, and `--implement` promises neither.
+
+Each green child is squash-merged into its epic branch in **its own worktree**
+(the primary checkout is never checked out), the epic branch goes to origin
+through the same chokepoint as everything else, and then the child issue is
+**closed** with a comment naming the epic branch.
+
+That closure is the one issue the harness ever closes, and it is consistent
+with "issues close when their code reaches `main`, never earlier": a child has
+no route to `main` other than its epic branch, so reaching that branch is as
+far as a child's code ever gets on its own.
+
+| Outcome | Meaning |
+| --- | --- |
+| `merged` | one squash commit on the epic branch, branch on origin, child closed |
+| `nothing-to-merge` | the epic branch already carried it. Nothing committed, issue left open |
+| `conflicted` | the merge was undone; the epic branch is byte-identical and the issue stays open |
+| `error` | the epic branch could not reach origin, or the issue could not be closed. Run exits non-zero |
+
+A child is **never finalized** into a PR of its own, whatever the gate said: a
+PR targets the branch its head was cut from, and the epic's PR is what carries
+all of it into `main`.
 
 ## Branch freshness
 
@@ -312,6 +383,22 @@ Three details, each expensive to get wrong:
 - **The PR is not a draft.** Nothing in this repo filters on draft state — no
   PR CI, no preview environments — so drafting would only add a click between
   the harness and the human it is handing to.
+
+### The epic PR body — the one agent in finalize
+
+An epic branch arrives at its PR carrying its own work plus a squash commit per
+child, and nothing deterministic can say what that adds up to. So an agent is
+asked, on the host, for the narrative — and only the narrative:
+
+- **`Closes #<epic>` is prepended by the harness**, never written by the agent.
+- **Closing keywords in the narrative are stripped**, reference kept. An agent
+  writing "Closes #30" about a child would close, on merge, an issue the merge
+  phase already closed.
+- **A failed or empty agent call is not a failed PR.** The fallback is a
+  deterministic body built from the same facts, and it says that is what it is.
+
+The harness never closes the epic issue. Like a standalone, it stays open until
+a human merges the PR that carries `Closes #<epic>`.
 
 ### The handoff, and why the issue stays open
 

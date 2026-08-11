@@ -53,6 +53,21 @@ export const IDLE_TIMEOUT_SECONDS = 600;
  */
 export const IMPLEMENTER_MODEL = 'claude-opus-5';
 
+/**
+ * The model that writes an epic PR's body — the one agent in the finalize
+ * phase. Same tier as the implementer: it is summarising work the implementer
+ * did, and a weaker reading of the branch would produce a body a reviewer
+ * cannot trust.
+ */
+export const PR_BODY_MODEL = 'claude-opus-5';
+
+/**
+ * How long that one call gets. Short on purpose: it writes a few hundred words
+ * from facts it is handed, and a hung call must not sit between a green branch
+ * and the PR that hands it to a human — there is a deterministic body waiting.
+ */
+export const PR_BODY_TIMEOUT_MS = 180_000;
+
 /** What the agent emits to end its iteration loop early. */
 export const COMPLETION_SIGNAL = '<promise>COMPLETE</promise>';
 

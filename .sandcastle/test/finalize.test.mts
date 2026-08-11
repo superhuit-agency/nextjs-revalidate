@@ -74,6 +74,7 @@ function fakeDeps(options: FakeOptions = {}): { deps: FinalizeDeps; recorded: Re
 
 	const deps: FinalizeDeps = {
 		log: () => {},
+		body: prBody,
 		push: (branch) => {
 			if (options.pushThrows) throw new Error(options.pushThrows);
 			recorded.pushed.push(branch);
@@ -122,6 +123,28 @@ describe('itemsToFinalize — only the gate-green', () => {
 
 	it('finalizes nothing when the batch produced nothing', () => {
 		assert.deepEqual(itemsToFinalize([ITEM], []), []);
+	});
+
+	it('never finalizes a child, however green — the epic PR is its route to main', () => {
+		const items: PlanItem[] = [
+			{ ...ITEM, issue: 29, role: 'epic', workBranch: 'sandcastle/epic-29' },
+			{ ...ITEM, issue: 30, role: 'child', workBranch: 'sandcastle/issue-30', mergeInto: 'sandcastle/epic-29', base: 'sandcastle/epic-29' },
+		];
+
+		assert.deepEqual(
+			itemsToFinalize(items, [outcome(29, 'implemented'), outcome(30, 'implemented')]).map((item) => item.issue),
+			[29],
+			'a PR targets the branch its head was cut from, and #30 was cut from the epic branch'
+		);
+	});
+});
+
+describe('the PR body seam', () => {
+	it('opens the PR with whatever body the item was given', () => {
+		const { deps, recorded } = fakeDeps();
+		finalizeItem({ ...deps, body: () => 'Closes #7\n\nan epic body' }, ITEM);
+
+		assert.equal(recorded.created[0]?.body, 'Closes #7\n\nan epic body');
 	});
 });
 

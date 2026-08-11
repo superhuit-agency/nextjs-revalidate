@@ -74,6 +74,13 @@ export type FinalizeDeps = {
 	push: (branch: string) => void;
 	/** Any PR on this head, in any state. */
 	findPr: (branch: string) => ExistingPr | null;
+	/**
+	 * The PR body for this item. A seam because an epic's body is written by an
+	 * agent from its branch history, while a standalone's is deterministic —
+	 * and because the one property that matters about either (it carries
+	 * `Closes #<n>`) is then assertable without a model.
+	 */
+	body: (item: PlanItem) => string;
 	openPr: (item: PlanItem, body: string) => OpenedPr;
 	swapLabels: (issue: number) => void;
 	comment: (issue: number, body: string) => void;
@@ -81,23 +88,30 @@ export type FinalizeDeps = {
 };
 
 /**
- * The items a finalize pass may act on: those the gate left green.
+ * The items a finalize pass may act on: those the gate left green, minus the
+ * children.
  *
  * An item that failed the gate, wrote nothing, or errored is deliberately not
  * finalized — a PR into `main` is the harness asking a human to merge, and it
  * has no business asking that of work it could not verify. Such an item keeps
  * its branch, its label and its issue, and the next cycle picks it up again.
+ *
+ * A **child** is excluded whatever the gate said: a PR targets the branch its
+ * head was cut from, a child is cut from its epic branch, and the merge phase
+ * has already taken it there. The epic's PR is the one that reaches `main`.
  */
 export function itemsToFinalize(items: readonly PlanItem[], outcomes: readonly ImplementOutcome[]): PlanItem[] {
 	const green = new Set(
 		outcomes.filter((outcome) => outcome.status === 'implemented').map((outcome) => outcome.issue)
 	);
-	return items.filter((item) => green.has(item.issue));
+	return items.filter((item) => item.role !== 'child' && green.has(item.issue));
 }
 
 /**
- * The PR body. `Closes #<n>` is the whole handoff contract: the harness leaves
- * the issue open, and a human merging the PR is what closes it.
+ * The PR body for a standalone item. `Closes #<n>` is the whole handoff
+ * contract: the harness leaves the issue open, and a human merging the PR is
+ * what closes it. An epic's body is built in `lib/epicpr.mts` and carries the
+ * same keyword for the same reason.
  */
 export function prBody(item: PlanItem): string {
 	return [
@@ -239,7 +253,7 @@ export function finalizeItem(deps: FinalizeDeps, item: PlanItem): FinalizeOutcom
 			};
 		}
 
-		const opened = deps.openPr(item, prBody(item));
+		const opened = deps.openPr(item, deps.body(item));
 		deps.log(`#${item.issue}: opened PR #${opened.number} — ${opened.url}`);
 
 		return {
@@ -293,9 +307,15 @@ export function renderFinalizeOutcomes(outcomes: readonly FinalizeOutcome[]): st
 }
 
 /** The real GitHub, wired to the same chokepoint everything else pushes through. */
-export function realFinalizeDeps(cwd: string, repo: string, log: (message: string) => void): FinalizeDeps {
+export function realFinalizeDeps(
+	cwd: string,
+	repo: string,
+	log: (message: string) => void,
+	body: (item: PlanItem) => string
+): FinalizeDeps {
 	return {
 		log,
+		body,
 		push: (branch) => pushBranch(cwd, branch),
 		findPr: (branch) => findExistingPr(repo, branch),
 		openPr: (item, body) => parseCreatedPr(gh(prCreateArgs(repo, item, body))),

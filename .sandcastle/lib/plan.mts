@@ -68,9 +68,21 @@ export class PlanAbort extends Error {
 /**
  * Epic branches the gathered context actually knows about.
  *
- * Read from *every* gathered candidate with sub-issues, pruned ones included:
- * an epic pruned for having an open PR is still a real epic branch, and a
- * child of it is not an inconsistency.
+ * Two things put a branch in here, and both are native sub-issue data read at
+ * gather time:
+ *
+ * - a candidate **with sub-issues** — it is an epic, and its branch is its own.
+ *   Pruned candidates count: an epic pruned for having an open PR is still a
+ *   real epic branch, and a child of it is not an inconsistency.
+ * - a candidate **with a parent** — the parent's epic branch. The parent itself
+ *   is very often not in the batch, because `ready-for-agent` is per-issue and
+ *   a parent need not carry it; #42 and #28 are both exactly that. The branch
+ *   is still knowable and still creatable — `ensureEpicBranch()` does it from
+ *   the parent's issue number alone — so refusing the child would refuse every
+ *   run this repo can currently produce.
+ *
+ * What is left outside the set is a `mergeInto` no gathered issue justifies,
+ * which is the case the guard exists for.
  */
 export function knownEpicBranches(result: GatherResult): Set<string> {
 	const branches = new Set<string>();
@@ -78,6 +90,7 @@ export function knownEpicBranches(result: GatherResult): Set<string> {
 
 	for (const candidate of all) {
 		if (candidate.children.length > 0) branches.add(epicBranchForIssue(candidate.number));
+		if (candidate.parent !== null) branches.add(epicBranchForIssue(candidate.parent));
 	}
 
 	return branches;
@@ -87,6 +100,35 @@ function roleOf(candidate: Candidate): PlanRole {
 	if (candidate.children.length > 0) return 'epic';
 	if (candidate.parent !== null) return 'child';
 	return 'standalone';
+}
+
+/**
+ * Execution order: epics, then standalones, then children.
+ *
+ * Load-bearing, not cosmetic. A child is cut from its epic branch and kept
+ * fresh against it, so the epic has to reach a correct starting point first —
+ * and the epic's own implementation work has to land before a child merges on
+ * top of it, or the epic PR would carry the children's code and not its own.
+ */
+const ORDER: Record<PlanRole, number> = { epic: 0, standalone: 1, child: 2 };
+
+export function orderForExecution(items: readonly PlanItem[]): PlanItem[] {
+	return [...items].sort((left, right) => ORDER[left.role] - ORDER[right.role] || left.issue - right.issue);
+}
+
+/** The epic issues a batch needs branches for — its own epics, and every child's parent. */
+export function epicIssuesFor(items: readonly PlanItem[], parentOf: (issue: number) => number | null): number[] {
+	const issues = new Set<number>();
+
+	for (const item of items) {
+		if (item.role === 'epic') issues.add(item.issue);
+		if (item.role === 'child') {
+			const parent = parentOf(item.issue);
+			if (parent !== null) issues.add(parent);
+		}
+	}
+
+	return [...issues].sort((left, right) => left - right);
 }
 
 /**
@@ -115,16 +157,16 @@ export function planItemFor(candidate: Candidate, baseBranch: string = BASE_BRAN
 /**
  * Turn a gathered batch into a plan.
  *
- * Standalone issues only, for now. Epic and child machinery — creating epic
- * branches, squash-merging children into them, the epic PR — is #45, and a
- * child planned before it exists would be cut from an epic branch nothing
- * creates. Those candidates are *deferred*: recorded, reported, and left for
- * the run that can actually work them.
+ * Every eligible issue is planned, whatever its parenthood: `ready-for-agent`
+ * always means "implement this issue", and having children or a parent only
+ * decides *where* that work lives. An epic's own work goes on its epic branch —
+ * #29 is a parent that also describes real implementation work, so treating
+ * parents as empty containers would be wrong here.
  *
- * Deferring is deliberately a per-item outcome, not an abort. #42 and #28 are
- * both children of parents that are not themselves `ready-for-agent`, so
- * aborting here would mean the harness refuses every run this repo can
- * currently produce.
+ * The one shape left deferred is an issue that is **both** a parent and a
+ * child. Nested epics have no answer to "which branch does this reach `main`
+ * through" that is not a guess, and guessing would put a whole sub-tree on the
+ * wrong branch. It is recorded and reported instead.
  */
 export function planBatch(result: GatherResult, baseBranch: string = BASE_BRANCH): Plan {
 	const items: PlanItem[] = [];
@@ -133,20 +175,19 @@ export function planBatch(result: GatherResult, baseBranch: string = BASE_BRANCH
 	for (const candidate of result.eligible) {
 		const item = planItemFor(candidate, baseBranch);
 
-		if (item.role === 'standalone') {
-			items.push(item);
+		if (candidate.children.length > 0 && candidate.parent !== null) {
+			deferred.push({
+				issue: candidate.number,
+				title: candidate.title,
+				role: item.role,
+				reason:
+					`both a child of #${candidate.parent} and an epic over ${candidate.children.length} sub-issue(s) — ` +
+					'a nested epic has no unambiguous route to the base branch, and the harness will not guess one',
+			});
 			continue;
 		}
 
-		deferred.push({
-			issue: candidate.number,
-			title: candidate.title,
-			role: item.role,
-			reason:
-				item.role === 'child'
-					? `child of #${candidate.parent} — needs epic branch ${item.base}; epic machinery is #45`
-					: `epic with ${candidate.children.length} sub-issue(s) — epic machinery is #45`,
-		});
+		items.push(item);
 	}
 
 	return { baseBranch, items, deferred };

@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Candidate, GatherResult } from '../lib/gather.mts';
-import { PlanAbort, knownEpicBranches, planBatch, planItemFor, validatePlan } from '../lib/plan.mts';
+import {
+	PlanAbort,
+	epicIssuesFor,
+	knownEpicBranches,
+	orderForExecution,
+	planBatch,
+	planItemFor,
+	validatePlan,
+} from '../lib/plan.mts';
 import type { Plan, PlanItem } from '../lib/plan.mts';
 
 function candidate(overrides: Partial<Candidate> & { number: number }): Candidate {
@@ -60,33 +68,94 @@ describe('planBatch', () => {
 		assert.deepEqual(plan.items[0]?.mergeInto, null);
 	});
 
-	it('defers epics and children rather than aborting — epic machinery is #45', () => {
+	it('plans epics and children alongside standalones', () => {
 		const plan = planBatch(
 			gathered([candidate({ number: 12 }), candidate({ number: 20, children: [21] }), candidate({ number: 21, parent: 20 })])
 		);
 
 		assert.deepEqual(
-			plan.items.map((i) => i.issue),
-			[12],
-			'only standalone issues are workable today'
-		);
-		assert.deepEqual(
-			plan.deferred.map((d) => [d.issue, d.role]),
+			plan.items.map((i) => [i.issue, i.role]),
 			[
+				[12, 'standalone'],
 				[20, 'epic'],
 				[21, 'child'],
 			]
 		);
+		assert.deepEqual(plan.deferred, [], 'parenthood decides where work lives, not whether it happens');
 	});
 
-	it('validates clean when the batch is all children — deferring is not an abort', () => {
+	it('gives an epic that also describes real work its own branch — #29 is exactly that', () => {
+		// Treating a parent as an empty container would drop its implementation
+		// work on the floor.
+		const plan = planBatch(gathered([candidate({ number: 29, children: [30] })]));
+		assert.deepEqual(
+			[plan.items[0]?.role, plan.items[0]?.workBranch, plan.items[0]?.base],
+			['epic', 'sandcastle/epic-29', 'main']
+		);
+	});
+
+	it('validates clean when the batch is all children of parents outside it', () => {
 		// The live case: #42 and #28 are children of parents that are not
 		// themselves ready-for-agent. Aborting here would refuse every run.
 		const result = gathered([candidate({ number: 42, parent: 33 }), candidate({ number: 28, parent: 29 })]);
 		const plan = planBatch(result);
 
-		assert.deepEqual(plan.items, []);
+		assert.deepEqual(
+			plan.items.map((i) => i.base),
+			['sandcastle/epic-33', 'sandcastle/epic-29']
+		);
 		validatePlan(plan, knownEpicBranches(result));
+	});
+
+	it('defers an issue that is both a parent and a child rather than guessing', () => {
+		const plan = planBatch(gathered([candidate({ number: 20, parent: 10, children: [21] })]));
+
+		assert.deepEqual(plan.items, []);
+		assert.equal(plan.deferred.length, 1);
+		assert.match(plan.deferred[0]?.reason ?? '', /nested epic/);
+	});
+});
+
+describe('orderForExecution', () => {
+	it('puts epics before standalones before children', () => {
+		const items = [
+			item({ issue: 3, role: 'child', mergeInto: 'sandcastle/epic-1', base: 'sandcastle/epic-1' }),
+			item({ issue: 2, role: 'standalone' }),
+			item({ issue: 1, role: 'epic', workBranch: 'sandcastle/epic-1' }),
+		];
+
+		assert.deepEqual(
+			orderForExecution(items).map((i) => i.issue),
+			[1, 2, 3],
+			'a child is cut from its epic branch, so the epic has to get there first'
+		);
+	});
+
+	it('leaves the input untouched', () => {
+		const items = [item({ issue: 3, role: 'child' }), item({ issue: 1, role: 'epic' })];
+		orderForExecution(items);
+		assert.deepEqual(
+			items.map((i) => i.issue),
+			[3, 1]
+		);
+	});
+});
+
+describe('epicIssuesFor — which issues need an epic branch', () => {
+	it('counts the epics in the batch and every child\'s parent', () => {
+		const items = [
+			item({ issue: 1, role: 'epic', workBranch: 'sandcastle/epic-1' }),
+			item({ issue: 2, role: 'standalone' }),
+			item({ issue: 3, role: 'child', mergeInto: 'sandcastle/epic-9', base: 'sandcastle/epic-9' }),
+		];
+
+		// #9 is not in the batch — a parent need not carry ready-for-agent —
+		// and its branch still has to exist for #3 to be cut from.
+		assert.deepEqual(epicIssuesFor(items, (issue) => (issue === 3 ? 9 : null)), [1, 9]);
+	});
+
+	it('is empty for a batch of standalones', () => {
+		assert.deepEqual(epicIssuesFor([item({ issue: 2 })], () => null), []);
 	});
 });
 
@@ -183,9 +252,18 @@ describe('knownEpicBranches', () => {
 		validatePlan(planOf([planItemFor(candidate({ number: 21, parent: 20 }))]), knownEpicBranches(result));
 	});
 
-	it('does not count an epic no gathered issue knows about', () => {
+	it('counts a parent that is not in the batch at all', () => {
+		// #42's parent #33 is not ready-for-agent, so it is never gathered as a
+		// candidate. Its epic branch is still knowable from #42's parent link
+		// alone, and ensureEpicBranch() creates it from the number.
+		const result = gathered([candidate({ number: 42, parent: 33 })]);
+		assert.deepEqual([...knownEpicBranches(result)], ['sandcastle/epic-33']);
+		validatePlan(planOf([planItemFor(result.eligible[0]!)]), knownEpicBranches(result));
+	});
+
+	it('does not count a branch no gathered issue justifies', () => {
 		const result = gathered([candidate({ number: 21, parent: 20 })]);
-		assert.deepEqual([...knownEpicBranches(result)], []);
-		assert.throws(() => validatePlan(planOf([planItemFor(result.eligible[0]!)]), knownEpicBranches(result)), PlanAbort);
+		const invented = planOf([item({ issue: 21, role: 'child', mergeInto: 'sandcastle/epic-77', base: 'sandcastle/epic-77' })]);
+		assert.throws(() => validatePlan(invented, knownEpicBranches(result)), PlanAbort);
 	});
 });

@@ -8,34 +8,50 @@
  *   --plan       + turn the batch into a plan and validate it
  *   --prepare    + bring each work branch to a correct starting point
  *   --implement  + run implementers in containers, gate the result
- *   --finalize   + put green branches on origin and open a PR into main
+ *   --finalize   + merge children into epics, branches to origin, PR into main
  *
- * `--prepare` is the first mode that writes anything, and what it writes is
- * local branches only. `--implement` is the first that starts a container and
- * the first that writes code — and it still puts nothing on origin and opens
- * no PR: commits land on the local work branch and stop there. `--finalize` is
- * the full pass, and it ends where the harness is supposed to end: a PR waiting
- * for a human. It still never merges. Running with no mode is an error rather
- * than a no-op, so an operator can never think a real pass has happened.
+ * `--prepare` is the first mode that writes anything: local branches, plus a
+ * bare epic branch created and linked on origin where the batch needs one —
+ * creating and linking is a single call, and there is no way to get the link
+ * otherwise. No code, no PR. `--implement` is the first that starts a container
+ * and the first that writes code — and it still puts none of it on origin:
+ * commits land on the local work branch and stop there. `--finalize` is the
+ * full pass, and it is the only mode that merges a child into its epic branch,
+ * opens a PR or closes anything. It never merges into the base branch. Running
+ * with no mode is an error rather than a no-op, so an operator can never think
+ * a real pass has happened.
  */
 import { BASE_BRANCH, CONCURRENCY, READY_LABEL } from './lib/config.mts';
 import { currentBranch, ensureLocalBranch, fetch, git } from './lib/git.mts';
 import { containerAuth } from './lib/auth.mts';
+import { ensureEpicBranches, realEpicDeps } from './lib/epic.mts';
+import { epicPrBody, readEpicContext, realNarrativeDeps, writeEpicNarrative } from './lib/epicpr.mts';
 import { ensureFreshBranch } from './lib/freshness.mts';
 import type { FreshnessOutcome } from './lib/freshness.mts';
 import { currentRepo } from './lib/gh.mts';
 import { gather } from './lib/gather.mts';
-import type { Candidate } from './lib/gather.mts';
+import type { Candidate, GatherResult } from './lib/gather.mts';
 import {
 	finalizeBatch,
 	isFailure,
 	itemsToFinalize,
+	prBody,
 	realFinalizeDeps,
 	renderFinalizeOutcomes,
 } from './lib/finalize.mts';
 import { implementItem, pool, realDeps, renderOutcomes } from './lib/implement.mts';
 import type { ImplementOutcome } from './lib/implement.mts';
-import { PlanAbort, knownEpicBranches, planBatch, renderPlan, validatePlan } from './lib/plan.mts';
+import { childrenToMerge, isMergeFailure, mergeChildren, realMergeDeps, renderMergeOutcomes } from './lib/merge.mts';
+import type { MergeOutcome } from './lib/merge.mts';
+import {
+	PlanAbort,
+	epicIssuesFor,
+	knownEpicBranches,
+	orderForExecution,
+	planBatch,
+	renderPlan,
+	validatePlan,
+} from './lib/plan.mts';
 import type { PlanItem } from './lib/plan.mts';
 import { renderJson, renderText } from './lib/report.mts';
 
@@ -106,17 +122,18 @@ function usage(): void {
 			'               Takes no action: no branches, nothing on origin, no containers.',
 			'  --plan       Also build the plan and validate it. Read-only; a plan',
 			'               violating a hard rule aborts the entire run.',
-			'  --prepare    Also bring each work branch to a correct starting point.',
-			'               Writes local branches only — still nothing on origin,',
-			'               still no container.',
+			'  --prepare    Also bring each work branch to a correct starting point,',
+			'               creating and linking a bare epic branch on origin where',
+			'               the batch needs one. No code, no container, no PR.',
 			'  --implement  Also run an implementer in a container per item and gate',
 			'               the result. Commits land on the local work branch; still',
-			'               nothing on origin and no PR opened.',
-			'  --finalize   The full pass: also send every gate-green branch to origin,',
-			'               open a non-draft PR into the base branch and hand the issue',
-			'               back to a human. Never merges anything.',
+			'               no code on origin and no PR opened.',
+			'  --finalize   The full pass: also squash-merge every gate-green child',
+			'               into its epic branch, send green branches to origin, open',
+			'               a non-draft PR into the base branch and hand the issue',
+			'               back to a human. Never merges into the base branch.',
 			'  --issue N    Restrict the batch to this issue. Repeatable. Without it,',
-			'               every eligible standalone issue is worked.',
+			'               every eligible issue is worked.',
 			'  --json       Emit the batch as JSON instead of text.',
 			'  --repo       Target repository. Defaults to the current checkout.',
 		].join('\n')
@@ -152,7 +169,7 @@ function restrictToIssues(items: readonly PlanItem[], only: readonly number[]): 
 	if (missing.length > 0) {
 		console.error(
 			`\nerror: --issue ${missing.join(', ')} — not in the planned batch. An issue is only planned when it is ` +
-				`open, labelled ${READY_LABEL}, has no open blockers, has no PR on its work branch, and is standalone. ` +
+				`open, labelled ${READY_LABEL}, has no open blockers, and has no PR on its work branch. ` +
 				`The batch above says which of those it failed.`
 		);
 		process.exit(2);
@@ -208,7 +225,10 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	const items = restrictToIssues(plan.items, options.only);
+	// Epics first, then standalones, then children: a child is cut from its
+	// epic branch and merged back into it, so the epic has to reach a correct
+	// starting point — and land its own work — before a child sits on top.
+	const items = orderForExecution(restrictToIssues(plan.items, options.only));
 	if (options.only.length > 0) {
 		console.log(`\nRestricted to --issue ${options.only.join(', ')} — ${items.length} of ${plan.items.length} item(s).`);
 	}
@@ -235,6 +255,8 @@ async function main(): Promise<void> {
 		);
 	}
 
+	prepareEpicBranches(cwd, repo, items, result);
+
 	console.log('\nBranch freshness:');
 	const ready: PlanItem[] = [];
 	for (const item of items) {
@@ -247,7 +269,12 @@ async function main(): Promise<void> {
 
 	if (runsImplementers(options.mode)) {
 		const outcomes = await implement(cwd, ready, result.eligible);
-		if (options.mode === 'finalize') finalize(cwd, repo, ready, outcomes);
+		if (options.mode === 'finalize') {
+			// Children reach their epic branch first, so the epic's PR carries
+			// them. Then the PRs — for epics and standalones only.
+			const merges = merge(cwd, repo, ready, outcomes);
+			finalize(cwd, repo, ready, outcomes, merges, result);
+		}
 	}
 
 	// The primary checkout is untouchable — nothing above ran `git checkout` in
@@ -264,7 +291,7 @@ async function main(): Promise<void> {
 
 	if (options.mode === 'prepare') {
 		console.error(
-			`\nprepared — nothing on origin, no containers started. Primary checkout untouched, still on ${startedOn}.`
+			`\nprepared — no code on origin, no containers started. Primary checkout untouched, still on ${startedOn}.`
 		);
 		return;
 	}
@@ -277,8 +304,107 @@ async function main(): Promise<void> {
 	}
 
 	console.error(
-		`\nPrimary checkout untouched, still on ${startedOn}. Nothing reached origin and no PR was opened.`
+		`\nPrimary checkout untouched, still on ${startedOn}. No code reached origin, nothing was merged and no PR was opened.`
 	);
+}
+
+/**
+ * Give every epic in the batch its branch, and make it available locally.
+ *
+ * This is the one thing `--prepare` does that reaches origin, and it is worth
+ * being plain about: `createLinkedBranch` creates the branch *and* links it to
+ * the issue in a single call, which is the only way to get the link at all.
+ * What lands on origin is a bare `sandcastle/epic-<N>` at the base branch's
+ * tip — no code, no PR, nothing merged.
+ *
+ * Epic branches are needed for more issues than the batch has epics: a child's
+ * parent very often is not itself `ready-for-agent`, and the child still has to
+ * be cut from somewhere.
+ */
+function prepareEpicBranches(cwd: string, repo: string, items: readonly PlanItem[], result: GatherResult): void {
+	const parents = new Map(result.eligible.map((candidate) => [candidate.number, candidate.parent]));
+	const issues = epicIssuesFor(items, (issue) => parents.get(issue) ?? null);
+
+	if (issues.length === 0) return;
+
+	console.log('\nEpic branches:');
+	const deps = realEpicDeps(cwd, repo, BASE_BRANCH, (message) => console.log(`  ${message}`));
+	const branches = ensureEpicBranches(deps, issues);
+
+	// A branch just created server-side is not in any remote-tracking ref yet,
+	// and the freshness step reads those to decide rebase-versus-merge.
+	fetch(cwd);
+	for (const epic of branches) ensureLocalBranch(cwd, epic.branch);
+}
+
+/**
+ * Take every green child to its epic branch and close it.
+ *
+ * Part of `--finalize` rather than `--implement`: it puts commits on origin and
+ * closes issues, and `--implement` promises neither.
+ */
+function merge(
+	cwd: string,
+	repo: string,
+	items: readonly PlanItem[],
+	outcomes: readonly ImplementOutcome[]
+): MergeOutcome[] {
+	const green = new Set(
+		outcomes.filter((outcome) => outcome.status === 'implemented').map((outcome) => outcome.issue)
+	);
+	const children = childrenToMerge(items, green);
+
+	if (children.length === 0) return [];
+
+	console.log(`\nMerging ${children.length} child(ren) into their epic branch:`);
+	const results = mergeChildren(realMergeDeps(cwd, repo, (message) => console.log(`  ${message}`)), children);
+	console.log(`\nMerges:\n${renderMergeOutcomes(results)}`);
+
+	// A child whose epic is not itself in the batch has nowhere to go this
+	// pass: its code is on the epic branch and no PR will carry it onward until
+	// the epic issue is worked. Not an error — but not something to discover by
+	// noticing a PR that never appeared.
+	const epicBranches = new Set(items.filter((item) => item.role === 'epic').map((item) => item.workBranch));
+	for (const branch of new Set(results.filter((r) => r.status === 'merged').map((r) => r.epic))) {
+		if (!epicBranches.has(branch)) {
+			console.log(`\nnote: ${branch} is not in this batch, so no PR is opened for it this pass.`);
+		}
+	}
+
+	const failed = results.filter(isMergeFailure);
+	if (failed.length > 0) {
+		console.error(`\nerror: ${failed.length} child(ren) did not merge cleanly — see the merges above.`);
+		process.exitCode = 1;
+	}
+
+	return results;
+}
+
+/**
+ * Build the PR body for an item. Deterministic for a standalone; for an epic,
+ * an agent writes the narrative from the branch's own history and the harness
+ * wraps it in the parts that carry meaning — `Closes #<epic>` above all.
+ */
+function prBodyFor(
+	cwd: string,
+	items: readonly PlanItem[],
+	merges: readonly MergeOutcome[],
+	result: GatherResult
+): (item: PlanItem) => string {
+	const titles = new Map(items.map((item) => [item.issue, item.title]));
+	const bodies = new Map(result.eligible.map((candidate) => [candidate.number, candidate.body]));
+	const deps = realNarrativeDeps((message) => console.log(`  ${message}`));
+
+	return (item) => {
+		if (item.role !== 'epic') return prBody(item);
+
+		const merged = merges
+			.filter((outcome) => outcome.status === 'merged' && outcome.epic === item.workBranch)
+			.map((outcome) => ({ issue: outcome.issue, title: titles.get(outcome.issue) ?? `issue ${outcome.issue}` }));
+
+		const context = readEpicContext(cwd, item, bodies.get(item.issue) ?? '', merged);
+		return epicPrBody(item, writeEpicNarrative(deps, item, context));
+	};
 }
 
 /**
@@ -325,17 +451,24 @@ function finalize(
 	cwd: string,
 	repo: string,
 	items: readonly PlanItem[],
-	outcomes: readonly ImplementOutcome[]
+	outcomes: readonly ImplementOutcome[],
+	merges: readonly MergeOutcome[],
+	result: GatherResult
 ): void {
 	const finalizable = itemsToFinalize(items, outcomes);
 
 	if (finalizable.length === 0) {
-		console.error('\nnothing to finalize — no item came out of the gate green.');
+		console.error('\nnothing to finalize — no epic or standalone item came out of the gate green.');
 		return;
 	}
 
 	console.log(`\nFinalizing ${finalizable.length} of ${outcomes.length} item(s):`);
-	const deps = realFinalizeDeps(cwd, repo, (message) => console.log(`  ${message}`));
+	const deps = realFinalizeDeps(
+		cwd,
+		repo,
+		(message) => console.log(`  ${message}`),
+		prBodyFor(cwd, items, merges, result)
+	);
 	const results = finalizeBatch(deps, finalizable);
 
 	console.log(`\nHandoff:\n${renderFinalizeOutcomes(results)}`);
