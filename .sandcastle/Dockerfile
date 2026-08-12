@@ -31,21 +31,36 @@ ARG PHP_VERSION=7.4
 
 # git: the gate resolves its changed-file set with `git merge-base` / `git diff`.
 # ca-certificates, curl, gnupg: fetching the Sury key and repository.
+# unzip: Composer extracts dist archives with it — `phpstan/phpstan` publishes no
+# source repository at all, so without unzip the analysis step cannot install.
+# php-curl: Composer works without the extension but says, correctly, that it is
+# "operating significantly slower" — and this runs once per gated item.
 RUN set -eux; \
 	apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		ca-certificates \
 		curl \
 		git \
-		gnupg; \
+		gnupg \
+		unzip; \
 	curl -sSLo /usr/share/keyrings/sury-php.gpg https://packages.sury.org/php/apt.gpg; \
 	echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ ${SURY_SUITE} main" \
 		> /etc/apt/sources.list.d/sury-php.list; \
 	apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-		"php${PHP_VERSION}-cli"; \
+		"php${PHP_VERSION}-cli" \
+		"php${PHP_VERSION}-curl"; \
 	apt-get purge -y --auto-remove gnupg; \
 	rm -rf /var/lib/apt/lists/*
+
+# Composer, for the gate's `npm run analyse:php` step: PHPStan and the WordPress
+# stubs it reads are dev dependencies, and nothing else in the container installs
+# them. The `--2` pins the major, so a Composer 3 cannot arrive in a rebuild and
+# reinterpret a lock file the repository maintains against 2.
+RUN set -eux; \
+	curl -sSLo /tmp/composer-setup.php https://getcomposer.org/installer; \
+	php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer --2 --quiet; \
+	rm /tmp/composer-setup.php
 
 # The gate reads PHP_BIN and refuses to run on anything but 7.4. Pin it to the
 # versioned binary rather than the `php` alternative, so installing another PHP
@@ -58,7 +73,9 @@ RUN set -eux; \
 	actual="$("$PHP_BIN" -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')"; \
 	[ "$actual" = "${PHP_VERSION}" ] || { echo "PHP_BIN is PHP $actual, expected ${PHP_VERSION}" >&2; exit 1; }; \
 	node --version; \
-	npm --version
+	npm --version; \
+	composer --version; \
+	unzip -v > /dev/null
 
 # --- the agent user --------------------------------------------------------
 #

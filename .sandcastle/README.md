@@ -59,11 +59,13 @@ Four phases, over every eligible issue:
 3. **Implement.** One container per item, three at a time, on Opus 5. The agent
    commits to the work branch and nothing else — it has no `gh` and no GitHub
    credential. When it stops, **the harness runs the gate itself**, in the same
-   container: `npm run typecheck` and `npm run lint:php`. That verdict decides
-   the item, not the agent's claim. (`lint:php` parses with `$PHP_BIN`, which the
-   image pins to PHP 7.4 — the version the plugin declares. On your own machine
-   it refuses to run on any other version: point `PHP_BIN` at a 7.4 binary, or
-   set `ALLOW_PHP_VERSION_MISMATCH=1` and know the lint proves nothing.)
+   container: `npm run typecheck`, `npm run lint:php` and `npm run analyse:php`.
+   That verdict decides the item, not the agent's claim. (`lint:php` parses with
+   `$PHP_BIN`, which the image pins to PHP 7.4 — the version the plugin declares.
+   On your own machine it refuses to run on any other version: point `PHP_BIN` at
+   a 7.4 binary, or set `ALLOW_PHP_VERSION_MISMATCH=1` and know the lint proves
+   nothing. `analyse:php` is PHPStan over the whole 7.4–8.4 span the plugin
+   claims, and needs `composer install` first — the gate does that itself.)
 4. **Finalize.** Each green sub-issue is squash-merged into its epic branch and
    its issue closed. Each green epic and standalone gets its branch pushed and a
    PR opened into `main`, its label swapped `ready-for-agent` →
@@ -150,7 +152,8 @@ npx sandcastle docker build-image --image-name nextjs-revalidate-sandbox:latest
 
 The image carries Node, PHP 7.4 (from [Sury](https://packages.sury.org/php/);
 `PHP_BIN` is pinned to the versioned binary so the lint cannot be redirected to a
-newer parser) and the Claude Code CLI. It deliberately carries no `gh`. It is
+newer parser), Composer with `unzip` for the analysis step's dev dependencies,
+and the Claude Code CLI. It deliberately carries no `gh`. It is
 built for *your* UID/GID and is not shareable with another operator — rebuild
 instead. Nothing is copied into it, so ordinary code changes need no rebuild.
 

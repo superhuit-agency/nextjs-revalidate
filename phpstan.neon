@@ -1,0 +1,50 @@
+# PHPStan, as this repo's PHP *compatibility* gate.
+#
+# `npm run lint:php` parses every tracked file with PHP 7.4, the floor the plugin
+# header declares. That is a parser and nothing else: it holds the bottom of the
+# supported range — PHP 8-only syntax cannot reach a release claiming 7.4 — and
+# says nothing at all about the top of it, where the hazards are runtime rather
+# than syntax. Functions removed in 8.x, dynamic property creation, `null` into
+# an internal non-nullable parameter and implicit float-to-int precision loss all
+# lint clean on 7.4 and break, or warn, on a modern host. Linting on 8.4 as well
+# would not find them either: almost no syntax was removed in 8.x, so a second
+# parser adds noise instead of coverage.
+#
+# `phpVersion` below is what does find them. It is the whole span the plugin
+# claims — 7.4, the declared floor, through 8.4, the newest release hosts offer —
+# and PHPStan reports anything that breaks anywhere inside it, from one analysis
+# on whatever PHP the developer happens to have.
+#
+# There is no test suite here and nothing runs on pull requests, so this and the
+# lint are the only nets an incompatibility can fall into.
+
+includes:
+	# WordPress core's functions, classes, constants and hooks, as stubs. Without
+	# them every `add_action()` in the plugin is an unknown function and the real
+	# findings drown.
+	- vendor/szepeviktor/phpstan-wordpress/extension.neon
+	# What the files in include/ were already carrying the day they were first
+	# analysed. Read phpstan-baseline.neon as a to-do list, never as settings:
+	# fix a finding and the gate asks you to regenerate the file
+	# (`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`),
+	# so the list can only get shorter. Nothing new belongs in it.
+	- phpstan-baseline.neon
+
+parameters:
+	# Level 5 adds argument types to the levels below it, which is where the
+	# compatibility findings live. Raising it is a separate piece of work: it
+	# lengthens the baseline rather than the gate.
+	level: 5
+
+	paths:
+		- include
+		# The plugin file itself: the composition root, the two public API
+		# functions and the activation hooks all live in it, and it ships.
+		- nextjs-revalidate.php
+
+	# A `{min, max}` range, not a single version. PHPStan 2.x is what supports
+	# this shape — an older major reads `phpVersion` as one int and would analyse
+	# a single point in the range — so composer.json pins `^2.2`.
+	phpVersion:
+		min: 70400
+		max: 80400
