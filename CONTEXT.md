@@ -36,6 +36,14 @@ failure is the end of that revalidation's life. Distinct from a **refusal**,
 which is declined before it ever enters the queue.
 _Avoid_: Error, rejected, unsuccessful purge
 
+**Revalidatable post**:
+A post the front-end could hold a page for. Its type is viewable — WordPress's
+own `publicly_queryable` test — and its status is publish or private, or it has
+just left publish for draft or trash. A post that is not revalidatable produces
+no revalidation at all; it is not refused, it was never a candidate.
+_Avoid_: Public post — private posts are revalidatable, and password-protected
+ones are too.
+
 ### Settings
 
 **Setting**:
