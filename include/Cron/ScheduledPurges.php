@@ -61,6 +61,19 @@ class ScheduledPurges extends Base {
 	}
 
 	/**
+	 * Drop every scheduled purge registered on the site currently being served.
+	 *
+	 * Per-site state like the settings, and torn down with them: a scheduled
+	 * purge outliving the plugin names a path on a front-end nothing is left to
+	 * revalidate.
+	 *
+	 * @return void
+	 */
+	public static function delete_scheduled_purges() {
+		delete_option( self::OPTION_NAME );
+	}
+
+	/**
 	 * Schedule a purge to be performed
 	 *
 	 * @param String $datetime The date time string when to purge.

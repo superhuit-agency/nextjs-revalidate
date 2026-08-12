@@ -169,11 +169,12 @@ class NextJsRevalidate {
 	}
 
 	/**
-	 * Tear one site down as far as an uninstall goes: its settings and its
-	 * queue table are dropped.
+	 * Tear one site down as far as an uninstall goes: its settings, its
+	 * scheduled purges and its queue table are dropped.
 	 */
 	public function uninstall_site() {
 		Settings::delete_settings();
+		ScheduledPurges::delete_scheduled_purges();
 
 		$this->queue->delete_table();
 	}

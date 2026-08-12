@@ -80,6 +80,14 @@ obvious leak, `nextjs_revalidate-db_version` surviving an uninstall would leave 
 stale migration ledger for a later reinstall to trust, skipping migrations that
 should run — so ledger cleanup is a correctness requirement of #28, not tidiness.
 
+Scheduled purges are dropped with them, though they live outside the settings
+declaration. Every option this plugin writes is per-site state and none of it
+should outlive an uninstall; enumerating the settings is how *that* rule is kept
+for settings, not the rule itself. The declaration is therefore the authority on
+which settings exist, and site teardown is the authority on what a site holds —
+a distinction worth keeping, since the next thing this plugin stores per site
+will also need adding to teardown rather than to the settings table.
+
 The migration sweep is deliberately not part of this change. Sweeping
 `Settings::migrate_db()` before #28 replaces it would execute the existing broken
 version — which parses every version as `0` and re-runs the oldest migration —
