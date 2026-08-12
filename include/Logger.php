@@ -31,8 +31,9 @@ class Logger {
 	public static function log($text, $currentFile, $level= self::INFO) {
 
 		// Do not log if setting disabled
+		// The switch field submits `on` when checked, and nothing at all when unchecked.
 		$debug = NextJsRevalidate::init()->settings->debug ?: [];
-		if ( ! ( isset($debug['enable-logs']) && 'on' !== $debug['enable-logs'] ) ) return;
+		if ( ! filter_var( $debug['enable-logs'] ?? false, FILTER_VALIDATE_BOOLEAN ) ) return;
 
 		switch (strtolower($level)) {
 			case self::ERROR:
@@ -50,7 +51,8 @@ class Logger {
 		}
 
 		$filename  = basename($currentFile);
-		$alignment = str_repeat(' ', 16 - strlen($filename));
+		// Never a negative repeat count: a filename longer than the column is simply not padded.
+		$alignment = str_repeat(' ', max(0, 16 - strlen($filename)));
 
 		$dirs = wp_upload_dir();
 		$logFile = trailingslashit($dirs['basedir']) . self::FILENAME;
