@@ -48,28 +48,3 @@ export function renderText(result: GatherResult): string {
 
 	return lines.join('\n');
 }
-
-export function renderJson(result: GatherResult): string {
-	return JSON.stringify(
-		{
-			repo: result.repo,
-			label: result.label,
-			considered: result.considered,
-			eligible: result.eligible.map((candidate) => ({
-				number: candidate.number,
-				title: candidate.title,
-				url: candidate.url,
-				workBranch: candidate.workBranch,
-				parent: candidate.parent,
-				children: candidate.children,
-			})),
-			pruned: result.pruned.map((pruned) => ({
-				number: pruned.candidate.number,
-				title: pruned.candidate.title,
-				reason: pruned.reason,
-			})),
-		},
-		null,
-		2
-	);
-}

@@ -1,10 +1,10 @@
 # Sandbox image for the AFK agent harness.
 #
-# Carries the two runtimes `scripts/gate.sh` needs: Node — whichever version
-# the plugin is pinned to — and PHP 7.4 for the gate's `php -l` step. On top of
-# those it carries the Claude Code CLI, which is what sandcastle invokes inside
-# the container, and an `agent` user whose UID/GID match the host's so the
-# bind-mounted worktree needs no runtime chown.
+# Carries the two runtimes the gate needs: Node, for `npm run typecheck`, and
+# PHP 7.4 for `npm run lint:php`. On top of those it carries the Claude Code
+# CLI, which is what sandcastle invokes inside the container, and an `agent`
+# user whose UID/GID match the host's so the bind-mounted worktree needs no
+# runtime chown.
 #
 # What is deliberately NOT here: `gh`, and any credential for it. The implement
 # phase never pushes and never opens a PR — an agent that cannot reach GitHub
@@ -12,19 +12,17 @@
 # variable at `docker run` time, from the gitignored `.sandcastle/.env`; nothing
 # secret is baked into the image.
 #
-# The Node version is deliberately NOT written here. It arrives as a build
-# argument that `build.sh` reads from `.nvmrc`, so the image tracks the pin
-# rather than duplicating it: changing `.nvmrc` and rebuilding is enough, with
-# no edit to this file. Same principle as the gate detecting its package
-# manager from the lockfile.
+# The Node version is pinned below and has to be kept in step with `.nvmrc` by
+# hand — one line in one place, rebuilt when it changes. Threading it in from
+# `.nvmrc` needed a build script of our own, which cost more than the pin does.
 #
-# The harness itself never enters this container — it runs on the host on
-# Node 24+. Nothing about the harness's own runtime belongs here.
+# The harness itself never enters this container — it runs on the host.
 #
-# Build it with `.sandcastle/sandbox/build.sh`, not by hand.
+# Nothing builds this by hand: `npm run sandcastle` builds it through
+# `sandcastle docker build-image` when it is missing, which is also what bakes
+# in the host UID/GID the two ARGs below expect.
 
-ARG NODE_VERSION
-FROM node:${NODE_VERSION}-bookworm-slim
+FROM node:24-bookworm-slim
 
 # PHP 7.4 is long past upstream EOL, so it is not in Debian bookworm. Sury is
 # where maintained 7.4 packages live, and it publishes amd64 and arm64.
@@ -66,8 +64,9 @@ RUN set -eux; \
 #
 # sandcastle's docker provider runs the container as `--user <uid>:<gid>` and
 # refuses to start when the image's own UID differs, so the UID has to be baked
-# in at build time. `build.sh` defaults these to the host user's, which is also
-# what makes the bind-mounted worktree writable without a chown.
+# in at build time. `sandcastle docker build-image` passes the host user's,
+# which is also what makes the bind-mounted worktree writable without a chown —
+# and why an image built by one operator is not reusable by another.
 #
 # The base image already has a `node` user; renaming it is cheaper than adding
 # another, and `-o` allows a GID that is already taken (macOS `staff` is 20,

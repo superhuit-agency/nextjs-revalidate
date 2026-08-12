@@ -10,7 +10,14 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
-import { COMPLETION_SIGNAL, CONCURRENCY, IDLE_TIMEOUT_SECONDS, IMPLEMENTER_MODEL, MAX_ITERATIONS } from '../lib/config.mts';
+import {
+	COMPLETION_SIGNAL,
+	CONCURRENCY,
+	GATE_COMMAND,
+	IDLE_TIMEOUT_SECONDS,
+	IMPLEMENTER_MODEL,
+	MAX_ITERATIONS,
+} from '../lib/config.mts';
 import { classifyRun, implementItem, pool, promptArgsFor, renderOutcomes, tailOf } from '../lib/implement.mts';
 import type { ImplementDeps, ImplementOutcome, SandboxSeam } from '../lib/implement.mts';
 import type { PlanItem } from '../lib/plan.mts';
@@ -28,8 +35,6 @@ type FakeOptions = {
 	commits?: number;
 	signalled?: boolean;
 	gateExitCode?: number;
-	/** The gate script is absent from the branch, so the probe fails. */
-	gateAbsent?: boolean;
 	runThrows?: string;
 };
 
@@ -62,12 +67,8 @@ function fakeDeps(options: FakeOptions = {}): { deps: ImplementDeps; recorded: R
 			},
 			async exec(command) {
 				recorded.execCommands.push(command);
-				// A real shell answers the probe and the gate itself separately.
-				if (command.startsWith('test -x')) {
-					return { stdout: '', stderr: '', exitCode: options.gateAbsent ? 1 : 0 };
-				}
 				const exitCode = options.gateExitCode ?? 0;
-				return { stdout: exitCode === 0 ? '==> Gate passed' : 'tsc error', stderr: '', exitCode };
+				return { stdout: exitCode === 0 ? 'up to date' : 'tsc error', stderr: '', exitCode };
 			},
 			async close() {
 				recorded.closed += 1;
@@ -85,22 +86,17 @@ describe('the gate is the arbiter', () => {
 
 		const outcome = await implementItem(deps, ITEM, 'body');
 
-		assert.deepEqual(recorded.execCommands, ['test -x ./scripts/gate.sh', './scripts/gate.sh']);
+		assert.deepEqual(recorded.execCommands, [GATE_COMMAND]);
 		assert.equal(outcome.status, 'implemented');
 		assert.equal(outcome.gate?.passed, true);
 	});
 
-	it('reports an absent gate as missing rather than failed, and never runs it', async () => {
-		// The case a real run hit: a work branch cut from a base that does not
-		// carry scripts/gate.sh yet. There is no verdict, and it is not the
-		// implementer's fault — calling it `gate-failed` would say it was.
-		const { deps, recorded } = fakeDeps({ gateAbsent: true });
-
-		const outcome = await implementItem(deps, ITEM, 'body');
-
-		assert.equal(outcome.status, 'gate-missing');
-		assert.equal(outcome.gate?.missing, true);
-		assert.deepEqual(recorded.execCommands, ['test -x ./scripts/gate.sh'], 'no point running what is not there');
+	it('runs a gate the branch cannot fail to carry', () => {
+		// The gate is defined host-side and is nothing but npm scripts, so there
+		// is no state where a work branch has no gate on it — which is what used
+		// to leave items ungated with nobody at fault.
+		assert.match(GATE_COMMAND, /npm run typecheck/);
+		assert.match(GATE_COMMAND, /npm run lint:php/);
 	});
 
 	it('overrules an agent that signalled completion over a red gate', async () => {
@@ -114,16 +110,9 @@ describe('the gate is the arbiter', () => {
 	});
 
 	it('calls an item with no commits unworked, however green the gate', () => {
-		assert.equal(classifyRun(0, { passed: true, exitCode: 0, tail: '', missing: false }), 'no-commits');
-		assert.equal(classifyRun(1, { passed: true, exitCode: 0, tail: '', missing: false }), 'implemented');
-		assert.equal(classifyRun(1, { passed: false, exitCode: 2, tail: '', missing: false }), 'gate-failed');
-	});
-
-	it('lets a missing gate outrank every other reading of the run', () => {
-		const absent = { passed: false, exitCode: 1, tail: '', missing: true };
-
-		assert.equal(classifyRun(0, absent), 'gate-missing');
-		assert.equal(classifyRun(5, absent), 'gate-missing');
+		assert.equal(classifyRun(0, { passed: true, exitCode: 0, tail: '' }), 'no-commits');
+		assert.equal(classifyRun(1, { passed: true, exitCode: 0, tail: '' }), 'implemented');
+		assert.equal(classifyRun(1, { passed: false, exitCode: 2, tail: '' }), 'gate-failed');
 	});
 });
 
@@ -243,7 +232,7 @@ describe('nothing outside finalize opens a PR, and finalize only ever opens one'
 			...readdirSync(libDir)
 				.filter((name) => name.endsWith('.mts'))
 				.map((name) => ({ name: `lib/${name}`, path: join(libDir, name) })),
-			{ name: 'run.mts', path: fileURLToPath(new URL('../run.mts', import.meta.url)) },
+			{ name: 'main.mts', path: fileURLToPath(new URL('../main.mts', import.meta.url)) },
 		];
 	}
 
@@ -296,30 +285,23 @@ describe('renderOutcomes — a red gate has to say why', () => {
 	it('prints the gate tail on failure — the only place the reason exists', () => {
 		// The agent's own log stops before the gate runs, so an exit code with
 		// no tail leaves an operator with a red item and nowhere to look.
-		const output = rendered({ passed: false, exitCode: 1, missing: false, tail: 'PHP Parse error: syntax error' }, 'gate-failed');
+		const output = rendered({ passed: false, exitCode: 1, tail: 'PHP Parse error: syntax error' }, 'gate-failed');
 
 		assert.match(output, /failed, exit 1/);
 		assert.match(output, /PHP Parse error: syntax error/);
 	});
 
 	it('prefixes every tail line so it cannot be mistaken for harness output', () => {
-		const output = rendered({ passed: false, exitCode: 2, missing: false, tail: 'first\nsecond' }, 'gate-failed');
+		const output = rendered({ passed: false, exitCode: 2, tail: 'first\nsecond' }, 'gate-failed');
 
 		assert.match(output, /^\s+\| first$/m);
 		assert.match(output, /^\s+\| second$/m);
 	});
 
 	it('stays quiet on a green gate — there is nothing to explain', () => {
-		const output = rendered({ passed: true, exitCode: 0, missing: false, tail: 'Gate passed' }, 'implemented');
+		const output = rendered({ passed: true, exitCode: 0, tail: 'Gate passed' }, 'implemented');
 
 		assert.match(output, /gate:\s+passed/);
 		assert.ok(!output.includes('| Gate passed'), 'a passing gate should not dump its output');
-	});
-
-	it('still reports a missing gate as the setup problem it is', () => {
-		const output = rendered({ passed: false, exitCode: 1, missing: true, tail: 'land the gate on the base branch first' }, 'gate-missing');
-
-		assert.match(output, /NOT PRESENT — land the gate on the base branch first/);
-		assert.ok(!/^\s+\| /m.test(output), 'a missing gate says it once, not twice');
 	});
 });

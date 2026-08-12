@@ -20,8 +20,20 @@ they outrank any habit you have from other repositories.
 
 ## What done means
 
-`{{GATE_COMMAND}}` — the gate. Run it. It installs dependencies, builds the
-assets, type-checks, and lints every PHP file you changed against PHP 7.4.
+The gate, and you run it before you commit:
+
+```sh
+{{GATE_COMMAND}}
+```
+
+`npm run typecheck` type-checks the plugin; `npm run lint:php` parses every
+tracked PHP file with PHP 7.4, the version the plugin header declares — which is
+what stops PHP 8-only syntax (`readonly`, enums, `?->`, constructor promotion,
+attributes) reaching a release that claims 7.4 support. The `npm ci` only
+matters the first time; after that the two `npm run` lines are the gate.
+
+It does **not** run the asset build, and it has no tests to run. Nothing here
+checks that what you wrote works.
 
 The gate is a weak one: this repository has no test suite, so it catches syntax
 and type errors and zero logic errors. It passing does not mean your work is
@@ -49,8 +61,8 @@ with your name on it. Run the gate before you claim anything.
 
 ## Finishing
 
-When the work is committed and `{{GATE_COMMAND}}` is green, write a short
-summary of what you changed and why, then emit exactly:
+When the work is committed and the gate is green, write a short summary of what
+you changed and why, then emit exactly:
 
 <promise>COMPLETE</promise>
 

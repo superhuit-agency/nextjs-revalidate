@@ -71,12 +71,23 @@ export const PR_BODY_TIMEOUT_MS = 180_000;
 /** What the agent emits to end its iteration loop early. */
 export const COMPLETION_SIGNAL = '<promise>COMPLETE</promise>';
 
-/** Image the implementers run inside; built by `.sandcastle/sandbox/build.sh`. */
+/**
+ * Image the implementers run inside. Built from `.sandcastle/Dockerfile` by
+ * `sandcastle docker build-image`, which the harness shells to itself when the
+ * image is missing — there is no build script to remember.
+ */
 export const SANDBOX_IMAGE = 'nextjs-revalidate-sandbox:latest';
 
 /**
- * The gate, as run *by the harness* inside the sandbox. Tracked in the repo
- * rather than seeded into the worktree, so the freshness rule keeps every work
- * branch's copy current on its own.
+ * The gate, as run *by the harness* inside the sandbox after the agent stops.
+ *
+ * Two npm scripts, not a tracked shell script: the same `npm run typecheck` and
+ * `npm run lint:php` a developer runs by hand, so there is one definition of
+ * "shippable" and no harness-only file to keep in step with it. `npm ci` first
+ * because `tsc` has to exist before it can run.
+ *
+ * Deliberately weak: this repo has no test suite, so it catches syntax and type
+ * errors and zero logic errors. The implementer's own judgement is the real
+ * quality control — see `IMPLEMENTER_MODEL`.
  */
-export const GATE_COMMAND = './scripts/gate.sh';
+export const GATE_COMMAND = 'npm ci --no-audit --no-fund && npm run typecheck && npm run lint:php';

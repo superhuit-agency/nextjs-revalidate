@@ -53,7 +53,7 @@ describe('pushBranch — the one chokepoint', () => {
 			...readdirSync(libDir)
 				.filter((name) => name.endsWith('.mts'))
 				.map((name) => ({ name: `lib/${name}`, path: join(libDir, name) })),
-			{ name: 'run.mts', path: fileURLToPath(new URL('../run.mts', import.meta.url)) },
+			{ name: 'main.mts', path: fileURLToPath(new URL('../main.mts', import.meta.url)) },
 		];
 
 		const offenders = sources

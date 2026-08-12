@@ -102,7 +102,7 @@ function fakeDeps(options: FakeOptions = {}): { deps: FinalizeDeps; recorded: Re
 
 describe('itemsToFinalize — only the gate-green', () => {
 	it('finalizes implemented items and nothing else', () => {
-		const items: PlanItem[] = [1, 2, 3, 4, 5].map((issue) => ({
+		const items: PlanItem[] = [1, 2, 3, 4].map((issue) => ({
 			...ITEM,
 			issue,
 			workBranch: `sandcastle/issue-${issue}`,
@@ -111,8 +111,7 @@ describe('itemsToFinalize — only the gate-green', () => {
 			outcome(1, 'implemented'),
 			outcome(2, 'gate-failed'),
 			outcome(3, 'no-commits'),
-			outcome(4, 'gate-missing'),
-			outcome(5, 'error'),
+			outcome(4, 'error'),
 		];
 
 		assert.deepEqual(

@@ -1,0 +1,4 @@
+# The build context is this directory, and the image copies nothing out of it —
+# the checkout is bind-mounted at run time instead. Excluding everything keeps
+# logs/ and worktrees/ from being shipped to the daemon on every build.
+**

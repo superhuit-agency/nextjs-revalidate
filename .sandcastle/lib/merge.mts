@@ -90,7 +90,7 @@ export function childClosingComment(item: PlanItem, sha: string): string {
 		`its epic branch, and \`${item.mergeInto}\` is that branch. The epic's own PR is what a human merges, and`,
 		'closing it closes the epic.',
 		'',
-		`Implemented on \`${item.workBranch}\` with \`./scripts/gate.sh\` green.`,
+		`Implemented on \`${item.workBranch}\`, with the gate the harness ran itself green.`,
 	].join('\n');
 }
 

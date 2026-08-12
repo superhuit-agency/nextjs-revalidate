@@ -9,13 +9,11 @@
  * credential, so an agent cannot do either behind the harness's back.
  *
  * **The gate is the arbiter, and the harness runs it.** The agent is told to
- * run `scripts/gate.sh` before signalling completion, but that is the agent's
- * self-check; what decides the item is done is `sandbox.exec()` — the harness
- * running the same gate itself, in the same container, after the agent has
- * stopped. A green self-report over a red gate is a `gate-failed` item.
- *
- * The gate is tracked in the repo rather than seeded into the worktree, so the
- * freshness rule from #42 keeps every work branch's copy current for free.
+ * run the gate's npm scripts before signalling completion, but that is the
+ * agent's self-check; what decides the item is done is `sandbox.exec()` — the
+ * harness running the same commands itself, in the same container, after the
+ * agent has stopped. A green self-report over a red gate is a `gate-failed`
+ * item.
  */
 import { join } from 'node:path';
 import {
@@ -31,25 +29,16 @@ import type { PlanItem } from './plan.mts';
 /** Verdict of one gate run, as the harness observed it. */
 export type GateVerdict = {
 	passed: boolean;
-	/** The gate's own exit code — or, when `missing`, the failed probe's. */
+	/** The gate's own exit code. */
 	exitCode: number;
-	/**
-	 * Last few lines of gate output — enough to see why, not a whole build log.
-	 * When `missing`, it carries the explanation instead, since there is no
-	 * output to carry.
-	 */
+	/** Last few lines of gate output — enough to see why, not a whole build log. */
 	tail: string;
-	/**
-	 * The gate was not there to run. Distinct from failing it: no verdict exists,
-	 * so there is nothing the agent could have done differently.
-	 */
-	missing: boolean;
 };
 
 export type ImplementOutcome = {
 	issue: number;
 	branch: string;
-	status: 'implemented' | 'gate-failed' | 'gate-missing' | 'no-commits' | 'error';
+	status: 'implemented' | 'gate-failed' | 'no-commits' | 'error';
 	commits: number;
 	gate: GateVerdict | null;
 	/** Whether the agent claimed completion, as distinct from the gate's verdict. */
@@ -79,17 +68,10 @@ export function tailOf(output: string, lines: number = GATE_TAIL_LINES): string 
  * What a finished run amounts to. Separated from the orchestration so the rule
  * — the gate decides, not the agent — is one testable expression.
  *
- * A missing gate outranks everything: with no verdict, nothing here can call
- * the item done or not done, and the fault is the setup's rather than the
- * agent's. This is not hypothetical — a work branch cut from a `main` that does
- * not yet carry `scripts/gate.sh` lands exactly here, and reporting it as a
- * failed gate would blame the implementer for it.
- *
- * No commits then outranks a green gate: the gate passing on an untouched
- * checkout says the branch was already shippable, not that the issue was worked.
+ * No commits outranks a green gate: the gate passing on an untouched checkout
+ * says the branch was already shippable, not that the issue was worked.
  */
 export function classifyRun(commits: number, gate: GateVerdict): ImplementOutcome['status'] {
-	if (gate.missing) return 'gate-missing';
 	if (commits === 0) return 'no-commits';
 	return gate.passed ? 'implemented' : 'gate-failed';
 }
@@ -253,29 +235,16 @@ export async function implementItem(deps: ImplementDeps, item: PlanItem, body: s
 /**
  * Run the gate inside the sandbox and read its exit code.
  *
- * Probed first, because a shell answers "no such file" and "the script ran and
- * failed" with exit codes an outcome cannot tell apart on its own — and the two
- * mean opposite things about whose problem it is.
+ * The command is defined host-side, in `config.mts`, and needs nothing from the
+ * branch but the npm scripts every checkout carries — so there is no state where
+ * the gate is unavailable and an item comes back ungated.
  */
 export async function runGate(sandbox: SandboxSeam): Promise<GateVerdict> {
-	const probe = await sandbox.exec(`test -x ${GATE_COMMAND}`);
-	if (probe.exitCode !== 0) {
-		return {
-			passed: false,
-			exitCode: probe.exitCode,
-			missing: true,
-			tail:
-				`${GATE_COMMAND} is not present or not executable on this branch, so there is no verdict to take. ` +
-				`It is tracked in the repo, which means a work branch cut from a base that does not carry it yet ` +
-				`cannot be gated — land the gate on the base branch first.`,
-		};
-	}
-
 	const result = await sandbox.exec(GATE_COMMAND);
+
 	return {
 		passed: result.exitCode === 0,
 		exitCode: result.exitCode,
-		missing: false,
 		tail: tailOf(`${result.stdout}\n${result.stderr}`),
 	};
 }
@@ -313,9 +282,7 @@ export function renderOutcomes(outcomes: readonly ImplementOutcome[]): string {
 		lines.push(`  #${outcome.issue} — ${outcome.status}`);
 		lines.push(`      branch:  ${outcome.branch}`);
 		lines.push(`      commits: ${outcome.commits} over ${outcome.iterations} iteration(s)`);
-		if (outcome.gate?.missing) {
-			lines.push(`      gate:    NOT PRESENT — ${outcome.gate.tail}`);
-		} else if (outcome.gate) {
+		if (outcome.gate) {
 			lines.push(`      gate:    ${outcome.gate.passed ? 'passed' : `failed, exit ${outcome.gate.exitCode}`}`);
 			// The tail is the only place the *reason* exists. The agent's own
 			// transcript stops before the gate runs, so a bare exit code would
@@ -324,7 +291,7 @@ export function renderOutcomes(outcomes: readonly ImplementOutcome[]): string {
 				for (const line of outcome.gate.tail.split('\n')) lines.push(`      | ${line}`);
 			}
 		}
-		if (outcome.signalled && outcome.gate && !outcome.gate.passed && !outcome.gate.missing) {
+		if (outcome.signalled && outcome.gate && !outcome.gate.passed) {
 			lines.push('      note:    the agent signalled completion; the gate disagreed');
 		}
 		if (outcome.logFilePath) lines.push(`      log:     ${outcome.logFilePath}`);

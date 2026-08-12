@@ -2,28 +2,28 @@
 /**
  * AFK agent harness entry point.
  *
- * Five modes, each one step further than the last:
+ *   npm run sandcastle              one full pass
+ *   npm run sandcastle -- --dry-run print the batch it would work, then stop
  *
- *   --dry-run    print the batch of issues it would work
- *   --plan       + turn the batch into a plan and validate it
- *   --prepare    + bring each work branch to a correct starting point
- *   --implement  + run implementers in containers, gate the result
- *   --finalize   + merge children into epics, branches to origin, PR into main
+ * A pass is four phases over every `ready-for-agent` issue: plan the batch,
+ * bring each work branch to a correct starting point, run an implementer in a
+ * container per item, then merge green children into their epic branch, push
+ * green branches to origin and open a PR into `main` for each.
  *
- * `--prepare` is the first mode that writes anything: local branches, plus a
- * bare epic branch created and linked on origin where the batch needs one —
- * creating and linking is a single call, and there is no way to get the link
- * otherwise. No code, no PR. `--implement` is the first that starts a container
- * and the first that writes code — and it still puts none of it on origin:
- * commits land on the local work branch and stop there. `--finalize` is the
- * full pass, and it is the only mode that merges a child into its epic branch,
- * opens a PR or closes anything. It never merges into the base branch. Running
- * with no mode is an error rather than a no-op, so an operator can never think
- * a real pass has happened.
+ * The one rule the whole thing exists to keep: **nothing reaches `main` except
+ * a human merging a PR.** No phase merges into the base branch, and the only
+ * push in the harness is `pushBranch()`, which refuses any branch outside
+ * `sandcastle/`.
+ *
+ * This file is orchestration only. Every decision it makes lives in `lib/`,
+ * with its own tests — the sequence below is the part that is not worth a mode
+ * flag.
  */
-import { BASE_BRANCH, CONCURRENCY, READY_LABEL } from './lib/config.mts';
-import { currentBranch, ensureLocalBranch, fetch, git } from './lib/git.mts';
+import { BASE_BRANCH, CONCURRENCY, SANDBOX_IMAGE } from './lib/config.mts';
+import { ensureLocalBranch, fetch, git } from './lib/git.mts';
+import { checkoutMoved, preflight } from './lib/preflight.mts';
 import { containerAuth } from './lib/auth.mts';
+import { ensureSandboxImage, realImageDeps } from './lib/image.mts';
 import { ensureEpicBranches, realEpicDeps } from './lib/epic.mts';
 import type { EpicBranch } from './lib/epic.mts';
 import { realBodyFor } from './lib/epicpr.mts';
@@ -54,91 +54,22 @@ import {
 	validatePlan,
 } from './lib/plan.mts';
 import type { PlanItem } from './lib/plan.mts';
-import { renderJson, renderText } from './lib/report.mts';
+import { renderText } from './lib/report.mts';
 
-type Mode = 'dry-run' | 'plan' | 'prepare' | 'implement' | 'finalize';
+/**
+ * The only flag. Everything else a five-mode CLI used to offer is either the
+ * whole run or nothing — an operator either wants a pass or wants to see the
+ * batch first.
+ */
+function parseArgs(argv: string[]): { dryRun: boolean } {
+	const unknown = argv.filter((arg) => arg !== '--dry-run');
 
-/** Modes that start containers and write code — `--finalize` implies `--implement`. */
-function runsImplementers(mode: Mode): boolean {
-	return mode === 'implement' || mode === 'finalize';
-}
-
-type Options = {
-	mode: Mode | null;
-	json: boolean;
-	repo: string | null;
-	/** Issue numbers to restrict the batch to. Empty means the whole batch. */
-	only: number[];
-};
-
-function parseArgs(argv: string[]): Options {
-	const options: Options = { mode: null, json: false, repo: null, only: [] };
-
-	for (let index = 0; index < argv.length; index += 1) {
-		const arg = argv[index];
-		if (arg === '--dry-run') {
-			options.mode = 'dry-run';
-		} else if (arg === '--plan') {
-			options.mode = 'plan';
-		} else if (arg === '--prepare') {
-			options.mode = 'prepare';
-		} else if (arg === '--implement') {
-			options.mode = 'implement';
-		} else if (arg === '--finalize') {
-			options.mode = 'finalize';
-		} else if (arg === '--json') {
-			options.json = true;
-		} else if (arg === '--repo') {
-			index += 1;
-			options.repo = argv[index] ?? null;
-		} else if (arg === '--issue') {
-			index += 1;
-			const raw = argv[index];
-			const issue = Number(raw);
-			if (!raw || !Number.isInteger(issue) || issue <= 0) {
-				console.error(`--issue needs an issue number, got: ${raw ?? '(nothing)'}`);
-				process.exit(2);
-			}
-			options.only.push(issue);
-		} else if (arg === '--help' || arg === '-h') {
-			usage();
-			process.exit(0);
-		} else {
-			console.error(`unknown argument: ${arg}`);
-			usage();
-			process.exit(2);
-		}
+	if (unknown.length > 0) {
+		console.error(`unknown argument: ${unknown[0]}\n\nUsage: npm run sandcastle [-- --dry-run]`);
+		process.exit(2);
 	}
 
-	return options;
-}
-
-function usage(): void {
-	console.error(
-		[
-			'Usage: node .sandcastle/run.mts (--dry-run | --plan | --prepare | --implement | --finalize)',
-			'                                [--issue N]... [--json] [--repo owner/name]',
-			'',
-			'  --dry-run    Print the batch of issues that would be worked, then exit.',
-			'               Takes no action: no branches, nothing on origin, no containers.',
-			'  --plan       Also build the plan and validate it. Read-only; a plan',
-			'               violating a hard rule aborts the entire run.',
-			'  --prepare    Also bring each work branch to a correct starting point,',
-			'               creating and linking a bare epic branch on origin where',
-			'               the batch needs one. No code, no container, no PR.',
-			'  --implement  Also run an implementer in a container per item and gate',
-			'               the result. Commits land on the local work branch; still',
-			'               no code on origin and no PR opened.',
-			'  --finalize   The full pass: also squash-merge every gate-green child',
-			'               into its epic branch, send green branches to origin, open',
-			'               a non-draft PR into the base branch and hand the issue',
-			'               back to a human. Never merges into the base branch.',
-			'  --issue N    Restrict the batch to this issue. Repeatable. Without it,',
-			'               every eligible issue is worked.',
-			'  --json       Emit the batch as JSON instead of text.',
-			'  --repo       Target repository. Defaults to the current checkout.',
-		].join('\n')
-	);
+	return { dryRun: argv.includes('--dry-run') };
 }
 
 function describeFreshness(outcome: FreshnessOutcome): string {
@@ -156,58 +87,36 @@ function describeFreshness(outcome: FreshnessOutcome): string {
 	}
 }
 
-/**
- * Narrow the plan to the issues `--issue` named. An unmatched number is fatal
- * rather than a warning: an operator pointing the harness at one issue and
- * getting a silent no-op would read it as "the run happened and did nothing".
- */
-function restrictToIssues(items: readonly PlanItem[], only: readonly number[]): PlanItem[] {
-	if (only.length === 0) return [...items];
-
-	const byNumber = new Map(items.map((item) => [item.issue, item]));
-	const missing = only.filter((issue) => !byNumber.has(issue));
-
-	if (missing.length > 0) {
-		console.error(
-			`\nerror: --issue ${missing.join(', ')} — not in the planned batch. An issue is only planned when it is ` +
-				`open, labelled ${READY_LABEL}, has no open blockers, and has no PR on its work branch. ` +
-				`The batch above says which of those it failed.`
-		);
-		process.exit(2);
-	}
-
-	return only.map((issue) => byNumber.get(issue) as PlanItem);
-}
-
 async function main(): Promise<void> {
-	const options = parseArgs(process.argv.slice(2));
+	const { dryRun } = parseArgs(process.argv.slice(2));
 
-	if (options.mode === null) {
-		console.error('Pick a mode: --dry-run, --plan, --prepare, --implement or --finalize.');
-		usage();
+	// The repository root, not wherever the operator invoked npm from: every
+	// path the harness builds hangs off it.
+	const cwd = git(process.cwd(), ['rev-parse', '--show-toplevel']);
+
+	console.log('Pre-flight:');
+	let started;
+	try {
+		started = preflight(cwd, (message) => console.log(`  ${message}`), { heal: !dryRun });
+	} catch (error) {
+		// A refusal is an ordinary outcome, not a crash: it says what the operator
+		// has to do, and a stack trace above it helps nobody.
+		console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
 		process.exit(2);
 	}
+	console.log(
+		dryRun
+			? `  on ${started.startedOn}; nothing healed — a dry run touches nothing at all.`
+			: `  on ${started.startedOn}, ${started.healed.length} stale worktree(s) cleared.`
+	);
 
-	const cwd = git(process.cwd(), ['rev-parse', '--show-toplevel']);
-	const startedOn = currentBranch(cwd);
-	// Snapshotted, not asserted clean: the invariant is that the harness leaves
-	// the primary checkout exactly as it found it, which has to hold whether or
-	// not the operator started with local edits of their own.
-	const startedDirty = git(cwd, ['status', '--porcelain']);
-	const repo = options.repo ?? currentRepo();
+	const repo = currentRepo();
+
 	const warnings: string[] = [];
 	const result = gather(repo, (message) => warnings.push(message));
 
-	console.log(options.json ? renderJson(result) : renderText(result));
-
-	for (const warning of warnings) {
-		console.error(`warning: ${warning}`);
-	}
-
-	if (options.mode === 'dry-run') {
-		console.error('\ndry run — no branches created, nothing on origin, no containers started.');
-		return;
-	}
+	console.log(renderText(result));
+	for (const warning of warnings) console.error(`warning: ${warning}`);
 
 	const plan = planBatch(result, BASE_BRANCH);
 
@@ -221,30 +130,33 @@ async function main(): Promise<void> {
 
 	console.log(`\nPlan — validated:\n${renderPlan(plan)}`);
 
-	if (options.mode === 'plan') {
-		console.error('\nplan only — no branches created, nothing on origin, no containers started.');
+	if (dryRun) {
+		console.error('\ndry run — no branches created, nothing on origin, no containers started.');
 		return;
 	}
 
 	// Epics first, then standalones, then children: a child is cut from its
 	// epic branch and merged back into it, so the epic has to reach a correct
 	// starting point — and land its own work — before a child sits on top.
-	const items = orderForExecution(restrictToIssues(plan.items, options.only));
-	if (options.only.length > 0) {
-		console.log(`\nRestricted to --issue ${options.only.join(', ')} — ${items.length} of ${plan.items.length} item(s).`);
+	const items = orderForExecution(plan.items);
+
+	if (items.length === 0) {
+		console.error('\nnothing to work — no issue is ready for an agent.');
+		return;
 	}
 
-	// Auth is settled before any branch is touched, not at the first container:
-	// a batch prepared and then abandoned on a missing token is worse than one
-	// that never started.
-	if (runsImplementers(options.mode)) {
-		const auth = containerAuth(cwd);
-		if (!auth.ok) {
-			console.error(`\nerror: container auth to Claude is not configured — ${auth.reason}`);
-			process.exit(5);
-		}
-		console.log(`\nContainer auth: ${auth.key} (from ${auth.source === 'env-file' ? '.sandcastle/.env' : 'the environment'}).`);
+	// Auth and the image are settled before any branch is touched, not at the
+	// first container: a batch prepared and then abandoned on a missing token is
+	// worse than one that never started.
+	const auth = containerAuth(cwd);
+	if (!auth.ok) {
+		console.error(`\nerror: container auth to Claude is not configured — ${auth.reason}`);
+		process.exit(5);
 	}
+	console.log(`\nContainer auth: ${auth.key} (from ${auth.source === 'env-file' ? '.sandcastle/.env' : 'the environment'}).`);
+
+	console.log('\nSandbox image:');
+	ensureSandboxImage(realImageDeps(cwd, (message) => console.log(`  ${message}`)), SANDBOX_IMAGE);
 
 	// Freshness reads remote-tracking refs, so one fetch has to precede it; a
 	// stale ref would send a branch that is on origin down the rebase path.
@@ -270,65 +182,39 @@ async function main(): Promise<void> {
 
 	console.log('\nBranch freshness:');
 	const ready = freshen(cwd, first);
+	const outcomes = await implement(cwd, ready, result.eligible);
 
-	if (!runsImplementers(options.mode)) {
-		ready.push(...freshen(cwd, children));
-	} else {
-		const outcomes = await implement(cwd, ready, result.eligible);
+	const readyChildren = children.length > 0 ? (console.log('\nBranch freshness — children:'), freshen(cwd, children)) : [];
+	ready.push(...readyChildren);
+	outcomes.push(...(await implement(cwd, readyChildren, result.eligible)));
 
-		const readyChildren = children.length > 0 ? (console.log('\nBranch freshness — children:'), freshen(cwd, children)) : [];
-		ready.push(...readyChildren);
-		outcomes.push(...(await implement(cwd, readyChildren, result.eligible)));
+	reportImplemented(outcomes);
 
-		reportImplemented(outcomes);
-
-		if (options.mode === 'finalize') {
-			// Children reach their epic branch first, so the epic's PR carries
-			// them. Then the PRs — for epics and standalones only.
-			const merges = merge(cwd, repo, ready, outcomes);
-			finalize(cwd, repo, ready, outcomes, merges, result);
-		}
-	}
+	// Children reach their epic branch first, so the epic's PR carries them.
+	// Then the PRs — for epics and standalones only.
+	const merges = merge(cwd, repo, ready, outcomes);
+	finalize(cwd, repo, ready, outcomes, merges, result);
 
 	// The primary checkout is untouchable — nothing above ran `git checkout` in
 	// it. Say so out loud, and fail if it ever stops being true.
-	const endedOn = currentBranch(cwd);
-	const endedDirty = git(cwd, ['status', '--porcelain']);
-	if (endedOn !== startedOn || endedDirty !== startedDirty) {
-		console.error(
-			`\nerror: primary checkout was modified — started on ${startedOn}, now on ${endedOn}` +
-				(endedDirty === startedDirty ? '' : '; working tree differs from how it was found')
-		);
+	const moved = checkoutMoved(cwd, started);
+	if (moved) {
+		console.error(`\nerror: ${moved}`);
 		process.exit(4);
 	}
 
-	if (options.mode === 'prepare') {
-		console.error(
-			`\nprepared — no code on origin, no containers started. Primary checkout untouched, still on ${startedOn}.`
-		);
-		return;
-	}
-
-	if (options.mode === 'finalize') {
-		console.error(
-			`\nPrimary checkout untouched, still on ${startedOn}. Nothing was merged into ${BASE_BRANCH} — a human does that.`
-		);
-		return;
-	}
-
 	console.error(
-		`\nPrimary checkout untouched, still on ${startedOn}. No code reached origin, nothing was merged and no PR was opened.`
+		`\nPrimary checkout untouched, still on ${started.startedOn}. Nothing was merged into ${BASE_BRANCH} — a human does that.`
 	);
 }
 
 /**
  * Give every epic in the batch its branch, and make it available locally.
  *
- * This is the one thing `--prepare` does that reaches origin, and it is worth
- * being plain about: `createLinkedBranch` creates the branch *and* links it to
- * the issue in a single call, which is the only way to get the link at all.
- * What lands on origin is a bare `sandcastle/epic-<N>` at the base branch's
- * tip — no code, no PR, nothing merged.
+ * `createLinkedBranch` creates the branch *and* links it to the issue in a
+ * single call, which is the only way to get the link at all. What lands on
+ * origin is a bare `sandcastle/epic-<N>` at the base branch's tip — no code, no
+ * PR, nothing merged.
  *
  * Epic branches are needed for more issues than the batch has epics: a child's
  * parent very often is not itself `ready-for-agent`, and the child still has to
@@ -363,8 +249,8 @@ function prepareEpicBranches(
  * construction — it is a regression net, not a runtime possibility. This is
  * the reachable half: the branches that really exist, as GitHub just reported
  * them. A child whose epic branch could not be created or came back under
- * another name has nowhere to be cut from, and per invariant 4 that aborts the
- * **entire run** rather than skipping the item.
+ * another name has nowhere to be cut from, and that aborts the **entire run**
+ * rather than skipping the item.
  */
 function assertEpicBranchesReady(items: readonly PlanItem[], epics: readonly EpicBranch[]): void {
 	const available = new Set(epics.map((epic) => epic.branch));
@@ -411,12 +297,7 @@ function reportImplemented(outcomes: readonly ImplementOutcome[]): void {
 	if (done.length === 0) process.exitCode = 1;
 }
 
-/**
- * Take every green child to its epic branch and close it.
- *
- * Part of `--finalize` rather than `--implement`: it puts commits on origin and
- * closes issues, and `--implement` promises neither.
- */
+/** Take every green child to its epic branch and close it. */
 function merge(
 	cwd: string,
 	repo: string,

@@ -97,11 +97,11 @@ export function epicPrBody(item: PlanItem, narrative: string): string {
 		'',
 		`Epic branch \`${item.workBranch}\`, cut from \`${item.base}\`, carrying this epic's own work and one squash`,
 		'commit per sub-issue. Each sub-issue was closed as it merged; this PR is what carries all of it into',
-		`\`${item.base}\`. The harness ran \`./scripts/gate.sh\` itself after each implementer stopped and it passed —`,
+		`\`${item.base}\`. The harness ran the gate itself after each implementer stopped and it passed —`,
 		'that gate is syntax-level and it is the only automated verdict this pipeline has, so review this as you',
 		'would any human PR.',
 		'',
-		'🤖 Opened by `node .sandcastle/run.mts --finalize`. Nothing reaches the base branch except a human merging this.',
+		'🤖 Opened by `npm run sandcastle`. Nothing reaches the base branch except a human merging this.',
 	].join('\n');
 }
 
