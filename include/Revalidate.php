@@ -4,13 +4,16 @@ namespace NextJsRevalidate;
 
 use Exception;
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
+use WP_Admin_Bar;
 use WP_Post;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 class Revalidate extends Base {
+	use AdminBarMenu;
 	use SendbackUrl;
 
 	/**
@@ -24,6 +27,9 @@ class Revalidate extends Base {
 		add_action( 'admin_init', [$this, 'revalidate_row_action'] );
 
 		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
+
+		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
+		add_action( 'admin_init', [$this, 'revalidate_current_post_action'] );
 
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
 	}
@@ -190,6 +196,103 @@ class Revalidate extends Base {
 
 		wp_safe_redirect(
 			add_query_arg( [ 'nextjs-revalidate-purged' => $_GET['post'] ], $sendback )
+		);
+		exit;
+	}
+
+	/**
+	 * Admin
+	 * Display the "Purge this page" entry in the admin top bar
+	 * when editing a post whose cache we could purge.
+	 */
+	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
+		$post_id = $this->get_edited_post_id();
+		if ( is_null($post_id) ) return;
+
+		$edit_link = get_edit_post_link( $post_id, 'raw' );
+		if ( empty($edit_link) ) return;
+
+		$this->add_admin_bar_menu( $admin_bar );
+
+		$admin_bar->add_node( [
+			'id'     => 'nextjs-revalidate-current-post',
+			'parent' => 'nextjs-revalidate',
+			'title'  => _x( 'Purge this page', 'Admin top bar menu', 'nextjs-revalidate' ),
+			'href'   => esc_url(
+				wp_nonce_url(
+					add_query_arg( [ 'nextjs-revalidate-purge-post' => $post_id ], $edit_link ),
+					"nextjs-revalidate-purge_$post_id"
+				)
+			),
+			'meta'   => [
+				'title' => _x( 'Purge the cache of the page currently being edited.', 'Admin top bar menu', 'nextjs-revalidate' ),
+			]
+		] );
+	}
+
+	/**
+	 * Get the id of the post currently being edited,
+	 * if its cache can be purged by the current user.
+	 *
+	 * The purge is offered on the edit screen of an existing post only:
+	 * a post being created has no permalink to purge yet.
+	 *
+	 * @return int|null The post ID. Null if there is nothing to purge here.
+	 */
+	private function get_edited_post_id() {
+		if ( ! is_admin() || ! function_exists('get_current_screen') ) return null;
+
+		$screen = get_current_screen();
+		if ( is_null($screen) || $screen->base !== 'post' || $screen->action === 'add' ) return null;
+
+		$post = get_post();
+		if ( ! ($post instanceof WP_Post) ) return null;
+
+		if ( ! $this->settings->is_configured() ) return null;
+		if ( ! current_user_can( 'edit_post', $post->ID ) ) return null;
+
+		// Bail for not viewable post
+		if ( false === $this->get_post_permalink( $post->ID ) ) return null;
+
+		return $post->ID;
+	}
+
+	/**
+	 * Purge the cache of the post being edited,
+	 * triggered by the admin top bar entry.
+	 *
+	 * The action travels in its own query arg: the link is followed from the
+	 * edit screen, where the `action` arg is `post.php`'s own.
+	 */
+	function revalidate_current_post_action() {
+		if ( ! isset($_GET['nextjs-revalidate-purge-post']) ) return;
+
+		$post_id = intval( $_GET['nextjs-revalidate-purge-post'] );
+
+		check_admin_referer( "nextjs-revalidate-purge_$post_id" );
+
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			wp_die( __( 'Sorry, you are not allowed to purge the cache of this post.', 'nextjs-revalidate' ) );
+		}
+
+		$permalink = $this->get_post_permalink( $post_id );
+
+		/**
+		 * Filters the permalink to be added to the purge queue.
+		 * Return false to prevent the permalink to be added to the purge queue.
+		 *
+		 * @param string|false $permalink The post permalink. False if the post is not public.
+		 * @param int          $post_id   The post ID.
+		 */
+		$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $post_id );
+
+		$is_added = false !== $permalink ? $this->queue->add_item( $permalink ) : false;
+
+		$sendback = get_edit_post_link( $post_id, 'raw' );
+		if ( empty($sendback) ) $sendback = $this->get_sendback_url();
+
+		wp_safe_redirect(
+			add_query_arg( [ 'nextjs-revalidate-purged' => $is_added ? $post_id : 0 ], $sendback )
 		);
 		exit;
 	}
