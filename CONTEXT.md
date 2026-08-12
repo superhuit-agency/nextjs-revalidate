@@ -44,6 +44,28 @@ no revalidation at all; it is not refused, it was never a candidate.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
 
+### Integrations
+
+**Integration**:
+A third-party plugin whose changes this plugin reacts to when that plugin is
+present. Never a dependency: an absent integration is inert, and no feature of
+this plugin requires one.
+_Avoid_: Support as a noun, dependency, requirement — this plugin supports an
+integration, it never requires one.
+
+**Redirect**:
+A rule owned by an integration, mapping one source path to a target. Not this
+plugin's data — it is read, never written.
+_Avoid_: Redirection, which is the plugin the rule belongs to; and reserve
+"redirect" alone for `wp_safe_redirect()`'s admin sendbacks, which are unrelated.
+
+**Revalidatable redirect**:
+A redirect the front-end could resolve for a single path: its source is a literal
+path rather than a regex, and it is enabled. A redirect that is not revalidatable
+produces no revalidation at all; it was never a candidate.
+_Avoid_: Valid redirect — a regex redirect is perfectly valid, just not a single
+path.
+
 ### Settings
 
 **Setting**:
