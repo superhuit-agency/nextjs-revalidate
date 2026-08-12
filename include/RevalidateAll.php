@@ -152,7 +152,12 @@ class RevalidateAll extends Base {
 			]);
 
 			foreach ($posts as $post_id) {
-				$this->queue->add_item( $this->revalidate->get_post_permalink( $post_id ) );
+				$permalink = $this->revalidate->get_post_permalink( $post_id );
+
+				// A post that is not revalidatable yields no permalink, and no queue item.
+				if ( false === $permalink ) continue;
+
+				$this->queue->add_item( $permalink );
 				$count++;
 			}
 		}
