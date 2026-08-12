@@ -24,36 +24,50 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-2: dist\n"
 "X-Poedit-SearchPathExcluded-3: node_modules\n"
 
-#: include/Revalidate.php:150
+#: include/Revalidate.php:169
 #, php-format
 msgid "Purge cache of post “%s”"
 msgstr ""
 
-#: include/Revalidate.php:151
+#: include/Revalidate.php:170
 msgid "Purge cache"
 msgstr ""
 
-#: include/Revalidate.php:205
+#: include/Revalidate.php:233
+msgid "Sorry, you are not allowed to purge the cache of this post."
+msgstr ""
+
+#: include/Revalidate.php:261
+msgctxt "Admin top bar menu"
+msgid "Purge this page"
+msgstr ""
+
+#: include/Revalidate.php:269
+msgctxt "Admin top bar menu"
+msgid "Purge the cache of the page currently being edited."
+msgstr ""
+
+#: include/Revalidate.php:339
 msgid "Purge caches"
 msgstr ""
 
-#: include/Revalidate.php:245
+#: include/Revalidate.php:374
 #, php-format
 msgid "“%s” cache will be purged shortly."
 msgstr ""
 
-#: include/Revalidate.php:246 include/Revalidate.php:261
+#: include/Revalidate.php:375 include/Revalidate.php:428
 msgid "Unable to purge cache. Please try again or contact an administrator."
 msgstr ""
 
-#: include/Revalidate.php:260
+#: include/Revalidate.php:427
 #, php-format
 msgid "%d cache will be purged shortly."
 msgid_plural "%d caches will be purged shortly."
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/RevalidateAll.php:33
+#: include/traits/AdminBarMenu.php:24
 msgctxt "Admin top bar menu"
 msgid "Purge caches"
 msgstr ""
@@ -63,14 +77,14 @@ msgctxt "Admin top bar menu"
 msgid "All"
 msgstr ""
 
-#: include/RevalidateAll.php:66
+#: include/RevalidateAll.php:64
 msgctxt "Admin top bar menu"
 msgid ""
 "Purging all cache may take some time according to the number of pages to "
 "purge."
 msgstr ""
 
-#: include/RevalidateAll.php:81
+#: include/RevalidateAll.php:79
 #, php-format
 msgid ""
 "Purge all: %d pages added to purge. Please wait until all pages are purged."
