@@ -3,10 +3,12 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
 class RevalidateAll extends Base {
+	use AdminBarMenu;
 	use SendbackUrl;
 
 	public function __construct() {
@@ -28,13 +30,7 @@ class RevalidateAll extends Base {
 
 		if ( empty($revalidate_all_opts) ) return;
 
-		$admin_bar->add_menu( [
-			'id'     => 'nextjs-revalidate',
-			'title'  => _x( 'Purge caches', 'Admin top bar menu', 'nextjs-revalidate'),
-			'meta'   => [
-				'class' => "nextjs-revalidate",
-			]
-		] );
+		$this->add_admin_bar_menu( $admin_bar );
 
 		foreach ($revalidate_all_opts as $post_type => $allow) {
 			if ( $allow !== 'on' ) continue;
@@ -155,7 +151,7 @@ class RevalidateAll extends Base {
 				$permalink = $this->revalidate->get_post_permalink( $post_id );
 
 				// A post that is not revalidatable yields no permalink, and no queue item.
-				if ( false === $permalink ) continue;
+				if ( empty($permalink) ) continue;
 
 				$this->queue->add_item( $permalink );
 				$count++;

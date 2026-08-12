@@ -9,6 +9,7 @@ const DEV = process.env.NODE_ENV === "development";
 module.exports = {
 	entry: {
 		admin: "./src/index.ts",
+		editor: "./src/editor.ts",
 		settings: "./src/settings.ts",
 	},
 	module: {

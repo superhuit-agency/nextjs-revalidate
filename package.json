@@ -16,7 +16,7 @@
     "stop": "wp-env stop",
     "start:revalidateServer": "node ./config/revalidate-server.js",
     "typecheck": "tsc --noEmit",
-    "test:php": "${PHP_BIN:-php} tests/revalidatable-post-test.php",
+    "test:php": "${PHP_BIN:-php} tests/LoggerTest.php && ${PHP_BIN:-php} tests/revalidatable-post-test.php",
     "lint:php": "php=${PHP_BIN:-php}; v=$($php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;') || exit 1; [ \"$v\" = 7.4 ] || [ \"${ALLOW_PHP_VERSION_MISMATCH:-}\" = 1 ] || { echo \"lint:php: $php is PHP $v, not 7.4 — a newer parser accepts PHP 8-only syntax and proves nothing. Point PHP_BIN at a 7.4 binary, or set ALLOW_PHP_VERSION_MISMATCH=1.\" >&2; exit 1; }; files=$(git ls-files '*.php') || exit 1; for f in $files; do $php -l \"$f\" || exit 1; done",
     "sandcastle": "tsx .sandcastle/main.mts",
     "sandcastle:test": "tsx --test .sandcastle/test/*.test.mts",
@@ -25,7 +25,7 @@
   "devDependencies": {
     "@ai-hero/sandcastle": "0.12.0",
     "@types/node": "^24.13.3",
-    "@wordpress/env": "^9.2.0",
+    "@wordpress/env": "11.8.0",
     "clean-webpack-plugin": "^4.0.0",
     "css-loader": "^6.9.1",
     "express": "^4.18.2",

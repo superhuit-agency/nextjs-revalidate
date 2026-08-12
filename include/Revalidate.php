@@ -3,13 +3,16 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
+use WP_Admin_Bar;
 use WP_Post;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 class Revalidate extends Base {
+	use AdminBarMenu;
 	use SendbackUrl;
 
 	/**
@@ -23,6 +26,9 @@ class Revalidate extends Base {
 		add_action( 'admin_init', [$this, 'revalidate_row_action'] );
 
 		add_action( 'admin_init', [$this, 'register_bulk_actions'] );
+
+		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
+		add_action( 'admin_init', [$this, 'revalidate_current_post_action'] );
 
 		add_action( 'admin_notices', [$this, 'purged_notice'] );
 	}
@@ -125,7 +131,8 @@ class Revalidate extends Base {
 			: $this->get_post_permalink( $post_id, false )
 		);
 
-		if ( false === $post_permalink ) return;
+		// Bail for a post holding no front-end page to rebuild
+		if ( empty($post_permalink) ) return;
 
 		// Ensure we do not fire this action twice. Safekeeping
 		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );
@@ -191,9 +198,28 @@ class Revalidate extends Base {
 	function revalidate_row_action() {
 		if ( ! (isset( $_GET['action'] ) && $_GET['action'] === 'nextjs-revalidate-purge' && isset($_GET['post']))  ) return;
 
-		check_admin_referer( "nextjs-revalidate-purge_{$_GET['post']}" );
+		$post_id = intval( $_GET['post'] );
 
-		$permalink = $this->get_post_permalink( $_GET['post'] );
+		check_admin_referer( "nextjs-revalidate-purge_$post_id" );
+
+		$this->purge_post_and_redirect( $post_id, $this->get_sendback_url() );
+	}
+
+	/**
+	 * Add the permalink of the given post to the purge queue.
+	 *
+	 * The one path every purge of a single post goes through — the row action,
+	 * the bulk action and the admin top bar entry — so that what is purgeable
+	 * cannot differ between the entry that offers the purge and the one that
+	 * performs it.
+	 *
+	 * @param int $post_id The post ID.
+	 * @return bool Whether the permalink was added to the queue.
+	 */
+	private function queue_post_purge( $post_id ) {
+		if ( ! $this->settings->is_configured() ) return false;
+
+		$permalink = $this->get_post_permalink( $post_id );
 
 		/**
 		 * Filters the permalink to be added to the purge queue.
@@ -202,16 +228,112 @@ class Revalidate extends Base {
 		 * @param string|false $permalink The post permalink. False if the post is not public.
 		 * @param int          $post_id   The post ID.
 		 */
-		$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $_GET['post'] );
+		$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $post_id );
 
-		if ( false !== $permalink ) $is_added = $this->queue->add_item( $permalink );
+		if ( empty($permalink) ) return false;
 
-		$sendback  = $this->get_sendback_url();
+		return (bool) $this->queue->add_item( $permalink );
+	}
+
+	/**
+	 * Purge the cache of the given post, then send the user back with the
+	 * outcome in the `nextjs-revalidate-purged` query arg — the post ID when
+	 * the purge was queued, `0` when it was not.
+	 *
+	 * Does not return: the request ends in a redirect.
+	 *
+	 * @param int    $post_id  The post ID.
+	 * @param string $sendback The url to redirect to.
+	 * @return void
+	 */
+	private function purge_post_and_redirect( $post_id, $sendback ) {
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			wp_die( __( 'Sorry, you are not allowed to purge the cache of this post.', 'nextjs-revalidate' ) );
+		}
+
+		$is_added = $this->queue_post_purge( $post_id );
 
 		wp_safe_redirect(
-			add_query_arg( [ 'nextjs-revalidate-purged' => $_GET['post'] ], $sendback )
+			add_query_arg( [ 'nextjs-revalidate-purged' => $is_added ? $post_id : 0 ], $sendback )
 		);
 		exit;
+	}
+
+	/**
+	 * Admin
+	 * Display the "Purge this page" entry in the admin top bar
+	 * when editing a post whose cache we could purge.
+	 */
+	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
+		$post_id = $this->get_edited_post_id();
+		if ( is_null($post_id) ) return;
+
+		$edit_link = get_edit_post_link( $post_id, 'raw' );
+		if ( empty($edit_link) ) return;
+
+		$this->add_admin_bar_menu( $admin_bar );
+
+		$admin_bar->add_node( [
+			'id'     => 'nextjs-revalidate-current-post',
+			'parent' => 'nextjs-revalidate',
+			'title'  => _x( 'Purge this page', 'Admin top bar menu', 'nextjs-revalidate' ),
+			'href'   => esc_url(
+				wp_nonce_url(
+					add_query_arg( [ 'nextjs-revalidate-purge-post' => $post_id ], $edit_link ),
+					"nextjs-revalidate-purge_$post_id"
+				)
+			),
+			'meta'   => [
+				'title' => _x( 'Purge the cache of the page currently being edited.', 'Admin top bar menu', 'nextjs-revalidate' ),
+			]
+		] );
+	}
+
+	/**
+	 * Get the id of the post currently being edited,
+	 * if its cache can be purged by the current user.
+	 *
+	 * The purge is offered on the edit screen of an existing post only:
+	 * a post being created has no permalink to purge yet.
+	 *
+	 * @return int|null The post ID. Null if there is nothing to purge here.
+	 */
+	private function get_edited_post_id() {
+		if ( ! is_admin() || ! function_exists('get_current_screen') ) return null;
+
+		$screen = get_current_screen();
+		if ( is_null($screen) || $screen->base !== 'post' || $screen->action === 'add' ) return null;
+
+		$post = get_post();
+		if ( ! ($post instanceof WP_Post) ) return null;
+
+		if ( ! $this->settings->is_configured() ) return null;
+		if ( ! current_user_can( 'edit_post', $post->ID ) ) return null;
+
+		// Bail for not viewable post
+		if ( false === $this->get_post_permalink( $post->ID ) ) return null;
+
+		return $post->ID;
+	}
+
+	/**
+	 * Purge the cache of the post being edited,
+	 * triggered by the admin top bar entry.
+	 *
+	 * The action travels in its own query arg: the link is followed from the
+	 * edit screen, where the `action` arg is `post.php`'s own.
+	 */
+	function revalidate_current_post_action() {
+		if ( ! isset($_GET['nextjs-revalidate-purge-post']) ) return;
+
+		$post_id = intval( $_GET['nextjs-revalidate-purge-post'] );
+
+		check_admin_referer( "nextjs-revalidate-purge_$post_id" );
+
+		$sendback = get_edit_post_link( $post_id, 'raw' );
+		if ( empty($sendback) ) $sendback = $this->get_sendback_url();
+
+		$this->purge_post_and_redirect( $post_id, $sendback );
 	}
 
 	/**
@@ -241,21 +363,8 @@ class Revalidate extends Base {
 
 			$purged = 0;
 			foreach ($post_ids as $post_id) {
-				$permalink = $this->get_post_permalink( $post_id );
-
-				/**
-				 * Filters the permalink to be added to the purge queue.
-				 * Return false to prevent the permalink to be added to the purge queue.
-				 *
-				 * @param string|false $permalink The post permalink. False if the post is not public.
-				 * @param int          $post_id   The post ID.
-				 */
-				$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $_GET['post'] );
-
-				if ( false !== $permalink ) {
-					$this->queue->add_item( $permalink );
-					$purged++;
-				}
+				if ( ! current_user_can( 'edit_post', $post_id ) ) continue;
+				if ( $this->queue_post_purge( $post_id ) ) $purged++;
 			}
 
 			$redirect_url = add_query_arg('nextjs-revalidate-bulk-purged', $purged, $this->get_sendback_url($redirect_url));
@@ -264,17 +373,63 @@ class Revalidate extends Base {
 		return $redirect_url;
 	}
 
-	function purged_notice() {
-		if ( isset( $_GET['nextjs-revalidate-purged'] ) ) {
+	/**
+	 * The notice describing the purge the current request comes back from,
+	 * if it comes back from one.
+	 *
+	 * @return array|null [ 'status' => 'success'|'error', 'message' => string ]
+	 *                    Null when the request is not the sendback of a purge.
+	 */
+	public function get_purged_notice() {
+		if ( ! isset( $_GET['nextjs-revalidate-purged'] ) ) return null;
 
-			$success = boolval($_GET['nextjs-revalidate-purged']);
+		$post_id = intval( $_GET['nextjs-revalidate-purged'] );
+		$success = $post_id > 0;
+
+		return [
+			'status'  => $success ? 'success' : 'error',
+			'message' => ($success
+				? sprintf( __( '“%s” cache will be purged shortly.', 'nextjs-revalidate' ), get_the_title($post_id) )
+				: __( 'Unable to purge cache. Please try again or contact an administrator.', 'nextjs-revalidate' )
+			),
+		];
+	}
+
+	/**
+	 * The purge notice to hand over to the block editor, if this screen is one.
+	 *
+	 * Core hides every `admin_notices` output on a block editor screen — see
+	 * `body.js.block-editor-page #wpbody-content > div:not(.block-editor)` in
+	 * core's editor stylesheet — so the "Purge this page" entry, which lives
+	 * inside the editor, would otherwise report nothing at all. There the
+	 * notice is dispatched to `core/notices` from the editor script instead.
+	 *
+	 * @return array|null Same shape as `get_purged_notice()`.
+	 */
+	public function get_block_editor_purged_notice() {
+		return $this->is_block_editor_screen() ? $this->get_purged_notice() : null;
+	}
+
+	/**
+	 * Whether the screen being rendered is a block editor one.
+	 *
+	 * @return bool
+	 */
+	private function is_block_editor_screen() {
+		if ( ! function_exists('get_current_screen') ) return false;
+
+		$screen = get_current_screen();
+
+		return ! is_null($screen) && method_exists($screen, 'is_block_editor') && $screen->is_block_editor();
+	}
+
+	function purged_notice() {
+		$notice = $this->get_purged_notice();
+		if ( ! is_null($notice) && ! $this->is_block_editor_screen() ) {
 			printf(
 				'<div class="notice notice-%s"><p>%s</p></div>',
-				$success ? 'success' : 'error',
-				($success
-					? sprintf( __( '“%s” cache will be purged shortly.', 'nextjs-revalidate' ), get_the_title($_GET['nextjs-revalidate-purged']) )
-					: __( 'Unable to purge cache. Please try again or contact an administrator.', 'nextjs-revalidate' )
-				)
+				esc_attr( $notice['status'] ),
+				$notice['message']
 			);
 		}
 
@@ -300,6 +455,9 @@ class Revalidate extends Base {
 	 * If the post_id is a revision, we should get the permalink from the parent post_id
 	 * for instance when saving, the post_id is the revision id, but we want to purge the parent post permalink
 	 *
+	 * An uploaded file is not a Next.js route: attachments hold no page the
+	 * front-end could rebuild, so they have no permalink to purge.
+	 *
 	 * @param int  $post_id         The post ID.
 	 * @param bool $check_if_public Optional. Whether to check if the post is public. Default true.
 	 *
@@ -312,6 +470,8 @@ class Revalidate extends Base {
 			if ( !$is_public ) return false;
 		}
 
+		if ( 'attachment' === get_post_type( $post_id ) ) return false;
+
 		// If post_id is a revision, we should get the permalink from the parent post_id
 		$parent_post_id = wp_is_post_revision($post_id);
 		$post_id_for_permalink = ( false !== $parent_post_id
@@ -319,6 +479,29 @@ class Revalidate extends Base {
 			: $post_id
 		);
 
-		return get_permalink( $post_id_for_permalink );
+		$permalink = get_permalink( $post_id_for_permalink );
+
+		if ( $this->is_uploaded_file_url( $permalink ) ) return false;
+
+		return $permalink;
+	}
+
+	/**
+	 * Whether the given url points at a file in the uploads directory
+	 * rather than at a page of the site.
+	 *
+	 * @param string|false $url
+	 * @return bool
+	 */
+	private function is_uploaded_file_url( $url ) {
+		if ( empty($url) ) return false;
+
+		$uploads = wp_get_upload_dir();
+		if ( empty($uploads['baseurl']) ) return false;
+
+		$baseurl = wp_make_link_relative( $uploads['baseurl'] );
+		if ( empty($baseurl) ) return false;
+
+		return 0 === strpos( wp_make_link_relative( $url ), $baseurl );
 	}
 }
