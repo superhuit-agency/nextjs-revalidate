@@ -27,7 +27,7 @@ class Settings extends Base {
 	 * Authoritative for reads only: registration, seeding and teardown still
 	 * enumerate the settings separately (see #24).
 	 */
-	const OPTIONS = [
+	private const OPTIONS = [
 		'url'                     => [ 'name' => self::SETTINGS_URL_NAME,                  'empty' => ''  ],
 		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => ''  ],
 		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => []  ],
