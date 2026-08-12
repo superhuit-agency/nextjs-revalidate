@@ -17,6 +17,25 @@ class Settings extends Base {
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
+	 * The settings this plugin reads, declared once.
+	 *
+	 * Keyed by the name the rest of the plugin reads, each entry pairs the
+	 * option the setting is stored under with the empty value a read yields on
+	 * a site holding no row for it — of the setting's own type, never false, so
+	 * a read is always safe to iterate or compare.
+	 *
+	 * Authoritative for reads only: registration, seeding and teardown still
+	 * enumerate the settings separately (see #24).
+	 */
+	const OPTIONS = [
+		'url'                     => [ 'name' => self::SETTINGS_URL_NAME,                  'empty' => ''  ],
+		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => ''  ],
+		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => []  ],
+		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => []  ],
+		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => []  ],
+	];
+
+	/**
 	 * Settings constructor.
 	 */
 	function __construct() {
@@ -28,18 +47,18 @@ class Settings extends Base {
 
 	public function __get( $name ) {
 
-		$opt_name = null;
-		if      ( $name === 'url'                     ) $opt_name = self::SETTINGS_URL_NAME;
-		else if ( $name === 'secret'                  ) $opt_name = self::SETTINGS_SECRET_NAME;
-		else if ( $name === 'allow_revalidate_all'    ) $opt_name = self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME;
-		else if ( $name === 'revalidate_on_menu_save' ) $opt_name = self::SETTINGS_REVALIDATE_ON_MENU_SAVE;
-		else if ( $name === 'debug'                   ) $opt_name = self::SETTINGS_DEBUG;
+		if ( !isset(self::OPTIONS[$name]) ) return parent::__get( $name );
 
-		$value = null;
-		if ( !empty($opt_name) ) $value = get_option($opt_name);
-		else                     $value = Parent::__get( $name );
+		$empty = self::OPTIONS[$name]['empty'];
+		$value = get_option( self::OPTIONS[$name]['name'], $empty );
 
-		return $value;
+		// A site can hold a row whose value does not match the setting's type:
+		// a row stored as false, or a set-shaped setting saved by a form which
+		// submitted none of its switches. For a read, such a row means exactly
+		// what an absent one means.
+		if ( is_array($empty) ) return is_array($value) ? $value : $empty;
+
+		return $value === false ? $empty : $value;
 	}
 
 	/**
