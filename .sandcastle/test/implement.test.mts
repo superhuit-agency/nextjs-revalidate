@@ -11,8 +11,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { COMPLETION_SIGNAL, CONCURRENCY, IDLE_TIMEOUT_SECONDS, IMPLEMENTER_MODEL, MAX_ITERATIONS } from '../lib/config.mts';
-import { classifyRun, implementItem, pool, promptArgsFor, tailOf } from '../lib/implement.mts';
-import type { ImplementDeps, SandboxSeam } from '../lib/implement.mts';
+import { classifyRun, implementItem, pool, promptArgsFor, renderOutcomes, tailOf } from '../lib/implement.mts';
+import type { ImplementDeps, ImplementOutcome, SandboxSeam } from '../lib/implement.mts';
 import type { PlanItem } from '../lib/plan.mts';
 
 const ITEM: PlanItem = {
@@ -276,5 +276,50 @@ describe('tailOf', () => {
 		const tail = tailOf(output, 3);
 
 		assert.deepEqual(tail.split('\n'), ['line 97', 'line 98', 'line 99']);
+	});
+});
+
+describe('renderOutcomes — a red gate has to say why', () => {
+	const rendered = (gate: ImplementOutcome['gate'], status: ImplementOutcome['status']): string =>
+		renderOutcomes([
+			{
+				issue: 7,
+				branch: 'sandcastle/issue-7',
+				status,
+				commits: 2,
+				iterations: 1,
+				signalled: true,
+				gate,
+			} as ImplementOutcome,
+		]);
+
+	it('prints the gate tail on failure — the only place the reason exists', () => {
+		// The agent's own log stops before the gate runs, so an exit code with
+		// no tail leaves an operator with a red item and nowhere to look.
+		const output = rendered({ passed: false, exitCode: 1, missing: false, tail: 'PHP Parse error: syntax error' }, 'gate-failed');
+
+		assert.match(output, /failed, exit 1/);
+		assert.match(output, /PHP Parse error: syntax error/);
+	});
+
+	it('prefixes every tail line so it cannot be mistaken for harness output', () => {
+		const output = rendered({ passed: false, exitCode: 2, missing: false, tail: 'first\nsecond' }, 'gate-failed');
+
+		assert.match(output, /^\s+\| first$/m);
+		assert.match(output, /^\s+\| second$/m);
+	});
+
+	it('stays quiet on a green gate — there is nothing to explain', () => {
+		const output = rendered({ passed: true, exitCode: 0, missing: false, tail: 'Gate passed' }, 'implemented');
+
+		assert.match(output, /gate:\s+passed/);
+		assert.ok(!output.includes('| Gate passed'), 'a passing gate should not dump its output');
+	});
+
+	it('still reports a missing gate as the setup problem it is', () => {
+		const output = rendered({ passed: false, exitCode: 1, missing: true, tail: 'land the gate on the base branch first' }, 'gate-missing');
+
+		assert.match(output, /NOT PRESENT — land the gate on the base branch first/);
+		assert.ok(!/^\s+\| /m.test(output), 'a missing gate says it once, not twice');
 	});
 });

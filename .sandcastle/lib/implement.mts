@@ -317,6 +317,12 @@ export function renderOutcomes(outcomes: readonly ImplementOutcome[]): string {
 			lines.push(`      gate:    NOT PRESENT — ${outcome.gate.tail}`);
 		} else if (outcome.gate) {
 			lines.push(`      gate:    ${outcome.gate.passed ? 'passed' : `failed, exit ${outcome.gate.exitCode}`}`);
+			// The tail is the only place the *reason* exists. The agent's own
+			// transcript stops before the gate runs, so a bare exit code would
+			// leave an operator with a red item and nowhere to look.
+			if (!outcome.gate.passed && outcome.gate.tail.trim() !== '') {
+				for (const line of outcome.gate.tail.split('\n')) lines.push(`      | ${line}`);
+			}
 		}
 		if (outcome.signalled && outcome.gate && !outcome.gate.passed && !outcome.gate.missing) {
 			lines.push('      note:    the agent signalled completion; the gate disagreed');
