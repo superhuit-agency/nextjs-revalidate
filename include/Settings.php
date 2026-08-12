@@ -24,8 +24,8 @@ class Settings extends Base {
 	 * a site holding no row for it — of the setting's own type, never false, so
 	 * a read is always safe to iterate or compare.
 	 *
-	 * Authoritative for reads only: registration, seeding and teardown still
-	 * enumerate the settings separately (see #24).
+	 * Authoritative for reads, registration, seeding and teardown alike, so a
+	 * setting cannot be added to one of them and forgotten in another.
 	 */
 	private const OPTIONS = [
 		'url'                     => [ 'name' => self::SETTINGS_URL_NAME,                  'empty' => ''  ],
@@ -150,7 +150,9 @@ class Settings extends Base {
 	 * Register and add settings
 	 */
 	public function register_fields() {
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_URL_NAME );
+		foreach ( self::OPTIONS as $setting ) {
+			register_setting( self::SETTINGS_GROUP, $setting['name'] );
+		}
 
 
 		// API section settings
@@ -181,7 +183,6 @@ class Settings extends Base {
 			'nextjs-revalidate-section'
 		);
 
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_SECRET_NAME );
 		add_settings_field(
 			'revalidate-secret',
 			__('Revalidate Secret', 'nextjs-revalidate'),
@@ -212,7 +213,6 @@ class Settings extends Base {
 		);
 
 		$post_types = get_post_types([ 'public' => true ]);
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME );
 		foreach ($post_types as $post_type) {
 			if ( $post_type === 'attachment' ) continue; // skip attachments
 
@@ -264,7 +264,6 @@ class Settings extends Base {
 			]
 		);
 
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_REVALIDATE_ON_MENU_SAVE );
 		foreach ($post_types as $post_type) {
 			if ( $post_type === 'attachment' ) continue; // skip attachments
 
@@ -314,7 +313,6 @@ class Settings extends Base {
 				'after_section'  => '</section>',
 			]
 		);
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_DEBUG );
 
 		$upload_dir = wp_upload_dir();
 		$id = "enable-logs";
@@ -337,16 +335,27 @@ class Settings extends Base {
 		);
 	}
 
+	/**
+	 * Delete every setting of the site currently being served.
+	 *
+	 * @return void
+	 */
 	public static function delete_settings() {
-		return
-			delete_option( self::SETTINGS_URL_NAME ) &&
-			delete_option( self::SETTINGS_SECRET_NAME );
+		foreach ( self::OPTIONS as $setting ) {
+			delete_option( $setting['name'] );
+		}
 	}
 
+	/**
+	 * Register every setting of the site currently being served,
+	 * holding its empty value until an operator supplies one.
+	 *
+	 * @return void
+	 */
 	public function define_settings() {
-		add_option( self::SETTINGS_URL_NAME );
-		add_option( self::SETTINGS_SECRET_NAME );
-		add_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, [] );
+		foreach ( self::OPTIONS as $setting ) {
+			add_option( $setting['name'], $setting['empty'] );
+		}
 	}
 
 	/**

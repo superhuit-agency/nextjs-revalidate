@@ -107,8 +107,9 @@ or compare without the caller guarding the type first.
 _Avoid_: Default — the value is what *absence* means, not a preference a site
 would sensibly keep.
 
-> The option table is authoritative for **reads** only. Registration, seeding and
-> teardown still enumerate the settings separately; unifying them is #24's to do.
+> The option table is authoritative for **reads**, registration, seeding and
+> teardown alike: each enumerates the same declaration, so a setting cannot be
+> added to one of them and forgotten in another.
 
 **Configured site**:
 A site holding both of the settings a revalidation cannot be delivered without —
