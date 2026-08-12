@@ -41,6 +41,12 @@ A post the front-end could hold a page for. Its type is viewable — WordPress's
 own `publicly_queryable` test — and its status is publish or private, or it has
 just left publish for draft or trash. A post that is not revalidatable produces
 no revalidation at all; it is not refused, it was never a candidate.
+
+The site has the last word: a filter is applied after both axes and can admit or
+decline any post, which is how a headless site whose types are not
+`publicly_queryable` keeps its pages revalidating. Whether a post is
+revalidatable is a question every entry point asks — a save, a row action, a bulk
+action, the admin bar — never one that only save-time code consults.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
 
