@@ -36,6 +36,23 @@ failure is the end of that revalidation's life. Distinct from a **refusal**,
 which is declined before it ever enters the queue.
 _Avoid_: Error, rejected, unsuccessful purge
 
+**Failure window**:
+The outcomes of the last ten revalidation attempts on a site, each failure
+carrying the error code the attempt returned. Not a log and not a queue: it holds
+outcomes rather than revalidations, and nothing in it can be retried or acted on
+individually. The only state this plugin clears on deactivation, because it is
+evidence about a *running* plugin — see **Site teardown**.
+_Avoid_: Failure log, history — both imply a record kept for reading back.
+
+**Degraded revalidation**:
+The condition of a site whose failure window holds three or more failures. A live
+property computed when it is asked for, the way **configured** is, rather than a
+flag some earlier code path set. What the operator-facing notice renders, and the
+answer to "is the front-end updating right now" — never a statement about any one
+revalidation.
+_Avoid_: Broken, down, unhealthy — the front-end may be fine and the secret
+merely wrong.
+
 **Revalidatable post**:
 A post the front-end could hold a page for. Its type is viewable — WordPress's
 own `publicly_queryable` test — and its status is publish or private, or it has
@@ -162,6 +179,14 @@ may *trigger* setup, not the work itself.
 The inverse of site setup, in its two distinct depths: unscheduling cron on
 deactivation, and dropping the table and options on uninstall. A site is torn
 down at the same depth on a network as it would be on a single install.
+
+The **failure window** is the one exception, and is cleared at the shallower
+depth too. It records what happened while the plugin was running, so a gap in
+which nothing was attempted leaves the front-end's health unknown rather than
+bad, and carrying the window across that gap would assert evidence the plugin no
+longer has. The exception is narrow on purpose: it covers state that is evidence
+about a running plugin, and does not extend to settings or pending scheduled
+purges, which deactivation must leave untouched.
 
 **Network sweep**:
 Applying a per-site operation across every site in a network. The mechanism
