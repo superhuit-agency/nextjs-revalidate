@@ -59,6 +59,22 @@ time, so correctness no longer depends on a caller remembering to refresh.
 `Settings` and `Logger` needed no equivalent change: both already resolve
 per-site values at access time.
 
+Declining a sweep is not enough on activation: a network activated plugin cannot
+be activated on one site, so an operator told to act per-site has no way to. The
+refusal therefore undoes the activation as well as explaining it — it dies before
+WordPress records the activation, and deactivates for the paths that record it
+first. That is also why the refusal is loud on setup alone: a declined teardown
+sweep has nobody left to tell, since the plugin stops running the moment it
+returns.
+
+New sites are reached through `wp_initialize_site`, which arrived in WordPress
+5.1 while the header still declares 5.0. Its predecessor, `wpmu_new_blog`, is
+still fired on every version that has both — through `do_action_deprecated()`, so
+listening to it warns under `WP_DEBUG` on every site creation, and listening to
+both would run setup twice. Neither is worth paying to serve a release the
+plugin's own "Tested up to" left behind years ago. A 5.0 network keeps working;
+sites created on one are set up by activating the plugin on them.
+
 Uninstall now deletes all five settings options rather than two. Beyond the
 obvious leak, `nextjs_revalidate-db_version` surviving an uninstall would leave a
 stale migration ledger for a later reinstall to trust, skipping migrations that
