@@ -2,7 +2,6 @@
 
 namespace NextJsRevalidate;
 
-use Exception;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
@@ -35,55 +34,28 @@ class Revalidate extends Base {
 	}
 
 	/**
-	 * Determine if the given post should be revalidated.
+	 * Determine if the given post is revalidatable, i.e. a post the front-end
+	 * could hold a page for.
 	 *
-	 * Note: the post could be not publicly viewable, but we may possibly
-	 *       revalidate it anyway if it was previously publicly viewable
-	 *       e.g. a post was published, but then switched back to
-	 *            draft or pending.
-	 *       e.g. If a post is private or password protected,
-	 *            we should revalidate it.
+	 * Two independent axes, both of which must hold:
+	 *  - its type is viewable — WordPress's own `publicly_queryable` test;
+	 *  - its status is publish or private (a private or password protected post
+	 *    still has a page), or it has just left publish for draft or trash.
+	 *
+	 * The site has the last word: the filter is applied after both axes and can
+	 * admit any post, which is how a headless site whose types are not
+	 * `publicly_queryable` keeps its pages revalidating.
+	 *
+	 * @param int          $post_id     The post ID.
+	 * @param WP_Post|null $post_before Optional. The post as it was before the save
+	 *                                  asking the question, when there is one.
+	 *                                  Default null.
+	 *
+	 * @return bool Whether the post should be revalidated.
 	 */
-	function should_revalidate( $post_id ) {
+	function should_revalidate( $post_id, $post_before = null ) {
 
-		$should_revalidate_post = true;
-
-		$isPubliclyViewable = is_post_publicly_viewable($post_id);
-		$isAutosave = wp_is_post_autosave($post_id) !== false;
-		$status = get_post_status( $post_id );
-
-		try {
-			if ( ! $isPubliclyViewable && !in_array($status, ['publish', 'private']) ) {
-				// if the post is not publicly viewable, and it's an autosave, we should not revalidate it.
-				if ( $isAutosave ) throw new Exception("not viewvable", 1);
-
-				$parent_post_id = wp_is_post_revision($post_id);
-
-				if ( false !== $parent_post_id ) {
-					$parent_status = get_post_status( $parent_post_id );
-
-					// Bypass if Parent is published, private or password protected, we should revalidate it
-					if ( !in_array($parent_status, ['publish', 'private']) ) {
-
-						throw new Exception("not viewvable", 1);
-
-						// TODO: This code below ti to allow to revalidate previously published post
-						//       But it's not working as expected, because when retrieving the permalink
-						//       of a draft/pending post the permalink is not the correct one
-						// $parent_post = get_post($parent_post_id);
-						// // Check if the parent has a valid gmt date, if not it means it never has been published
-						// if ( '0000-00-00 00:00:00' === $parent_post->post_date_gmt ) {
-						// 	throw new Exception("not viewvable", 1);
-						// }
-					}
-				}
-				else {
-					throw new Exception("not viewvable", 1);
-				}
-			}
-		} catch (\Throwable $th) {
-			$should_revalidate_post = false;
-		}
+		$should_revalidate_post = $this->is_revalidatable( $post_id, $post_before );
 
 		/**
 		 * Filters whether to revalidate the given post on save.
@@ -94,27 +66,73 @@ class Revalidate extends Base {
 		return apply_filters( 'nextjs_revalidate_purge_should_revalidate_post_on_save', $should_revalidate_post, $post_id );
 	}
 
+	/**
+	 * Whether the post is revalidatable, before the site has its say.
+	 *
+	 * A revision stands for the post it belongs to; an autosave stands for
+	 * nothing, and is never revalidatable.
+	 *
+	 * @param int          $post_id     The post ID.
+	 * @param WP_Post|null $post_before Optional. The post as it was before the save
+	 *                                  asking the question. Default null.
+	 *
+	 * @return bool
+	 */
+	private function is_revalidatable( $post_id, $post_before = null ) {
+
+		// An autosave is not the saved content, it is a copy kept aside.
+		if ( wp_is_post_autosave( $post_id ) !== false ) return false;
+
+		// A revision has no page of its own, the post it belongs to has.
+		$parent_post_id = wp_is_post_revision( $post_id );
+		if ( false !== $parent_post_id ) $post_id = $parent_post_id;
+
+		// Type axis. A type the front-end holds no page for is never revalidated,
+		// whatever the status of its posts.
+		$post_type = get_post_type( $post_id );
+		if ( false === $post_type || ! is_post_type_viewable( $post_type ) ) return false;
+
+		// Status axis. Private and password protected posts do have a page.
+		if ( in_array( get_post_status( $post_id ), ['publish', 'private'], true ) ) return true;
+
+		return $this->has_just_left_publish( $post_id, $post_before );
+	}
+
+	/**
+	 * Whether the post has just left publish for draft or trash.
+	 *
+	 * The front-end still holds the page the post had while published, so that
+	 * page is revalidated one last time to make it go away.
+	 *
+	 * @param int          $post_id     The post ID.
+	 * @param WP_Post|null $post_before The post as it was before the save.
+	 *
+	 * @return bool
+	 */
+	private function has_just_left_publish( $post_id, $post_before ) {
+		if ( ! $post_before instanceof WP_Post ) return false;
+		if ( 'publish' !== $post_before->post_status ) return false;
+
+		return in_array( get_post_status( $post_id ), ['draft', 'trash'], true );
+	}
+
 	function on_post_save( $post_id, $post, $update, $post_before ) {
-		$should_revalidate_post = $this->should_revalidate( $post_id );
-		$post_permalink =	$this->get_post_permalink( $post_id, false );
 
-		// If the post was previously published, and is now draft, we should revalidate it
-		if (isset($post_before) && $post_before->post_status === 'publish' && $post->post_status === 'draft') {
-			$should_revalidate_post = true;
-		
-			// We take the permalink from the previous post, in order to get the correct permalink
-			// (otherwise it would be the draft permalink like "/?page_id=9999/" which doesn't work with the revalidate API)
-			$post_permalink = get_permalink($post_before);
-		}
-
-		// Bail for not viewable post
-		if ( !$should_revalidate_post ) return;
-
-		// Bail for a post holding no front-end page to rebuild
-		if ( empty($post_permalink) ) return;
+		// Bail for a post that is not revalidatable
+		if ( ! $this->should_revalidate( $post_id, $post_before ) ) return;
 
 		// Bail early if current request is for saving the metaboxes. (To not duplicate the purge query)
 		if ( isset($_REQUEST['meta-box-loader']) ) return;
+
+		$post_permalink = ( $this->has_just_left_publish( $post_id, $post_before )
+			// We take the permalink from the previous post, in order to get the correct permalink
+			// (otherwise it would be the draft permalink like "/?page_id=9999/" which doesn't work with the revalidate API)
+			? get_permalink( $post_before )
+			: $this->get_post_permalink( $post_id, false )
+		);
+
+		// Bail for a post holding no front-end page to rebuild
+		if ( empty($post_permalink) ) return;
 
 		// Ensure we do not fire this action twice. Safekeeping
 		remove_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99 );

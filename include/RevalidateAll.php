@@ -150,8 +150,7 @@ class RevalidateAll extends Base {
 			foreach ($posts as $post_id) {
 				$permalink = $this->revalidate->get_post_permalink( $post_id );
 
-				// Skip a post holding no front-end page to rebuild,
-				// rather than queueing an empty permalink
+				// A post that is not revalidatable yields no permalink, and no queue item.
 				if ( empty($permalink) ) continue;
 
 				$this->queue->add_item( $permalink );
