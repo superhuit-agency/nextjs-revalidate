@@ -13,6 +13,9 @@ npm --prefix .sandcastle install         # once
 cp .sandcastle/.env.example .sandcastle/.env   # then fill in one key — see "Container auth"
 .sandcastle/sandbox/build.sh             # once, and after a .nvmrc change
 
+# before every session — see "Pre-flight"
+git fetch origin && git worktree list && git branch --list 'sandcastle/*'
+
 node .sandcastle/run.mts --dry-run                  # what would be worked
 node .sandcastle/run.mts --implement --issue 35     # work one issue, stop before origin
 node .sandcastle/run.mts --finalize --issue 35      # the full pass, ending in a PR
@@ -141,6 +144,69 @@ appended the usual way would become an argument to `sleep` instead of running.
 Note this installs Linux `node_modules` over your host tree; run it on a
 throwaway clone if that matters.
 
+## Pre-flight
+
+Run this in the primary checkout before the first pass of a session. It is
+three checks and it takes seconds, and each one has a specific way of going
+wrong behind it.
+
+```sh
+git fetch origin
+git rev-list --left-right --count main...origin/main   # want: two zeros
+git worktree list                                      # want: the primary checkout only
+git branch --list 'sandcastle/*'                       # want: nothing
+git ls-remote --heads origin 'refs/heads/sandcastle/*' # want: nothing
+```
+
+| Check | Why it matters |
+| --- | --- |
+| `main` in sync with origin | Work branches are cut from local `main`, and [`ensureLocalBranch()`](#branch-freshness) will not move it past unpushed commits of your own — it warns and cuts from it as-is, so the whole batch inherits whatever is sitting there |
+| no stale worktrees | The implement phase mounts a worktree per item. A worktree left over from a killed run still holds its branch checked out, and the freshness step cannot move a branch that is checked out somewhere else |
+| no leftover `sandcastle/*` branches, **locally or on origin** | The dangerous one — see below. Check both: a branch left on origin is invisible in `git branch` but is still what the next pass builds on |
+
+**The leftover-branch case is the one worth understanding.** [Freshness](#branch-freshness)
+re-cuts a work branch only when it has *zero* commits over its base; a branch
+with commits is brought forward instead. So a `sandcastle/issue-N` left behind
+from an abandoned run does not look abandoned to the harness — it looks like
+work in progress. It gets rebased onto the current base, implemented on top of,
+and shipped in issue N's PR.
+
+Usually those are issue N's own half-finished commits, and the cost is an agent
+building on a false start. The expensive case is a work branch someone once
+pointed somewhere else: whatever it carries over the base is what the harness
+treats as issue N's work, and that is what lands in issue N's PR.
+
+Nothing detects that for you. If a `sandcastle/*` branch is not work you intend
+to continue, delete it — locally and on origin — before the run:
+
+```sh
+git branch -D sandcastle/issue-N
+git push origin --delete sandcastle/issue-N   # only if it got that far
+```
+
+A branch that already has an **open PR** is a different thing and should be
+left alone: the re-pick guard prunes its issue, so the run will not touch it.
+
+### The first run has to wait for the gate
+
+One bootstrap step, and it only bites once. **The harness cannot gate anything
+until `scripts/gate.sh` is on `main`.** Work branches are cut from `main`, the
+gate is read out of the branch rather than seeded into the worktree, so a
+branch cut from a `main` that does not carry it has no gate to run — every item
+comes back `gate-missing`, and finalize acts only on items the gate passed.
+A full pass in that state is not a failed run; it is a run that correctly
+declines to open a PR for work it could not verify.
+
+That is the state until the PR carrying this directory is merged. Confirm
+before the first real pass:
+
+```sh
+git cat-file -e origin/main:scripts/gate.sh && echo "gate is on main"
+```
+
+Until that prints, `--dry-run`, `--plan` and `--prepare` are all meaningful and
+`--implement` will produce commits, but no PR will be opened by anything.
+
 ## Modes
 
 Five, each one step further than the last. **Only `--finalize` puts code on
@@ -170,6 +236,54 @@ think a real pass has happened.
 in the planned batch is fatal rather than a warning: pointing the harness at
 one issue and getting a silent no-op reads as "the run happened and did
 nothing".
+
+## Logs, and what a run leaves behind
+
+The run narrates itself on stdout — the batch, the plan, the freshness verdict
+per branch, then a line per item as it finishes. That summary is the thing to
+read; it names every outcome and it is the only place the whole pass is visible
+at once. Keep it:
+
+```sh
+mkdir -p .sandcastle/logs
+node .sandcastle/run.mts --finalize 2>&1 | tee .sandcastle/logs/run.log
+```
+
+**Per-item agent transcripts land in `.sandcastle/logs/issue-<n>.log`** — one
+file per issue, holding what the implementer did inside its container: every
+tool call and its own reasoning. That is where you look when an item comes back
+`no-commits`, or when you want to know *why* an agent did what it did. The
+directory is gitignored and nothing prunes it; files accumulate and a re-run of
+the same issue overwrites its own.
+
+**The gate's own output is not in that file.** The agent's transcript ends when
+the agent stops; the harness then runs the gate itself, in the same container.
+That verdict goes to the run summary on stdout instead, and a red gate prints
+the tail of its output there, one `|`-prefixed line at a time — a bare exit code
+would leave you with a failed item and nowhere to look.
+
+So for a `gate-failed` item the two halves live in two places: *what the agent
+did* in the per-item log, and *why the gate rejected it* in the summary. Capture
+stdout, per the `tee` above, or the second half is gone.
+
+Also left behind, all of it gitignored: `.sandcastle/worktrees/` (removed after
+each use — anything still there is the wreckage of a killed run), and
+`.sandcastle/node_modules/`.
+
+**Nothing else is left behind.** Not in the primary checkout, which every
+writing mode re-checks at the end of the run, and not on `main`, which nothing
+in the harness can write to.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The pass completed. Read the summary — a green exit still allows `gate-failed` items, as long as *something* was implemented |
+| `1` | The batch produced nothing usable, or an item failed at merge or finalize. The run happened; some part of it did not land |
+| `2` | Bad invocation — no mode, an unknown flag, or `--issue N` for an issue not in the batch |
+| `3` | **A plan was refused, or a child's epic branch was missing.** The run aborted whole rather than skipping the item. This is a bug in the harness or a corrupted issue graph, not an operator error |
+| `4` | The primary checkout moved or its tree changed. An invariant broke — see [recovery](#when-a-run-half-fails) |
+| `5` | Container auth is not configured. Nothing was touched; fill in `.sandcastle/.env` |
 
 ## What the dry run selects
 
@@ -454,6 +568,73 @@ gets its own worktree under `.sandcastle/worktrees/` (gitignored, removed after
 use) — including the worktrees sandcastle itself mounts into the containers.
 Every writing mode verifies this at the end of the run and exits non-zero if
 the checkout moved or its working tree changed.
+
+## When a run half-fails
+
+A pass is not transactional and does not pretend to be. One item failing never
+takes the batch down — it becomes an outcome, the rest carry on, and the run
+exits non-zero at the end. So the normal shape of a bad run is a *partial* one,
+and the recovery is nearly always the same: **read the summary, fix the one
+thing, re-run.**
+
+Re-running is safe by construction, and that is what makes this the answer
+rather than a risk. Nothing in the harness force-pushes, nothing merges into
+`main`, and an existing PR is found rather than duplicated — in any state,
+closed included. An issue that reached a PR is therefore out of the next batch
+whatever else went wrong: the re-pick guard is what holds, and it holds even
+when the label swap is the thing that failed.
+
+What to do, by what the summary says:
+
+| Symptom | What actually happened | Do |
+| --- | --- | --- |
+| `gate-failed` | The agent committed, the harness ran the gate itself, the gate was red | The gate's output is in the run summary, not the per-item log; read it there for *why*, and the log for what the agent was doing. The branch is intact — fix it by hand, or re-run to give the agent another attempt on top |
+| `gate-missing` | The work branch has no `scripts/gate.sh`, so nothing was gated | Setup's fault, not the agent's. Land the gate on the base branch, then re-run |
+| `no-commits` | The agent wrote nothing at all | Usually an under-specified issue. Read the log; sharpen the issue before re-running |
+| `error` on an item | The sandbox failed, or the update to origin was refused | The message carries git's own stderr. A rejected push means the branch moved on origin — inspect it before doing anything |
+| PR opened, handoff failed | The PR is real and on origin; the `ready-for-agent` → `ready-for-human` swap or the marker comment did not go through | **Swap the label by hand** — re-running will not retry it, because the re-pick guard prunes any issue with a PR on its head. That guard is also why this is cosmetic rather than dangerous: a stale `ready-for-agent` cannot cause the issue to be worked twice |
+| `conflicted` child | The squash into the epic branch would not apply; it was undone | The epic branch is byte-identical to before and the issue is still open. Resolve by hand in a worktree, or re-run once the epic branch has moved on |
+| `skipped` at freshness | A rebase or merge conflicted, so the branch was left exactly as found | Not implemented, deliberately — its base is stale. Bring the branch forward by hand, then re-run |
+| Nothing implemented at all (exit `1`) | The whole batch came back empty | Check auth and Docker before re-running: an image or token problem fails every item identically |
+
+Two cases are **not** "fix and re-run", because in both the harness is telling
+you it does not understand the repository any more:
+
+- **Exit `3` — a refused plan, or an orphaned child.** Both abort the *entire*
+  run rather than skipping the item, but they stop at different points and the
+  message says which. A plan that puts work on the base branch, or outside
+  `sandcastle/`, is refused **before anything is touched** — no branch, no
+  container, and re-running changes nothing until the harness or the issue graph
+  is fixed. A child pointing at an epic branch that does not exist is caught
+  *later*, after epic branches have been created, so that run may already have
+  left a bare `sandcastle/epic-<n>` on origin. That branch is harmless and will
+  be adopted by the next pass; it is not something to clean up. Read the abort
+  message either way — it names every violation at once.
+- **Exit `4` — the primary checkout moved.** The one thing the harness promises
+  never to do appears to have happened. Do not re-run. Establish what the tree
+  looks like now (`git status`, `git reflog`) and get it back to where it was
+  first; if the harness really did it, that is a bug worth an issue.
+
+### Killed mid-run
+
+Ctrl-C or a crash leaves work branches wherever they got to, and possibly a
+container and a worktree. None of it is dangerous, but a leftover worktree holds
+its branch checked out and blocks the next pass's freshness step.
+
+Work branches are **local** until finalize pushes them. The one exception is a
+bare `sandcastle/epic-<n>`, which [is created on origin during
+`--prepare`](#where-the-epic-branch-comes-from) — so a run killed any time after
+that may have left one there. Leave it: it carries no code, and the next pass
+adopts it rather than creating a second one.
+
+```sh
+docker ps --filter ancestor=nextjs-revalidate-sandbox:latest   # then: docker rm -f <id>
+git worktree list && git worktree prune
+```
+
+Then run the [pre-flight](#pre-flight) again before the next pass, paying
+attention to the leftover-branch check: the branches from the killed run are
+exactly the case it is there to catch.
 
 ## Test and typecheck
 
