@@ -17,19 +17,22 @@ class Settings extends Base {
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
-	 * The settings a site holds.
+	 * The settings this plugin reads, declared once.
 	 *
-	 * Pairs the name the rest of the plugin reads with the option it is stored
-	 * under and the empty value a read yields on a site that has never stored
-	 * one. Authoritative for reads, registration, seeding and teardown alike,
-	 * so a setting cannot be added to one of them and forgotten in another.
+	 * Keyed by the name the rest of the plugin reads, each entry pairs the
+	 * option the setting is stored under with the empty value a read yields on
+	 * a site holding no row for it — of the setting's own type, never false, so
+	 * a read is always safe to iterate or compare.
+	 *
+	 * Authoritative for reads, registration, seeding and teardown alike, so a
+	 * setting cannot be added to one of them and forgotten in another.
 	 */
-	const OPTIONS = [
-		'url'                     => [ 'option' => self::SETTINGS_URL_NAME,                  'empty' => ''  ],
-		'secret'                  => [ 'option' => self::SETTINGS_SECRET_NAME,               'empty' => ''  ],
-		'allow_revalidate_all'    => [ 'option' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => []  ],
-		'revalidate_on_menu_save' => [ 'option' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => []  ],
-		'debug'                   => [ 'option' => self::SETTINGS_DEBUG,                     'empty' => []  ],
+	private const OPTIONS = [
+		'url'                     => [ 'name' => self::SETTINGS_URL_NAME,                  'empty' => ''  ],
+		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => ''  ],
+		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => []  ],
+		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => []  ],
+		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => []  ],
 	];
 
 	/**
@@ -44,11 +47,18 @@ class Settings extends Base {
 
 	public function __get( $name ) {
 
-		if ( !isset( self::OPTIONS[ $name ] ) ) return parent::__get( $name );
+		if ( !isset(self::OPTIONS[$name]) ) return parent::__get( $name );
 
-		$setting = self::OPTIONS[ $name ];
+		$empty = self::OPTIONS[$name]['empty'];
+		$value = get_option( self::OPTIONS[$name]['name'], $empty );
 
-		return get_option( $setting['option'], $setting['empty'] );
+		// A site can hold a row whose value does not match the setting's type:
+		// a row stored as false, or a set-shaped setting saved by a form which
+		// submitted none of its switches. For a read, such a row means exactly
+		// what an absent one means.
+		if ( is_array($empty) ) return is_array($value) ? $value : $empty;
+
+		return $value === false ? $empty : $value;
 	}
 
 	/**
@@ -141,7 +151,7 @@ class Settings extends Base {
 	 */
 	public function register_fields() {
 		foreach ( self::OPTIONS as $setting ) {
-			register_setting( self::SETTINGS_GROUP, $setting['option'] );
+			register_setting( self::SETTINGS_GROUP, $setting['name'] );
 		}
 
 
@@ -332,7 +342,7 @@ class Settings extends Base {
 	 */
 	public static function delete_settings() {
 		foreach ( self::OPTIONS as $setting ) {
-			delete_option( $setting['option'] );
+			delete_option( $setting['name'] );
 		}
 	}
 
@@ -344,7 +354,7 @@ class Settings extends Base {
 	 */
 	public function define_settings() {
 		foreach ( self::OPTIONS as $setting ) {
-			add_option( $setting['option'], $setting['empty'] );
+			add_option( $setting['name'], $setting['empty'] );
 		}
 	}
 
