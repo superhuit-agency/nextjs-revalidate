@@ -17,6 +17,22 @@ class Settings extends Base {
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
+	 * The settings a site holds.
+	 *
+	 * Pairs the name the rest of the plugin reads with the option it is stored
+	 * under and the empty value a read yields on a site that has never stored
+	 * one. Authoritative for reads, registration, seeding and teardown alike,
+	 * so a setting cannot be added to one of them and forgotten in another.
+	 */
+	const OPTIONS = [
+		'url'                     => [ 'option' => self::SETTINGS_URL_NAME,                  'empty' => ''  ],
+		'secret'                  => [ 'option' => self::SETTINGS_SECRET_NAME,               'empty' => ''  ],
+		'allow_revalidate_all'    => [ 'option' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => []  ],
+		'revalidate_on_menu_save' => [ 'option' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => []  ],
+		'debug'                   => [ 'option' => self::SETTINGS_DEBUG,                     'empty' => []  ],
+	];
+
+	/**
 	 * Settings constructor.
 	 */
 	function __construct() {
@@ -28,18 +44,11 @@ class Settings extends Base {
 
 	public function __get( $name ) {
 
-		$opt_name = null;
-		if      ( $name === 'url'                     ) $opt_name = self::SETTINGS_URL_NAME;
-		else if ( $name === 'secret'                  ) $opt_name = self::SETTINGS_SECRET_NAME;
-		else if ( $name === 'allow_revalidate_all'    ) $opt_name = self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME;
-		else if ( $name === 'revalidate_on_menu_save' ) $opt_name = self::SETTINGS_REVALIDATE_ON_MENU_SAVE;
-		else if ( $name === 'debug'                   ) $opt_name = self::SETTINGS_DEBUG;
+		if ( !isset( self::OPTIONS[ $name ] ) ) return parent::__get( $name );
 
-		$value = null;
-		if ( !empty($opt_name) ) $value = get_option($opt_name);
-		else                     $value = Parent::__get( $name );
+		$setting = self::OPTIONS[ $name ];
 
-		return $value;
+		return get_option( $setting['option'], $setting['empty'] );
 	}
 
 	/**
@@ -131,7 +140,9 @@ class Settings extends Base {
 	 * Register and add settings
 	 */
 	public function register_fields() {
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_URL_NAME );
+		foreach ( self::OPTIONS as $setting ) {
+			register_setting( self::SETTINGS_GROUP, $setting['option'] );
+		}
 
 
 		// API section settings
@@ -162,7 +173,6 @@ class Settings extends Base {
 			'nextjs-revalidate-section'
 		);
 
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_SECRET_NAME );
 		add_settings_field(
 			'revalidate-secret',
 			__('Revalidate Secret', 'nextjs-revalidate'),
@@ -193,7 +203,6 @@ class Settings extends Base {
 		);
 
 		$post_types = get_post_types([ 'public' => true ]);
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME );
 		foreach ($post_types as $post_type) {
 			if ( $post_type === 'attachment' ) continue; // skip attachments
 
@@ -245,7 +254,6 @@ class Settings extends Base {
 			]
 		);
 
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_REVALIDATE_ON_MENU_SAVE );
 		foreach ($post_types as $post_type) {
 			if ( $post_type === 'attachment' ) continue; // skip attachments
 
@@ -295,7 +303,6 @@ class Settings extends Base {
 				'after_section'  => '</section>',
 			]
 		);
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_DEBUG );
 
 		$upload_dir = wp_upload_dir();
 		$id = "enable-logs";
@@ -318,16 +325,27 @@ class Settings extends Base {
 		);
 	}
 
+	/**
+	 * Delete every setting of the site currently being served.
+	 *
+	 * @return void
+	 */
 	public static function delete_settings() {
-		return
-			delete_option( self::SETTINGS_URL_NAME ) &&
-			delete_option( self::SETTINGS_SECRET_NAME );
+		foreach ( self::OPTIONS as $setting ) {
+			delete_option( $setting['option'] );
+		}
 	}
 
+	/**
+	 * Register every setting of the site currently being served,
+	 * holding its empty value until an operator supplies one.
+	 *
+	 * @return void
+	 */
 	public function define_settings() {
-		add_option( self::SETTINGS_URL_NAME );
-		add_option( self::SETTINGS_SECRET_NAME );
-		add_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, [] );
+		foreach ( self::OPTIONS as $setting ) {
+			add_option( $setting['option'], $setting['empty'] );
+		}
 	}
 
 	/**
