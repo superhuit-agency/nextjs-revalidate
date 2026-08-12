@@ -24,6 +24,8 @@ class Settings extends Base {
 		add_action( 'admin_init', [$this, 'register_fields'] );
 
 		add_action( 'admin_init', [$this, 'migrate_db'] );
+
+		add_action( 'admin_notices', [$this, 'unconfigured_notice'] );
 	}
 
 	public function __get( $name ) {
@@ -331,15 +333,79 @@ class Settings extends Base {
 	}
 
 	/**
+	 * The settings a revalidation cannot be delivered without,
+	 * which the site has no value for.
+	 *
+	 * @return string[] Any of 'url' and 'secret'. Empty on a configured site.
+	 */
+	public function missing_settings() {
+		$missing = [];
+
+		$url = $this->url;
+		if ( empty($url) ) $missing[] = 'url';
+
+		$secret = $this->secret;
+		if ( empty($secret) ) $missing[] = 'secret';
+
+		return $missing;
+	}
+
+	/**
 	 * Returns if the plugin is correctly configured.
+	 * Half-configured is unconfigured.
 	 *
 	 * @return boolean
 	 */
 	public function is_configured() {
-		$url = $this->url;
-		$secret = $this->secret;
-		return !(empty($url) || empty($secret));
+		return empty( $this->missing_settings() );
+	}
 
+	/**
+	 * Tell whoever is looking at the admin that this site revalidates nothing.
+	 *
+	 * Not dismissible on purpose: an unconfigured site accepts edits and looks
+	 * like it works, and a notice that can be dismissed for good recreates
+	 * exactly the silence this is here to break.
+	 */
+	public function unconfigured_notice() {
+		if ( $this->is_configured() ) return;
+
+		$can_configure = current_user_can( 'manage_options' );
+
+		// Only bother people whose work is being silently dropped,
+		// or who can do something about it.
+		if ( !$can_configure && !current_user_can( 'edit_posts' ) ) return;
+
+		$missing = $this->missing_settings();
+		if ( count($missing) > 1 )                     $what = __( 'its revalidate URL and secret are missing', 'nextjs-revalidate' );
+		else if ( in_array('url', $missing, true) )    $what = __( 'its revalidate URL is missing', 'nextjs-revalidate' );
+		else                                           $what = __( 'its secret is missing', 'nextjs-revalidate' );
+
+		$message = esc_html(
+			sprintf(
+				/* translators: %s: which of the two required settings are missing. */
+				__( 'Next.js revalidate is not configured for this site — %s. Content is still saved, but every revalidation is refused: the front-end is never asked to rebuild its pages.', 'nextjs-revalidate' ),
+				$what
+			)
+		);
+
+		$on_settings_page = ( isset($_GET['page']) && $_GET['page'] === self::PAGE_NAME );
+
+		if ( $can_configure && !$on_settings_page ) {
+			$message .= sprintf(
+				' <a href="%s">%s</a>',
+				esc_url( admin_url( 'options-general.php?page=' . self::PAGE_NAME ) ),
+				esc_html__( 'Configure Next.js revalidate', 'nextjs-revalidate' )
+			);
+		}
+		else if ( !$can_configure ) {
+			$message .= ' ' . esc_html__( 'Please contact a site administrator.', 'nextjs-revalidate' );
+		}
+
+		printf(
+			'<div class="notice notice-warning nextjs-revalidate-unconfigured__notice"><p>%s</p></div>',
+			$message
+		);
 	}
 
 	/**

@@ -24,6 +24,11 @@ class RevalidateAll extends Base {
 	 */
 	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
 
+		// An unconfigured site refuses every revalidation, so do not offer the
+		// menu at all — the same way the row action and the bulk action are
+		// not offered. The unconfigured notice says why.
+		if ( !$this->settings->is_configured() ) return;
+
 		$revalidate_all_opts = $this->settings->allow_revalidate_all;
 
 		if ( empty($revalidate_all_opts) ) return;
@@ -75,6 +80,14 @@ class RevalidateAll extends Base {
 	 * Display a success admin notice when all page revalidate has been triggered
 	 */
 	function revalidated_notice() {
+		if ( isset($_GET['nextjs-revalidate-revalidate-all-refused']) ) {
+			printf(
+				'<div class="notice notice-error"><p>%s</p></div>',
+				esc_html__( 'Revalidate all: nothing was queued, this site is not configured.', 'nextjs-revalidate' )
+			);
+			return;
+		}
+
 		if ( !isset($_GET['nextjs-revalidate-revalidate-all']) ) return;
 
 		printf(
@@ -96,7 +109,10 @@ class RevalidateAll extends Base {
 
 		$nb_added = $this->revalidate_all( $_GET['nextjs-revalidate-type'] );
 		$sendback = add_query_arg(
-			[ 'nextjs-revalidate-revalidate-all' => $nb_added ],
+			( false === $nb_added
+				? [ 'nextjs-revalidate-revalidate-all-refused' => 1 ]
+				: [ 'nextjs-revalidate-revalidate-all' => $nb_added ]
+			),
 			$this->get_sendback_url()
 		);
 
@@ -132,7 +148,14 @@ class RevalidateAll extends Base {
 	 * @return int The number of nodes added to revalidate
 	 */
 	function revalidate_all( $type = 'all' ) {
-		if ( !$this->settings->is_configured() ) return false;
+		if ( !$this->settings->is_configured() ) {
+			Logger::log(
+				sprintf( '⛔ Refused revalidate all (%s) — site not configured (missing: %s)', $type, implode(', ', $this->settings->missing_settings()) ),
+				__FILE__,
+				Logger::ERROR
+			);
+			return false;
+		}
 
 		$count = 0;
 		if ( $type === 'all' ) {

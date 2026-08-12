@@ -6,6 +6,7 @@ use DateTime;
 use DateTimeZone;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\SendbackUrl;
+use WP_Error;
 
 class RevalidateQueue extends Base {
 	use SendbackUrl;
@@ -84,10 +85,29 @@ class RevalidateQueue extends Base {
 	 *                           priority are executed in the order in which
 	 *                           they were added. Default 10.
 	 *
-	 * @return bool Wether the permalink was added to the queue
+	 * @return bool|WP_Error Whether the permalink was added to the queue.
+	 *                       A `not_configured` WP_Error when the site is
+	 *                       unconfigured and the revalidation is refused.
 	 */
 	public function add_item( $permalink, $priority = 10 ) {
 		global $wpdb;
+
+		// Refuse rather than accept a revalidation which could never be
+		// delivered: an item queued on an unconfigured site is dropped at
+		// drain time, without a trace, long after anyone could connect it
+		// to the edit that produced it.
+		if ( !$this->settings->is_configured() ) {
+			Logger::log(
+				sprintf( '⛔ Refused %s — site not configured (missing: %s)', $permalink, implode(', ', $this->settings->missing_settings()) ),
+				__FILE__,
+				Logger::ERROR
+			);
+
+			return new WP_Error(
+				'not_configured',
+				__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+			);
+		}
 
 		$inserted = false;
 

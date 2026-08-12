@@ -184,12 +184,14 @@ class Revalidate extends Base {
 		 */
 		$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $_GET['post'] );
 
+		$is_added = false;
 		if ( false !== $permalink ) $is_added = $this->queue->add_item( $permalink );
+		$is_added = ( $is_added && !is_wp_error($is_added) );
 
 		$sendback  = $this->get_sendback_url();
 
 		wp_safe_redirect(
-			add_query_arg( [ 'nextjs-revalidate-purged' => $_GET['post'] ], $sendback )
+			add_query_arg( [ 'nextjs-revalidate-purged' => ( $is_added ? $_GET['post'] : 0 ) ], $sendback )
 		);
 		exit;
 	}
@@ -233,8 +235,8 @@ class Revalidate extends Base {
 				$permalink = apply_filters( 'nextjs_revalidate_purge_action_permalink', $permalink, $_GET['post'] );
 
 				if ( false !== $permalink ) {
-					$this->queue->add_item( $permalink );
-					$purged++;
+					$is_added = $this->queue->add_item( $permalink );
+					if ( $is_added && !is_wp_error($is_added) ) $purged++;
 				}
 			}
 
