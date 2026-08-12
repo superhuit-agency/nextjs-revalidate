@@ -6,20 +6,31 @@
   "repository": "git@github.com:superhuit-agency/nextjs-revalidate.git",
   "author": "superhuit <tech@superhuit.ch>",
   "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "scripts": {
     "build": "webpack --mode production",
     "dev": "npm run start & webpack --mode development --watch",
     "start": "wp-env start --xdebug && npm run start:revalidateServer",
     "stop": "wp-env stop",
-    "start:revalidateServer": "node ./config/revalidate-server.js"
+    "start:revalidateServer": "node ./config/revalidate-server.js",
+    "typecheck": "tsc --noEmit",
+    "lint:php": "php=${PHP_BIN:-php}; v=$($php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;') || exit 1; [ \"$v\" = 7.4 ] || [ \"${ALLOW_PHP_VERSION_MISMATCH:-}\" = 1 ] || { echo \"lint:php: $php is PHP $v, not 7.4 — a newer parser accepts PHP 8-only syntax and proves nothing. Point PHP_BIN at a 7.4 binary, or set ALLOW_PHP_VERSION_MISMATCH=1.\" >&2; exit 1; }; files=$(git ls-files '*.php') || exit 1; for f in $files; do $php -l \"$f\" || exit 1; done",
+    "sandcastle": "tsx .sandcastle/main.mts",
+    "sandcastle:test": "tsx --test .sandcastle/test/*.test.mts",
+    "sandcastle:typecheck": "tsc --noEmit --project .sandcastle/tsconfig.json"
   },
   "devDependencies": {
+    "@ai-hero/sandcastle": "0.12.0",
+    "@types/node": "^24.13.3",
     "@wordpress/env": "^9.2.0",
     "clean-webpack-plugin": "^4.0.0",
     "css-loader": "^6.9.1",
     "express": "^4.18.2",
     "mini-css-extract-plugin": "^2.7.7",
     "ts-loader": "^9.4.2",
+    "tsx": "^4.23.12",
     "typescript": "^5.0.4",
     "webpack": "^5.82.1",
     "webpack-cli": "^5.1.1",

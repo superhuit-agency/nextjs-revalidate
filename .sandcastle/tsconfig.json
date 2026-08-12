@@ -1,0 +1,17 @@
+{
+  "//": "Harness code only. The plugin's root tsconfig targets es5 and excludes this directory, so without a config of its own nothing would type-check 3,000 lines of TypeScript. Run it with `npm run sandcastle:typecheck`; tsx strips types, it does not check them.",
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["esnext"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": ["*.mts", "lib/**/*.mts", "test/**/*.mts"]
+}

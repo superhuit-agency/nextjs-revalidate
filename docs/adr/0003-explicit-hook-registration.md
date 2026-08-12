@@ -97,7 +97,7 @@ outright. `ScheduledPurges` keeps its `$timezone`; `RevalidateQueue` keeps
 which point its constructor goes too. That six of eight classes had a constructor
 that constructed nothing is the clearest evidence the two concerns were conflated.
 
-`gate.sh` cannot verify this change. It is a syntax and type gate over a repo
+The gate cannot verify this change. It is a syntax and type gate over a repo
 with no test suite, and it goes green on a refactor that drops six hooks.
 Acceptance is instead a `$wp_filter` dump under `wp-env`, filtered to this
 plugin's callbacks and compared byte-for-byte across the change — the only check
