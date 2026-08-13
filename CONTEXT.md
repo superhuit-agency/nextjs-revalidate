@@ -23,6 +23,13 @@ _Avoid_: Purge all
 **Revalidation queue**:
 The durable, ordered set of revalidations awaiting delivery to the front-end.
 Drained by cron rather than during the request that created the entries.
+
+A **revalidation** is of a path, but a queue entry stores the **permalink** — the
+absolute URL, as the front-end is asked for it. The distinction is not
+bookkeeping: the table a queue entry lands in follows `switch_to_blog()`, while
+the permalink written into it resolves against whichever site is current, so the
+two can disagree on a network. Say "the queue holds permalinks"; reserve "path"
+for the thing being revalidated.
 _Avoid_: Job list, backlog
 
 **Scheduled purge**:
