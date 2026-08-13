@@ -77,6 +77,10 @@ class RevalidateAll extends Base {
 	 */
 	function revalidated_notice() {
 		if ( isset($_GET['nextjs-revalidate-revalidate-all-refused']) ) {
+			// The query arg is the only thing that puts this on screen, so
+			// anyone can put it there. Say it to the people it is about.
+			if ( !current_user_can('edit_posts') && !current_user_can('manage_options') ) return;
+
 			printf(
 				'<div class="notice notice-error"><p>%s</p></div>',
 				esc_html__( 'Revalidate all: nothing was queued, this site is not configured.', 'nextjs-revalidate' )

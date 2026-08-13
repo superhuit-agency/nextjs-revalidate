@@ -27,10 +27,12 @@ settings is missing. A permanently-dismissible notice would recreate the exact
 silence this exists to break, and a notice only on the settings screen is only
 ever seen by someone who already went looking.
 
-A refusal is also written to the log via `Logger::log`, so an operator with debug
-mode on has the permalink and the reason. This is diagnostic only: logging is off
-by default, and — until #19 fixes `Logger::log`'s inverted guard — writes nothing
-at all when it is on. The notice, not the log, is what closes the gap.
+A refusal is also written to the log via `Logger::log`, so an operator with the
+logs setting switched on has the permalink and the reason. It is the queue that
+writes it, at the single point every refusal passes through, rather than each
+entry point writing its own. This is diagnostic only, and stays diagnostic
+because logging is off by default: on the sites this ADR is about, nothing is
+written at all. The notice, not the log, is what closes the gap.
 
 ## Considered Options
 
@@ -73,8 +75,11 @@ The unconfigured branch in `Revalidate::purge()` is now unreachable from the
 drain, since nothing unconfigured reaches the queue. It stays as a guard, as ADR
 0004 anticipated.
 
-Nothing here is covered by a test: the repo has no PHP test harness, and the
-behaviour is admin-notice output and a `WP_Error` return from a method that talks
-to `$wpdb` directly. `missing_settings()` is the seam a future harness would
-start from — it is pure with respect to two option reads, and `is_configured()`
+`missing_settings()` is covered by `tests/SettingsTest.php`, in the repo's plain
+PHP style — no WordPress, the two option reads stubbed. It is the only part of
+this change a test can pin down: the rest is admin-notice output and a `WP_Error`
+return from a method that talks to `$wpdb` directly, neither of which is reachable
+without a WordPress runtime. Testing the seam is worth it anyway, because
+`missing_settings()` is what decides *which* of the two settings the notice names,
+and `is_configured()` — the precondition every revalidation is measured against —
 is now defined in terms of it.
