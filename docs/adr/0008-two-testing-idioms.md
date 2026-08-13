@@ -84,3 +84,80 @@ ships a `phpunit` binary — so the suite needs no new dependency at all. A
 composer PHPUnit would enable a faster CI job that skips wp-env, at the price of
 a *third* way to run tests and two `WP_UnitTestCase` versions that have to agree.
 Having just declined to merge two idioms, adding a third would be a strange move.
+
+## Amended once the harness was built
+
+Two of the decisions above were made from the wp-env documentation and did not
+survive contact with the containers. The decisions they served are unchanged;
+the means are not.
+
+**The suite does need one new dev dependency: `yoast/phpunit-polyfills`.** The
+claim that wp-env ships everything was half right — it clones
+`WordPress/wordpress-develop` sparsely, `tests/phpunit` only, without that
+clone's `vendor/`. The WordPress test bootstrap requires the Polyfills and
+exits if it cannot find them, and points plugin authors at exactly this: a dev
+requirement in the plugin's own `composer.json`. It is `require-dev`, so
+`composer install --no-dev` in the release workflow leaves it out of the zip.
+
+**The suite runs `vendor/bin/phpunit` inside the container, not the container's
+own `phpunit`.** The Polyfills require PHPUnit, so composer installs one
+regardless; running the container's global PHPUnit alongside it would put two
+PHPUnit versions in one process, with the plugin's composer autoloader able to
+resolve a class to the wrong one. One version, pinned by `composer.lock`, is
+both safer and more reproducible than "whatever `@wordpress/env` ships".
+
+**Consequently `composer.json` now pins `config.platform.php` to 7.4.** Composer
+resolves against the PHP it is run on, and on a modern one it picked a PHPUnit
+requiring PHP 8.1 — which would have broken `composer install` for anyone on the
+7.4 the plugin declares. Pinning the platform to the declared floor resolves
+every dependency for the version the plugin actually claims to support. It cuts
+one way worth knowing: `platform` makes composer ignore the PHP it is actually
+running on, so `composer install` on a PHP *below* 7.4 now succeeds quietly
+where it would once have refused. `lint:php` is the gate that still checks a
+real interpreter's version.
+
+### Three smaller things the build settled
+
+**The reset goes through the queue's own `reset_queue()`, by reflection.** The
+decision above says the base case truncates the table and resets its
+`AUTO_INCREMENT`; doing that literally would mean writing `$wpdb->prefix .
+'revalidate_queue'` in test code, which is the one expression this suite must
+not own. `reset_queue()` is private, so the harness reflects into it. The cost
+is a test suite coupled to a private name: rename it and the suite fails at
+runtime, where neither `lint:php` nor PHPStan — which reads `include/` only —
+will have warned. That is the cheaper of the two couplings, but it is a real one,
+and the argument for widening the queue's surface instead is open.
+
+**Pinning `config.platform.php` moved no existing package.** The lock was rebuilt
+from `main`'s and re-resolved for the Polyfills alone, then diffed: every
+pre-existing package, production and dev, kept its version. The lock grows by
+the PHPUnit tree and nothing else.
+
+**The release zip was verified rather than argued about.** With
+`composer install --no-dev`, the workflow's own rsync allowlist was run over a
+checkout and the payload searched: no test file, no phpunit, no polyfill. To
+redo it, run the `rsync --files-from` block of
+`.github/workflows/release-plugin.yml` and search the result.
+
+### What the enqueue commits, and the order that undoes it
+
+Review found the first version of this harness leaking two things across tests,
+and both are worth recording because the shape recurs: anything the plugin's
+`COMMIT` carries past `WP_UnitTestCase`'s rollback has to be undone by hand, and
+the queue is not the only such thing. The fixture's settings rows were one; the
+drain cron `add_item()` schedules *after* its own commit was the other, and that
+one decides the result of any later test asserting that an enqueue schedules a
+purge.
+
+The undo is order-sensitive in a way worth stating once. `WP_UnitTestCase::set_up()`
+sets `autocommit = 0` and the plugin's `COMMIT` does not restore it, so every
+statement after that commit runs in a fresh implicit transaction that
+`parent::tear_down()` will roll back. A `delete_option()` there deletes nothing.
+What makes the cleanup durable is `reset_queue()`: `TRUNCATE` is DDL, which
+forces an implicit commit in MySQL. So the queue reset has to run *last* of the
+three, and moving it back to the top silently disables the other two.
+
+Both leaks are now guarded by an isolation pair in `QueueHarnessTest`, for the
+reason the first pair exists: the failure appears on the *second* test and is
+invisible in a source review. Each guard was checked by reverting its fix
+separately and watching it fail.

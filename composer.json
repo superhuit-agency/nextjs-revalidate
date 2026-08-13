@@ -16,6 +16,16 @@
     "support": {
         "issues": "https://github.com/superhuit-agency/nextjs-revalidate/issues"
     },
+    "config": {
+        "platform": {
+            "php": "7.4"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "NextJsRevalidate\\Tests\\": "tests/integration/"
+        }
+    },
     "autoload": {
         "psr-4": {
             "NextjsRevalidate\\": "include/"
@@ -27,7 +37,8 @@
     "require-dev": {
         "johnpbloch/wordpress-core": "6.1",
         "phpstan/phpstan": "^2.2",
-        "szepeviktor/phpstan-wordpress": "^2.0"
+        "szepeviktor/phpstan-wordpress": "^2.0",
+        "yoast/phpunit-polyfills": "^2.0"
     },
     "require": {
         "kuuak/wordpress-setting-fields": "^1.1"

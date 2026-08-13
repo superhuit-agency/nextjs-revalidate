@@ -103,3 +103,56 @@ actions. Return `false` to keep it out of the queue.
 | post_id | int | The post ID |
 
 
+## Tests
+
+Two commands, and which one a test belongs to depends on whether it needs real
+WordPress state. See `docs/adr/0008-two-testing-idioms.md`.
+
+### `npm run test:php` — standalone scripts
+
+Scripts under `tests/` that stub the handful of WordPress functions their
+subject touches. No framework, no database, no Docker; they run anywhere PHP
+does, including a sandbox with neither.
+
+### `npm run test:integration` — the integration suite
+
+PHPUnit tests under `tests/integration/` that boot WordPress with this plugin
+active and assert on the **revalidation queue**: given some WordPress state and
+an event, which paths does the queue revalidate, in what order, at what
+priority?
+
+From a fresh checkout:
+
+```bash
+npm install
+composer install
+npm run test:integration
+```
+
+The command starts wp-env itself — `wp-env start` is idempotent, so running it
+again costs seconds. It runs with `--no-scripts` and against the **tests**
+environment, so the development site keeps its database and its settings;
+wp-env does bring the development containers up alongside the tests ones, which
+means port 8080 has to be free. Docker must be running. The first run downloads
+WordPress and its PHPUnit test library and takes a few minutes.
+
+Write a test by extending `NextJsRevalidate\Tests\QueueTestCase`, which
+configures the site, enqueues paths and reads the queue back:
+
+```php
+$this->configure_site();                       // a configured site — an
+                                               // unconfigured one refuses
+$this->enqueue( '/hello-world/', 5 );          // enqueue a path at a priority
+$this->assertQueueRevalidates( [ '/hello-world/' ] );  // paths, in drain order
+$this->assertQueueRevalidatesAtPriorities( [ '/hello-world/' => 5 ] );
+$this->assertQueueHolds( [ home_url( '/hello-world/' ) ] ); // the permalinks
+```
+
+The queue **holds permalinks**, and those permalinks **revalidate paths** — the
+two are kept apart because on a network they can disagree. `assertQueueHolds()`
+takes permalinks; `assertQueueRevalidates()` takes paths and normalises against
+the site's home url, so a test survives a change of `testsPort`.
+
+The queue table is created once in the bootstrap and emptied around every test.
+It has to be: `RevalidateQueue::add_item()` runs its own transaction, whose
+`COMMIT` also commits the one `WP_UnitTestCase` uses to roll a test back.
