@@ -3,10 +3,11 @@
 	The integration suite: PHPUnit tests that need real WordPress state.
 
 	Run it with `npm run test:integration`, which starts wp-env's tests
-	environment and invokes the phpunit that ships in its containers. Running
-	phpunit from the host will not work — the bootstrap needs WP_TESTS_DIR, a
-	database and the WordPress test library, none of which exist outside the
-	container.
+	environment and invokes this plugin's own `vendor/bin/phpunit` inside its
+	containers — one version, pinned by composer.lock, rather than the container's
+	global binary. Running phpunit from the host will not work: the bootstrap
+	needs WP_TESTS_DIR, a database and the WordPress test library, none of which
+	exist outside the container.
 
 	Tests that need none of that are standalone scripts under tests/ and run
 	with `npm run test:php`. See docs/adr/0008-two-testing-idioms.md.

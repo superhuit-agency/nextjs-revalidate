@@ -50,9 +50,10 @@ tests_add_filter(
 
 require $njr_tests_dir . '/includes/bootstrap.php';
 
+// Test cases and helpers autoload through composer's `autoload-dev`, so adding
+// one is adding a file rather than a file and a line here.
+
 // The queue table is created once, here, outside any transaction — a test
 // cannot create it, because the DDL would commit the transaction that isolates
 // that test. QueueTestCase empties the table between tests instead.
 NextJsRevalidate::init()->queue->create_table();
-
-require_once __DIR__ . '/QueueTestCase.php';

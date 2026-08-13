@@ -21,6 +21,11 @@
             "php": "7.4"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "NextJsRevalidate\\Tests\\": "tests/integration/"
+        }
+    },
     "autoload": {
         "psr-4": {
             "NextjsRevalidate\\": "include/"

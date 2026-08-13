@@ -23,16 +23,23 @@ use WP_UnitTestCase;
  * commits the test's transaction too. This case therefore empties the queue by
  * hand on both sides of every test.
  *
- * Two consequences of that same commit are worth knowing before writing a test
- * against this base:
+ * Everything an enqueue commits is worth knowing before writing a test against
+ * this base. `tear_down()` undoes what it can; the rest is bounded by the class:
  *
  *  - Anything a test does *before* it enqueues is committed by the enqueue and
  *    survives the rollback — a post created and then saved into the queue is
  *    still there in the next test. WordPress clears every table between test
- *    *classes*, so the leak is bounded by the class, and `tear_down()` here
- *    undoes the two settings rows this case's own fixture writes. A test that
- *    creates content and then enqueues should still assert on what it created
- *    rather than on the absence of anything else.
+ *    *classes*, so the leak is bounded by the class. A test that creates content
+ *    and then enqueues should still assert on what it created rather than on the
+ *    absence of anything else.
+ *  - The two settings rows this case's own fixture writes are committed the same
+ *    way, and `tear_down()` deletes them.
+ *  - `add_item()` schedules the drain cron *after* its own `COMMIT`, so the
+ *    `cron` option is written outside the test's transaction and outlives the
+ *    rollback too. `tear_down()` unschedules it, because
+ *    `RevalidateQueue::schedule_next_cron()` does nothing when an event is
+ *    already scheduled — a leaked one would silently decide the result of the
+ *    next test that asserts an enqueue schedules a purge.
  *  - The order is real state, not a coincidence of the test: the queue is read
  *    back in the order the drain consumes it, priority ascending then insertion.
  *
@@ -69,11 +76,22 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 
 	/**
 	 * Empty the queue after the test too, so a failing test leaves nothing for
-	 * the next one, and undo the settings the fixture committed.
+	 * the next one, and undo the two things an enqueue committed past the
+	 * rollback: the fixture's settings and the drain cron.
+	 *
+	 * The order matters and is not cosmetic. `parent::tear_down()` rolls back,
+	 * and `WP_UnitTestCase::set_up()` left `autocommit` at 0, so the plugin's
+	 * `COMMIT` did not restore it — every statement after that commit runs in a
+	 * fresh implicit transaction that the rollback will undo. Deleting the
+	 * options there would delete nothing. `reset_queue()` truncates, and
+	 * `TRUNCATE` is DDL, which forces an implicit commit in MySQL: it is what
+	 * makes the deletions above it durable. Move it back above them and they
+	 * silently stop taking effect.
 	 */
 	public function tear_down() {
-		$this->reset_queue();
 		$this->unconfigure_site();
+		$this->queue()->unschedule_cron();
+		$this->reset_queue();
 
 		parent::tear_down();
 	}
@@ -132,7 +150,8 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 * Take the site back to holding neither setting.
 	 *
 	 * Run on teardown because an enqueue commits the transaction that would
-	 * otherwise have rolled these two rows back.
+	 * otherwise have rolled these two rows back. See `tear_down()` for why the
+	 * call has to sit above the queue reset to have any effect.
 	 *
 	 * @return void
 	 */

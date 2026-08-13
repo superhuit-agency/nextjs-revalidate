@@ -69,6 +69,41 @@ class QueueHarnessTest extends QueueTestCase {
 	}
 
 	/**
+	 * Isolation of what the enqueue commits *besides* the queue, first half.
+	 *
+	 * The same pairing, and the same reason: an enqueue commits the fixture's
+	 * settings and schedules the drain cron past the rollback, so only the test
+	 * after this one can show that `tear_down()` undid them. Both undos are
+	 * order-sensitive — see `QueueTestCase::tear_down()` — and neither failure
+	 * is visible in a source review.
+	 */
+	public function test_isolation_first_test_commits_its_settings_and_a_cron() {
+		$this->configure_site();
+
+		$this->enqueue( '/schedules-a-cron/' );
+
+		$this->assertNotFalse(
+			wp_next_scheduled( \NextJsRevalidate\RevalidateQueue::CRON_HOOK_NAME ),
+			'An enqueue on a configured site schedules the drain.'
+		);
+	}
+
+	/**
+	 * Isolation, second half — neither the settings nor the cron survived.
+	 */
+	public function test_isolation_second_test_sees_neither_the_settings_nor_the_cron() {
+		$this->assertFalse(
+			get_option( \NextJsRevalidate\Settings::SETTINGS_URL_NAME ),
+			'The previous test\'s settings survived into this one: tear_down is not undoing them.'
+		);
+
+		$this->assertFalse(
+			wp_next_scheduled( \NextJsRevalidate\RevalidateQueue::CRON_HOOK_NAME ),
+			'The previous test\'s cron survived into this one, and would decide the result of any test asserting an enqueue schedules the drain.'
+		);
+	}
+
+	/**
 	 * Order: priority ascending, then insertion — what the drain consumes.
 	 */
 	public function test_the_queue_is_read_in_drain_order() {
@@ -123,6 +158,11 @@ class QueueHarnessTest extends QueueTestCase {
 	/**
 	 * Proving test 2 — the fixture path is reachable: a configured site
 	 * publishes a revalidatable post and the queue holds that post's permalink.
+	 *
+	 * Declared last on purpose. It creates a post and *then* enqueues, so the
+	 * plugin's own `COMMIT` commits that post past the rollback — see
+	 * `QueueTestCase`. Nothing enforces the position, so a test appended below
+	 * this one inherits a stray published post; put it above instead.
 	 */
 	public function test_publishing_a_post_on_a_configured_site_enqueues_its_permalink() {
 		$this->configure_site();

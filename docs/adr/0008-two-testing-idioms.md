@@ -110,7 +110,11 @@ both safer and more reproducible than "whatever `@wordpress/env` ships".
 resolves against the PHP it is run on, and on a modern one it picked a PHPUnit
 requiring PHP 8.1 — which would have broken `composer install` for anyone on the
 7.4 the plugin declares. Pinning the platform to the declared floor resolves
-every dependency for the version the plugin actually claims to support.
+every dependency for the version the plugin actually claims to support. It cuts
+one way worth knowing: `platform` makes composer ignore the PHP it is actually
+running on, so `composer install` on a PHP *below* 7.4 now succeeds quietly
+where it would once have refused. `lint:php` is the gate that still checks a
+real interpreter's version.
 
 ### Three smaller things the build settled
 
@@ -134,3 +138,26 @@ the PHPUnit tree and nothing else.
 checkout and the payload searched: no test file, no phpunit, no polyfill. To
 redo it, run the `rsync --files-from` block of
 `.github/workflows/release-plugin.yml` and search the result.
+
+### What the enqueue commits, and the order that undoes it
+
+Review found the first version of this harness leaking two things across tests,
+and both are worth recording because the shape recurs: anything the plugin's
+`COMMIT` carries past `WP_UnitTestCase`'s rollback has to be undone by hand, and
+the queue is not the only such thing. The fixture's settings rows were one; the
+drain cron `add_item()` schedules *after* its own commit was the other, and that
+one decides the result of any later test asserting that an enqueue schedules a
+purge.
+
+The undo is order-sensitive in a way worth stating once. `WP_UnitTestCase::set_up()`
+sets `autocommit = 0` and the plugin's `COMMIT` does not restore it, so every
+statement after that commit runs in a fresh implicit transaction that
+`parent::tear_down()` will roll back. A `delete_option()` there deletes nothing.
+What makes the cleanup durable is `reset_queue()`: `TRUNCATE` is DDL, which
+forces an implicit commit in MySQL. So the queue reset has to run *last* of the
+three, and moving it back to the top silently disables the other two.
+
+Both leaks are now guarded by an isolation pair in `QueueHarnessTest`, for the
+reason the first pair exists: the failure appears on the *second* test and is
+invisible in a source review. Each guard was checked by reverting its fix
+separately and watching it fail.
