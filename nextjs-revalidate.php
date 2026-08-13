@@ -290,12 +290,13 @@ NextJsRevalidate::init();
  *                           and urls with the same priority are executed in the order in which they were added.
  *                           Default 10.
  *
- * @return bool        Whether the purge was successful
+ * @return bool        Whether the URL was queued. False when the site is
+ *                     unconfigured and the revalidation is refused.
  */
 function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
 	$njr = NextJsRevalidate::init();
-	$njr->queue->add_item( $url, $priority );
-	return true;
+	$added = $njr->queue->add_item( $url, $priority );
+	return ( $added && !is_wp_error($added) );
 }
 
 /**

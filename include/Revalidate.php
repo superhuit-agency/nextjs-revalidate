@@ -217,8 +217,10 @@ class Revalidate extends Base {
 	 * @return bool Whether the permalink was added to the queue.
 	 */
 	private function queue_post_purge( $post_id ) {
-		if ( ! $this->settings->is_configured() ) return false;
-
+		// No `is_configured()` guard here on purpose: the queue refuses an
+		// unconfigured site at the door and logs the permalink it refused.
+		// Guarding again here would return the same answer with the diagnostic
+		// silently dropped.
 		$permalink = $this->get_post_permalink( $post_id );
 
 		/**
@@ -232,7 +234,10 @@ class Revalidate extends Base {
 
 		if ( empty($permalink) ) return false;
 
-		return (bool) $this->queue->add_item( $permalink );
+		// A refusal comes back as a WP_Error, which is truthy — ask whether the
+		// item was queued, not whether something was returned.
+		$is_added = $this->queue->add_item( $permalink );
+		return ( $is_added && !is_wp_error($is_added) );
 	}
 
 	/**
