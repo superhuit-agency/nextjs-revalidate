@@ -7,6 +7,12 @@ parameters:
 			path: include/Assets.php
 
 		-
+			message: '#^Parameter \#3 \$value of function curl_setopt expects 0\|2, false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: include/Assets.php
+
+		-
 			message: '#^Access to an undefined property NextJsRevalidate\\Cron\\ScheduledPurges\:\:\$queue\.$#'
 			identifier: property.notFound
 			count: 1

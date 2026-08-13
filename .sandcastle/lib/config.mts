@@ -97,6 +97,6 @@ export const GATE_COMMAND = [
 	'npm ci --no-audit --no-fund',
 	'npm run typecheck',
 	'npm run lint:php',
-	'composer install --no-interaction --no-progress --no-audit',
+	'composer install --no-interaction --no-progress',
 	'npm run analyse:php',
 ].join(' && ');
