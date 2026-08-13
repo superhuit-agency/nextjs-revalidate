@@ -97,6 +97,22 @@ describe('the gate is the arbiter', () => {
 		// to leave items ungated with nobody at fault.
 		assert.match(GATE_COMMAND, /npm run typecheck/);
 		assert.match(GATE_COMMAND, /npm run lint:php/);
+		assert.match(GATE_COMMAND, /npm run analyse:php/);
+	});
+
+	it('parses before it analyses, and installs before either needs to', () => {
+		// `php -l` is seconds and PHPStan is not, so PHP 8-only syntax has to fail
+		// on the parser rather than after a Composer install. And each install has
+		// to precede the step that cannot run without it.
+		const step = (name: string) => {
+			const at = GATE_COMMAND.indexOf(name);
+			assert.notEqual(at, -1, `the gate does not run ${name}`);
+			return at;
+		};
+
+		assert.ok(step('npm run lint:php') < step('npm run analyse:php'));
+		assert.ok(step('npm ci') < step('npm run typecheck'));
+		assert.ok(step('composer install') < step('npm run analyse:php'));
 	});
 
 	it('overrules an agent that signalled completion over a red gate', async () => {

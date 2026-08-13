@@ -25,7 +25,9 @@
         ]
     },
     "require-dev": {
-        "johnpbloch/wordpress-core": "6.1"
+        "johnpbloch/wordpress-core": "6.1",
+        "phpstan/phpstan": "^2.2",
+        "szepeviktor/phpstan-wordpress": "^2.0"
     },
     "require": {
         "kuuak/wordpress-setting-fields": "^1.1"

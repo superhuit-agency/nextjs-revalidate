@@ -116,9 +116,9 @@ export function prBody(item: PlanItem): string {
 		`Implemented by the AFK agent harness (\`.sandcastle\`) from #${item.issue} — ${item.title}.`,
 		'',
 		`Branch \`${item.workBranch}\`, cut from \`${item.base}\`. After the implementer stopped, the harness ran`,
-		'the gate itself inside the same sandbox — `npm run typecheck` and `npm run lint:php` — and it passed. That',
-		'gate is syntax-level and it is the only automated verdict this pipeline has — review this as you would',
-		'any human PR.',
+		'the gate itself inside the same sandbox — `npm run typecheck`, `npm run lint:php` and `npm run analyse:php`',
+		'— and it passed. That gate is syntax, type and PHP compatibility only, and it is the only automated verdict',
+		'this pipeline has — review this as you would any human PR.',
 		'',
 		'🤖 Opened by `npm run sandcastle`. Nothing reaches `main` except a human merging this.',
 	].join('\n');

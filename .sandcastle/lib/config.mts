@@ -81,13 +81,22 @@ export const SANDBOX_IMAGE = 'nextjs-revalidate-sandbox:latest';
 /**
  * The gate, as run *by the harness* inside the sandbox after the agent stops.
  *
- * Two npm scripts, not a tracked shell script: the same `npm run typecheck` and
- * `npm run lint:php` a developer runs by hand, so there is one definition of
- * "shippable" and no harness-only file to keep in step with it. `npm ci` first
- * because `tsc` has to exist before it can run.
+ * npm scripts, not a tracked shell script: the same `npm run typecheck`,
+ * `npm run lint:php` and `npm run analyse:php` a developer runs by hand, so
+ * there is one definition of "shippable" and no harness-only file to keep in
+ * step with it. Each install sits directly in front of the steps that need it —
+ * `npm ci` because `tsc` has to exist, `composer install` because PHPStan is a
+ * dev dependency — and the two cheap parsers run before the slow analysis, so a
+ * PHP 8-only construct fails on `php -l` without waiting for Composer.
  *
- * Deliberately weak: this repo has no test suite, so it catches syntax and type
- * errors and zero logic errors. The implementer's own judgement is the real
- * quality control — see `IMPLEMENTER_MODEL`.
+ * Deliberately weak: this repo has no test suite, so it catches syntax, type and
+ * PHP compatibility errors and zero logic errors. The implementer's own
+ * judgement is the real quality control — see `IMPLEMENTER_MODEL`.
  */
-export const GATE_COMMAND = 'npm ci --no-audit --no-fund && npm run typecheck && npm run lint:php';
+export const GATE_COMMAND = [
+	'npm ci --no-audit --no-fund',
+	'npm run typecheck',
+	'npm run lint:php',
+	'composer install --no-interaction --no-progress',
+	'npm run analyse:php',
+].join(' && ');
