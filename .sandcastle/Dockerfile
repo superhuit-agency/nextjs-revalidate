@@ -34,7 +34,15 @@ ARG PHP_VERSION=7.4
 # unzip: Composer extracts dist archives with it — `phpstan/phpstan` publishes no
 # source repository at all, so without unzip the analysis step cannot install.
 # php-curl: Composer works without the extension but says, correctly, that it is
-# "operating significantly slower" — and this runs once per gated item.
+# "operating significantly slower" — and this runs once per gated item. It is
+# also what PHPStan needs to see `curl_setopt` at all: an analysis run without it
+# cannot produce the findings in `include/Assets.php`, and a baseline generated
+# here would silently drop them and turn CI red. That happened once, in #75.
+# php-xml, php-mbstring: `composer install` resolves require-dev, and phpunit
+# (a dev dependency since #56) declares ext-dom, ext-libxml, ext-xmlwriter and
+# ext-mbstring. Without them Composer exits 2 on unmet platform requirements and
+# the gate's `&&` chain dies before `analyse:php` ever runs — on every commit,
+# `main` included. php-cli alone does not carry them.
 RUN set -eux; \
 	apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -49,7 +57,9 @@ RUN set -eux; \
 	apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		"php${PHP_VERSION}-cli" \
-		"php${PHP_VERSION}-curl"; \
+		"php${PHP_VERSION}-curl" \
+		"php${PHP_VERSION}-mbstring" \
+		"php${PHP_VERSION}-xml"; \
 	apt-get purge -y --auto-remove gnupg; \
 	rm -rf /var/lib/apt/lists/*
 
@@ -75,7 +85,11 @@ RUN set -eux; \
 	node --version; \
 	npm --version; \
 	composer --version; \
-	unzip -v > /dev/null
+	unzip -v > /dev/null; \
+	for ext in curl dom libxml mbstring xmlwriter; do \
+		"$PHP_BIN" -m | grep -qix "$ext" \
+			|| { echo "ext-$ext missing: composer install or PHPStan would fail in this image" >&2; exit 1; }; \
+	done
 
 # --- the agent user --------------------------------------------------------
 #
