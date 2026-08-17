@@ -30,12 +30,12 @@ includes:
 	# (`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`),
 	# so the list can only get shorter. Nothing new belongs in it.
 	#
-	# Regenerate it on PHP 7.4 — the version CI runs and the floor the header
-	# declares. `phpVersion` below governs language-level reasoning, but an
-	# extension function's signature comes from the ext loaded at analysis time,
-	# so a baseline generated on PHP 8 can drop a finding 7.4 still reports and
-	# turn CI red. That has happened exactly once, to `curl_setopt`; ADR 0009
-	# has the details.
+	# Regenerate it only where every extension the code uses is loaded. PHPStan
+	# cannot report on a function whose extension is absent, so a baseline
+	# generated in a stripped environment silently *drops* entries and turns CI
+	# red. That has happened exactly once — the harness sandbox has no ext-curl,
+	# and the `curl_setopt` entry went with it. Nothing to do with `phpVersion`
+	# below: that finding reproduces on 7.4 and 8.3 alike. ADR 0009 has it.
 	#
 	# It was regenerated once, in #75, and that is the only reason it has ever
 	# grown: #69 generated it on a branch cut before #70 and merged it after, so

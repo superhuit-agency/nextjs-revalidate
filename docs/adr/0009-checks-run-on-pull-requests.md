@@ -86,42 +86,52 @@ rebased. Exactly one PHP file was touched to get there, and only to make a
 declared type honest (below) — the alternative was to leave the analysis unwired
 and permanently red, which is how it got into this state.
 
-## Regenerate the baseline on PHP 7.4, or it will not match CI
+## Never regenerate the baseline where an extension is missing
 
-The first regeneration here was run on PHP 8, and the workflow it added then
-failed on PHP 7.4 with the single error the regeneration had just dropped:
+The regeneration here was run inside the harness sandbox, and the workflow this
+ADR adds then failed on its very first run with the single error that
+regeneration had just dropped:
 
 ```
 include/Assets.php:110
 Parameter #3 $value of function curl_setopt expects 0|2, false given.
 ```
 
-`phpVersion: {min: 70400, max: 80400}` does not cover this. That range governs
-PHPStan's *language-level* reasoning; the signature of `curl_setopt` comes from
-the loaded ext-curl at analysis time, so an extension function's parameter types
-follow the interpreter actually running PHPStan. The baseline is therefore only
-reproducible against a stated PHP version, and CI's is **7.4** — the floor the
-plugin header declares. Generate it with the same binary:
+**The sandbox image has no ext-curl.** PHPStan cannot produce a finding about
+`curl_setopt` without the extension loaded, so regenerating there silently
+deleted an entry that every environment which *does* have curl — CI included —
+still reports. This is not a PHP-version effect: the finding reproduces
+identically on 7.4.33 and on 8.3.32 with curl present, so `phpVersion`'s
+`{min, max}` range was never going to cover it.
+
+A baseline is only as complete as the extensions loaded when it was generated.
+Regenerate it where the full set is present, and confirm the result is green on
+both ends of the declared range before committing it:
 
 ```sh
-PHP_BIN=/path/to/php7.4 npm run analyse:php   # confirm what is red first
-/path/to/php7.4 vendor/bin/phpstan analyse --no-progress \
+composer install
+php vendor/bin/phpstan analyse --no-progress \
 	--memory-limit=-1 --generate-baseline phpstan-baseline.neon
+PHP_BIN=/path/to/php7.4 npm run analyse:php   # the floor CI runs
 ```
 
 (`--memory-limit=-1` is #82's OOM at PHP's default 128M, which a 7.4 run hits
 locally where the CI runner's ini does not.)
 
-`curl_setopt` was the only finding in the whole analysis that moved with the
-interpreter — the 7.4-generated baseline is byte-identical to the PHP 8 one once
-the call is fixed — so this is a footnote, not a class of problem. It is a
-footnote that cost a red CI run, which is why it is written down.
+That the sandbox is missing ext-curl is one symptom of a larger problem the
+implementers of #38, #49, #51 and #73 all hit independently: the image predates
+`.sandcastle/Dockerfile`, which installs curl, unzip and Composer, and the
+harness only rebuilds when the image is *missing*. `composer install` cannot
+succeed there at all — `phpunit` has required ext-dom since #56 and the image
+has no `dom.so` — so the gate's `&&` chain dies before `analyse:php` on any
+commit, `main` included. **Rebuilding that image is a prerequisite for the gate
+being meaningful, and it is not in this change.**
 
-The fix is in the call, not the baseline: `CURLOPT_SSL_VERIFYHOST` is documented
-as `0` or `2` and was being passed `false`. `false` coerces to `0`, so the
-behaviour has always been correct and identical on every version — nothing was
-broken and nothing is fixed. Passing the declared type is what lets the entry
-leave the baseline honestly instead of being regenerated back into it.
+The fix here is in the call, not the baseline: `CURLOPT_SSL_VERIFYHOST` is
+documented as `0` or `2` and was being passed `false`. `false` coerces to `0`,
+so the behaviour has always been correct and identical on every version —
+nothing was broken and nothing is fixed. Passing the declared type is what lets
+the entry leave the baseline honestly instead of being regenerated back into it.
 
 The growth is six new patterns carrying seven errors, three counts that moved and
 one entry (`curl_setopt`) that went away. Those seven errors are not seven
