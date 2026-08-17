@@ -1,0 +1,304 @@
+<?php
+
+namespace NextJsRevalidate;
+
+use NextJsRevalidate\Abstracts\Base;
+use WP_Error;
+
+/**
+ * The failure window, and the degraded revalidation it answers for.
+ *
+ * The plugin's work is invisible by nature: a revalidation that fails leaves a
+ * successful save behind it and a front-end page that is quietly out of date.
+ * The log says so, but logging is off by default, so it only ever reaches
+ * someone who already suspects a problem. This is the surface for everyone
+ * else.
+ *
+ * A **condition**, not a record of events. The window holds the outcomes of the
+ * last few attempts, `is_degraded()` reads three failures out of them, and the
+ * notice appears and disappears with that answer — nothing accumulates, nothing
+ * expires, and there is nothing for an operator to acknowledge. See
+ * `docs/adr/0007-degraded-revalidation-is-a-condition.md`.
+ *
+ * The state operations are static because the window is per-site state read
+ * from the site currently being served, in the way `Logger::log()` and
+ * `Settings::delete_settings()` are; the instance the composition root builds
+ * exists to render the notice.
+ *
+ * @property Settings $settings
+ */
+class FailureWindow extends Base {
+
+	/**
+	 * The option the window is kept in.
+	 *
+	 * An option rather than a transient: a transient is evictable, and an
+	 * external object cache dropping this one would take the warning with it
+	 * while the front-end is still broken — this class's own failure mode,
+	 * reintroduced through a storage choice.
+	 */
+	const OPTION_NAME = 'nextjs_revalidate-failure_window';
+
+	/**
+	 * How many attempt outcomes the window holds.
+	 */
+	const LENGTH = 10;
+
+	/**
+	 * How many of them must be failures for the site to be degraded.
+	 *
+	 * A window rather than a run of consecutive failures, because a run is
+	 * blind to a front-end that is merely flaky: one failing half the time
+	 * never reaches three in a row, and stays silent while half the site goes
+	 * stale. Three in ten is a real problem however they arrived, and a site
+	 * with only four attempts on record still trips at three — three failures
+	 * out of four is unambiguous.
+	 */
+	const DEGRADED_AT = 3;
+
+	public function __construct() {
+		add_action( 'admin_notices', [$this, 'degraded_notice'] );
+	}
+
+	/**
+	 * The outcomes of the last attempts made on the site currently being
+	 * served, oldest first.
+	 *
+	 * Read defensively and never cached: the option belongs to whichever site
+	 * is current, and a site can hold a row of any shape — one written by an
+	 * older release, or by something else entirely. Anything that is not an
+	 * outcome is not evidence, and is dropped rather than counted.
+	 *
+	 * @return array<int, array{failed: bool, code: string}>
+	 */
+	public static function outcomes() {
+
+		$stored = get_option( self::OPTION_NAME, [] );
+		if ( !is_array($stored) ) return [];
+
+		$outcomes = [];
+		foreach ( $stored as $entry ) {
+			if ( !is_array($entry) || !isset($entry['failed']) ) continue;
+
+			$code = $entry['code'] ?? '';
+
+			$outcomes[] = [
+				'failed' => (bool) $entry['failed'],
+				'code'   => is_string($code) ? $code : '',
+			];
+		}
+
+		return array_slice( $outcomes, -self::LENGTH );
+	}
+
+	/**
+	 * The failures among them, oldest first.
+	 *
+	 * @return array<int, array{failed: bool, code: string}>
+	 */
+	public static function failures() {
+
+		$failures = [];
+		foreach ( self::outcomes() as $outcome ) {
+			if ( $outcome['failed'] ) $failures[] = $outcome;
+		}
+
+		return $failures;
+	}
+
+	/**
+	 * Record the outcome of one revalidation attempt, dropping the oldest
+	 * outcome once the window is full.
+	 *
+	 * Everything that is not a success is a failure, whether or not it named a
+	 * cause: the condition is about failure, not about diagnosis, and an
+	 * unnamed cause is not a reason to stay silent.
+	 *
+	 * A **refusal** is not an outcome to record and must not reach here — an
+	 * unconfigured site was never attempted against the front-end, so it is no
+	 * evidence about the front-end's health.
+	 *
+	 * @param true|WP_Error $outcome What `Revalidate::purge()` answered.
+	 * @return void
+	 */
+	public static function record( $outcome ) {
+
+		$failed = ( true !== $outcome );
+		$code   = is_wp_error( $outcome ) ? (string) $outcome->get_error_code() : '';
+
+		$outcomes   = self::outcomes();
+		$outcomes[] = [
+			'failed' => $failed,
+			'code'   => $failed ? $code : '',
+		];
+
+		// Not autoloaded: the drain writes this once per attempt, and an
+		// autoloaded option would flush the whole alloptions cache each time.
+		update_option( self::OPTION_NAME, array_slice( $outcomes, -self::LENGTH ), false );
+	}
+
+	/**
+	 * Whether the site currently being served has degraded revalidation.
+	 *
+	 * Computed when it is asked for, the way `Settings::is_configured()` is,
+	 * rather than a flag some earlier code path set. Never a statement about
+	 * any one revalidation.
+	 *
+	 * @return bool
+	 */
+	public static function is_degraded() {
+		return count( self::failures() ) >= self::DEGRADED_AT;
+	}
+
+	/**
+	 * Forget everything the window holds.
+	 *
+	 * @return void
+	 */
+	public static function clear() {
+		delete_option( self::OPTION_NAME );
+	}
+
+	/**
+	 * The error code of the most recent failure that carries one.
+	 *
+	 * Not always the most recent failure's: a failure can arrive without a
+	 * code, and skipping it names a cause where the alternative names nothing.
+	 *
+	 * @return string Empty when no failure in the window named a cause.
+	 */
+	public static function last_failure_code() {
+
+		foreach ( array_reverse( self::failures() ) as $failure ) {
+			if ( '' !== $failure['code'] ) return $failure['code'];
+		}
+
+		return '';
+	}
+
+	/**
+	 * The distinct causes the window's failures name, an unnamed cause being
+	 * one of them.
+	 *
+	 * Only ever counted: the notice names one code and says that others
+	 * occurred, because a list of three codes is a notice nobody reads.
+	 *
+	 * @return string[]
+	 */
+	public static function failure_codes() {
+
+		$codes = [];
+		foreach ( self::failures() as $failure ) {
+			$codes[ $failure['code'] ] = true;
+		}
+
+		return array_map( 'strval', array_keys( $codes ) );
+	}
+
+	/**
+	 * Tell whoever is looking at the admin that the front-end is not being
+	 * rebuilt.
+	 *
+	 * Not dismissible, and not confined to the settings screen, for the reason
+	 * the unconfigured notice is neither: a stale page pages nobody, so a
+	 * notice someone has to go looking for is the silence this exists to break.
+	 * It needs no dismissal — it is a condition, and it goes away when the
+	 * window stops saying so.
+	 */
+	public function degraded_notice() {
+
+		// Yields to the unconfigured notice. The two are nearly exclusive
+		// already, since an unconfigured site refuses at enqueue and never
+		// attempts anything; the overlap is a site that was configured and
+		// failing and then lost a setting, where the window is evidence about a
+		// configuration that no longer exists and the missing setting is the
+		// thing to fix.
+		if ( !$this->settings->is_configured() ) return;
+
+		if ( !self::is_degraded() ) return;
+
+		$can_configure = current_user_can( 'manage_options' );
+
+		// The same audience as the unconfigured notice: whoever can do
+		// something about it, and whoever's edits are being dropped.
+		if ( !$can_configure && !current_user_can( 'edit_posts' ) ) return;
+
+		$nb_attempts = count( self::outcomes() );
+		$nb_failures = count( self::failures() );
+
+		$message = esc_html(
+			sprintf(
+				/* translators: 1: number of failed revalidations. 2: number of attempts on record. */
+				__( 'Next.js revalidate is not keeping this site up to date — %1$d of the last %2$d revalidations failed. Content is still saved, but the front-end is serving pages which are quietly out of date.', 'nextjs-revalidate' ),
+				$nb_failures,
+				$nb_attempts
+			)
+		);
+
+		$code = self::last_failure_code();
+		if ( '' !== $code ) {
+			$message .= ' ' . esc_html(
+				sprintf(
+					/* translators: %s: the cause of the most recent failure. */
+					__( 'Most recent error: %s.', 'nextjs-revalidate' ),
+					self::describe_code( $code )
+				)
+			);
+		}
+
+		if ( count( self::failure_codes() ) > 1 ) {
+			$message .= ' ' . esc_html__( 'Other errors occurred as well.', 'nextjs-revalidate' );
+		}
+
+		$on_settings_page = ( isset($_GET['page']) && $_GET['page'] === Settings::PAGE_NAME );
+
+		if ( $can_configure && !$on_settings_page ) {
+			$message .= sprintf(
+				' <a href="%s">%s</a>',
+				esc_url( admin_url( 'options-general.php?page=' . Settings::PAGE_NAME ) ),
+				esc_html__( 'Check the Next.js revalidate settings', 'nextjs-revalidate' )
+			);
+		}
+		else if ( !$can_configure ) {
+			$message .= ' ' . esc_html__( 'Please contact a site administrator.', 'nextjs-revalidate' );
+		}
+
+		printf(
+			'<div class="notice notice-error nextjs-revalidate-degraded__notice"><p>%s</p></div>',
+			$message
+		);
+	}
+
+	/**
+	 * What an error code means, for an operator who has never seen one.
+	 *
+	 * This is why the window stores codes at all. A notice saying that
+	 * revalidations are failing produces a support ticket; one saying the
+	 * front-end rejected the secret produces a fix. The code itself is always
+	 * shown alongside, because it is what a log line and a search match on.
+	 *
+	 * @param string $code The error code a failed attempt returned.
+	 * @return string
+	 */
+	private static function describe_code( $code ) {
+
+		if ( 'unreachable' === $code ) {
+			$what = __( 'the front-end could not be reached', 'nextjs-revalidate' );
+		}
+		else if ( in_array( $code, ['http_401', 'http_403'], true ) ) {
+			$what = __( 'the front-end rejected the secret', 'nextjs-revalidate' );
+		}
+		else if ( 0 === strpos( $code, 'http_' ) ) {
+			$what = sprintf(
+				/* translators: %s: an HTTP status code, e.g. 500. */
+				__( 'the front-end answered %s', 'nextjs-revalidate' ),
+				substr( $code, strlen('http_') )
+			);
+		}
+		else {
+			return $code;
+		}
+
+		return sprintf( '%s (%s)', $what, $code );
+	}
+}

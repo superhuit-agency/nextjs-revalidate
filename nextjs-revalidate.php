@@ -34,6 +34,7 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 */
 
 use NextJsRevalidate\Assets;
+use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
@@ -69,6 +70,7 @@ class NextJsRevalidate {
 	private Assets $assets;
 	private Revalidate $revalidate;
 	private Settings $settings;
+	private FailureWindow $failureWindow;
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
 	private RevalidateQueue $queue;
@@ -90,6 +92,7 @@ class NextJsRevalidate {
 
 		$this->assets              = new Assets();
 		$this->settings            = new Settings();
+		$this->failureWindow       = new FailureWindow();
 		$this->revalidate          = new Revalidate();
 		$this->cronScheduledPurges = new ScheduledPurges();
 		$this->revalidateAll       = new RevalidateAll();
@@ -161,11 +164,22 @@ class NextJsRevalidate {
 
 	/**
 	 * Tear one site down as far as a deactivation goes: its crons stop, its
-	 * queue table and its settings stay where they are.
+	 * failure window is forgotten, its queue table and its settings stay where
+	 * they are.
+	 *
+	 * The failure window is the one exception to the two teardown depths, and
+	 * the reason is semantic rather than tidiness: while deactivated, content
+	 * changes and nothing is attempted, so on reactivation the front-end's
+	 * health is not bad but *unknown*, and carrying the old warning across that
+	 * gap asserts evidence the plugin no longer has. The exception covers state
+	 * that is evidence about a *running* plugin and stops there — clearing
+	 * settings or pending scheduled purges here would be destructive.
 	 */
 	public function teardown_site() {
 		ScheduledPurges::unschedule_cron();
 		$this->queue->unschedule_cron();
+
+		FailureWindow::clear();
 	}
 
 	/**
@@ -175,6 +189,7 @@ class NextJsRevalidate {
 	public function uninstall_site() {
 		Settings::delete_settings();
 		ScheduledPurges::delete_scheduled_purges();
+		FailureWindow::clear();
 
 		$this->queue->delete_table();
 	}
