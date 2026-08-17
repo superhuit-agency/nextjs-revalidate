@@ -35,6 +35,7 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 
 use NextJsRevalidate\Assets;
 use NextJsRevalidate\I18n;
+use NextJsRevalidate\Integrations\Redirection;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
@@ -73,6 +74,7 @@ class NextJsRevalidate {
 	private RevalidateAll $revalidateAll;
 	private RevalidateQueue $queue;
 	private RestApi $restApi;
+	private Redirection $redirection;
 	private static NextJsRevalidate $instance;
 
 	public static function init(): NextJsRevalidate {
@@ -95,6 +97,12 @@ class NextJsRevalidate {
 		$this->revalidateAll       = new RevalidateAll();
 		$this->queue               = new RevalidateQueue();
 		$this->restApi             = new RestApi();
+
+		// An integration registers its hooks explicitly, and only once it can
+		// see whether the plugin it integrates with is there — constructing it
+		// touches nothing. See docs/adr/0003-explicit-hook-registration.md.
+		$this->redirection         = new Redirection();
+		$this->redirection->register_hooks();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );

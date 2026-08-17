@@ -68,7 +68,59 @@ revalidated, whatever their status.
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
 
+## Integrations
+
+An integration is a third-party plugin whose changes this plugin reacts to when
+that plugin is present. It is never a dependency: with the plugin absent nothing
+registers, and no feature here requires one.
+
+### Redirection
+
+A headless front-end resolves a redirect inside the cached page of the path it
+redirects *from*, so creating, editing, deleting, enabling or disabling a
+redirect in [Redirection](https://wordpress.org/plugins/redirection/) leaves that
+path answering as it did before until its cache entry expires. With Redirection
+active, this plugin enqueues a revalidation of the source path whenever a
+redirect changes, so the redirect starts — or stops — working within the time the
+queue takes to drain.
+
+Only a redirect the front-end could resolve for a single path produces a
+revalidation: its source is a literal path rather than a regular expression, and
+it is enabled. A regular expression source matches an unbounded set of paths, so
+there is no single path to rebuild; it is skipped, and the skip is written to the
+log when logging is switched on. Source paths are reduced to their path
+component, dropping any query string or domain the source was stored with, and
+given the site's trailing slash convention, so they match the form post
+permalinks are enqueued in.
+
+Changing a redirect's *source* revalidates the path it stopped redirecting as
+well as the new one, on Redirection versions whose update action carries the
+redirect's previous state. Redirection 5.9.0 passes the redirect's id instead,
+where only the new source path is revalidated.
+
 ## Filters
+
+### nextjs_revalidate_should_revalidate_redirect
+
+Filters whether a redirect's source path is revalidated. Return `false` to leave
+the path alone — the escape hatch for a site whose front-end resolves redirects
+some other way.
+
+#### Usage
+```php
+add_filter( 'nextjs_revalidate_should_revalidate_redirect', function( $should_revalidate, $path, $redirect ) {
+	if ( 0 === strpos( $path, '/legacy/' ) ) return false;
+	return $should_revalidate;
+}, 10, 3 );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| should_revalidate | bool | Whether the source path is revalidated |
+| path | string | The source path, normalised |
+| redirect | object | The redirect the path is the source of, as Redirection's own `Red_Item` |
 
 ### nextjs_revalidate_purge_should_revalidate_post_on_save
 
@@ -128,6 +180,11 @@ npm install
 composer install
 npm run test:integration
 ```
+
+wp-env installs the Redirection plugin alongside this one, in both environments,
+so the redirect integration can be exercised without assembling an install by
+hand. The suite's bootstrap loads it and creates its tables when it is there, and
+skips the tests that need it when it is not.
 
 The command starts wp-env itself — `wp-env start` is idempotent, so running it
 again costs seconds. It runs with `--no-scripts` and against the **tests**

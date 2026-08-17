@@ -78,3 +78,34 @@ bounded by rules an operator actually created. Collapsing above a threshold woul
 reintroduce the stampede rejected above, and capping would silently drop
 revalidations that ADR 0004 guarantees no retry for. Source paths are deduplicated
 within the request so one path costs one row.
+
+## Amended once the integration was built
+
+**Redirection 5.9.0 passes the redirect's id from both call sites.** The
+signature this record describes — `(Red_Item $old, Red_Item $new)` on update —
+was true until upstream's "Match hook to docs" change (July 2026), which made
+`update()` fire `(int $id, Red_Item $new)` like `create()` already did, and
+covered it with a test of its own. The handler still branches on the first
+argument's type, because the two signatures now differ by Redirection version
+rather than by call site, and a site can be running either. What changes is the
+reach of the old-source case: on 5.9.0 and later nothing carries the previous
+state, so changing a redirect's source revalidates the new path and leaves the
+old one to expire on its own. Recovering it would mean reading the row before
+Redirection writes it — from its REST route, or from the `redirection_update_redirect`
+filter, which is fired without the id of the redirect it belongs to. Both are a
+deeper reach into another plugin's internals than one stale path is worth; if
+editors report it, that is the issue to open, not this one to widen.
+
+**The development environment tracks Redirection's latest release** rather than
+pinning one. The argument for pinning was reproducibility, and the argument
+against it was that upstream had fired these actions stably for years — which
+turned out not to be true. Tracking latest is what makes the suite notice the
+next such change; a version pin would have hidden this one.
+
+**Deduplication is the queue's, not the integration's.** The decision above is
+unchanged — one path costs one row — but nothing in this integration remembers
+which paths it has seen. `RevalidateQueue::add_item()` already enqueues a
+permalink it holds exactly once, so a second answer here would only add a way to
+be wrong: a set kept in memory outlives the queue entry it describes, and in a
+long-running process (a WP-CLI import) it would decline a path that had already
+been enqueued, drained, and made stale again.
