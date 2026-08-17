@@ -30,6 +30,13 @@ includes:
 	# (`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`),
 	# so the list can only get shorter. Nothing new belongs in it.
 	#
+	# Regenerate it on PHP 7.4 — the version CI runs and the floor the header
+	# declares. `phpVersion` below governs language-level reasoning, but an
+	# extension function's signature comes from the ext loaded at analysis time,
+	# so a baseline generated on PHP 8 can drop a finding 7.4 still reports and
+	# turn CI red. That has happened exactly once, to `curl_setopt`; ADR 0009
+	# has the details.
+	#
 	# It was regenerated once, in #75, and that is the only reason it has ever
 	# grown: #69 generated it on a branch cut before #70 and merged it after, so
 	# the committed list described a tree `main` never had and the analysis was

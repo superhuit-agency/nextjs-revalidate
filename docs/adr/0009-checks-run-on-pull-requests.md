@@ -70,8 +70,9 @@ so `npm run analyse:php` is wired up here — which meant first finding out that
 `main` never had: 14 findings in `include/Assets.php`, `Revalidate.php`,
 `RevalidateAll.php` and `RevalidateQueue.php` that it did not cover — six
 patterns absent outright, three whose `count` had drifted, and one
-(`curl_setopt`) that no longer matched anything at all, which PHPStan reports as
-an error in its own right. `include/` has not changed since #69 merged, so this
+(`curl_setopt`) that matched nothing *on the PHP the regeneration happened to run
+on*, which PHPStan reports as an error in its own right. `include/` has not
+changed since #69 merged, so this
 was never a regression anyone introduced afterwards; it was wrong on arrival, and
 nothing ran to say so. A check nobody runs is a check that is already broken.
 
@@ -81,8 +82,46 @@ rule for that file is that it is a to-do list and only ever shrinks, and this is
 the narrow exception that rule assumes away: the list did not stop matching
 because someone fixed something, it stopped matching because it was generated
 against the wrong tree. Regenerating is what #69 would have committed had it been
-rebased. No PHP file was touched to get there — the alternative was to leave the
-analysis unwired and permanently red, which is how it got into this state.
+rebased. Exactly one PHP file was touched to get there, and only to make a
+declared type honest (below) — the alternative was to leave the analysis unwired
+and permanently red, which is how it got into this state.
+
+## Regenerate the baseline on PHP 7.4, or it will not match CI
+
+The first regeneration here was run on PHP 8, and the workflow it added then
+failed on PHP 7.4 with the single error the regeneration had just dropped:
+
+```
+include/Assets.php:110
+Parameter #3 $value of function curl_setopt expects 0|2, false given.
+```
+
+`phpVersion: {min: 70400, max: 80400}` does not cover this. That range governs
+PHPStan's *language-level* reasoning; the signature of `curl_setopt` comes from
+the loaded ext-curl at analysis time, so an extension function's parameter types
+follow the interpreter actually running PHPStan. The baseline is therefore only
+reproducible against a stated PHP version, and CI's is **7.4** — the floor the
+plugin header declares. Generate it with the same binary:
+
+```sh
+PHP_BIN=/path/to/php7.4 npm run analyse:php   # confirm what is red first
+/path/to/php7.4 vendor/bin/phpstan analyse --no-progress \
+	--memory-limit=-1 --generate-baseline phpstan-baseline.neon
+```
+
+(`--memory-limit=-1` is #82's OOM at PHP's default 128M, which a 7.4 run hits
+locally where the CI runner's ini does not.)
+
+`curl_setopt` was the only finding in the whole analysis that moved with the
+interpreter — the 7.4-generated baseline is byte-identical to the PHP 8 one once
+the call is fixed — so this is a footnote, not a class of problem. It is a
+footnote that cost a red CI run, which is why it is written down.
+
+The fix is in the call, not the baseline: `CURLOPT_SSL_VERIFYHOST` is documented
+as `0` or `2` and was being passed `false`. `false` coerces to `0`, so the
+behaviour has always been correct and identical on every version — nothing was
+broken and nothing is fixed. Passing the declared type is what lets the entry
+leave the baseline honestly instead of being regenerated back into it.
 
 The growth is six new patterns carrying seven errors, three counts that moved and
 one entry (`curl_setopt`) that went away. Those seven errors are not seven
