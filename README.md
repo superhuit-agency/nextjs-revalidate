@@ -23,9 +23,17 @@ https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-str
 
 ## API functions
 
+Both functions answer whether the revalidation was **accepted**, and neither can
+tell you whether the front-end has rebuilt anything. A revalidation is enqueued
+by these calls and delivered later, by cron; there is no return value in this
+plugin that could report the outcome of a delivery that has not happened yet.
+Delivery is at most once — a revalidation that is attempted and fails is written
+to the log and dropped, never retried.
+
 ### nextjs_revalidate_purge_url
 
-Allows to purge & re-build aby URL. Return a boolean to indicate whether the purge has been successful.
+Enqueues a revalidation of any URL, to be delivered to the front-end by the next
+run of the queue's cron.
 
 #### Usage
 ```php
@@ -37,10 +45,23 @@ nextjs_revalidate_purge_url( $url );
 | Name | Type | Description |
 | --- | --- | --- |
 | url  | string | The URL to purge |
+| priority | int | Optional. Lower numbers are purged earlier; equal priorities keep insertion order. Default `10`. |
+
+#### Returns
+
+`bool` — whether the revalidation was accepted into the queue. It is `false`
+when the site is unconfigured, which is a **refusal**: the revalidate URL or the
+secret is missing, nothing has been queued, and nothing will be. It is also
+`false` if the queue insert failed. A URL already waiting in the queue is
+accepted (`true`) without being queued twice.
+
+It is never a statement about the front-end. A `true` says the plugin will try.
 
 ### nextjs_revalidate_schedule_purge_url
 
-Schedule a URL purge from Next.js cache. Will triggers a revalidation of the given URL at the given date time. Returns a boolean tp indication whether the schedule is registered.
+Registers a revalidation of the given URL for a future date time. Nothing is
+enqueued until then, so a schedule registered on a configured site is still
+refused at its due time if the site is unconfigured by then.
 
 #### Usage
 ```php
@@ -55,6 +76,10 @@ nextjs_revalidate_schedule_purge_url( $datetime, $url );
 | url  | string | The URL to purge |
 
 #### Returns
+
+`bool` — whether this call registered the scheduled purge. It is `false` when
+that URL is already registered for that date time: the schedule stands, and this
+call added nothing to it. It is also `false` if the write failed.
 
 ## Which posts are revalidated
 

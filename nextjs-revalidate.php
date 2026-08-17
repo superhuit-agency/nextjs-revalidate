@@ -284,28 +284,50 @@ NextJsRevalidate::init();
  * Purge an URL from Next.js cache
  * Triggers a revalidation of the given URL
  *
+ * The revalidation is *accepted*, not performed: this enqueues the permalink and
+ * returns, and the queue is drained by cron afterwards. So the answer here can
+ * only ever be whether the queue took the revalidation on, never whether the
+ * front-end has rebuilt the page — that outcome happens after this call has
+ * returned, and delivery is at most once, a failure being recorded in the log
+ * and dropped (docs/adr/0004-at-most-once-revalidation.md).
+ *
  * @param  string $url       The URL to purge
  * @param  int    $priority  Optional. Used to specify the order in which the url are purged.
  *                           Lower numbers correspond with earlier purge,
  *                           and urls with the same priority are executed in the order in which they were added.
  *                           Default 10.
  *
- * @return bool        Whether the URL was queued. False when the site is
- *                     unconfigured and the revalidation is refused.
+ * @return bool        Whether the revalidation was accepted into the queue.
+ *                     False on a refusal — the site is unconfigured, and nothing
+ *                     it accepted could be delivered — and false when the insert
+ *                     itself failed.
  */
 function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
 	$njr = NextJsRevalidate::init();
-	$added = $njr->queue->add_item( $url, $priority );
-	return ( $added && !is_wp_error($added) );
+
+	$accepted = $njr->queue->add_item( $url, $priority );
+
+	// A refusal arrives as a WP_Error, which is truthy; it is a false here.
+	// Callers needing the reason read it from the queue directly, as the REST
+	// routes do — this function's documented answer is a bool.
+	return ( $accepted && !is_wp_error($accepted) );
 }
 
 /**
  * Schedule an URL purge from Next.js cache
  * Triggers a revalidation of the given URL at the given date time
  *
+ * Registering a scheduled purge is not enqueuing a revalidation: the permalink
+ * reaches the queue when the date time passes, and is refused there like any
+ * other revalidation if the site is unconfigured by then.
+ *
  * @param  String $datetime The date time when to purge
  * @param  String $url      The URL to purge
- * @return Bool             Whether the schedule is registered
+ *
+ * @return Bool             Whether this call registered the scheduled purge.
+ *                          False when the URL is already registered for that
+ *                          date time — the schedule stands, this call added
+ *                          nothing to it — and false when the write failed.
  */
 function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
 	$njr = NextJsRevalidate::init();
