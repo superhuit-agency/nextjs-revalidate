@@ -15,8 +15,10 @@
 # and PHPStan reports anything that breaks anywhere inside it, from one analysis
 # on whatever PHP the developer happens to have.
 #
-# There is no test suite here and nothing runs on pull requests, so this and the
-# lint are the only nets an incompatibility can fall into.
+# The test suite here covers a handful of behaviours, so this and the lint are
+# still the only nets an incompatibility can fall into. The lint runs on every
+# pull request — `.github/workflows/ci.yml` — and this analysis does not yet:
+# see docs/adr/0009-checks-run-on-pull-requests.md.
 
 includes:
 	# WordPress core's functions, classes, constants and hooks, as stubs. Without
