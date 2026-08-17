@@ -97,9 +97,9 @@ class WP_Post {
 // The subject
 // ====
 
-require_once __DIR__ . '/../include/abstracts/Base.php';
-require_once __DIR__ . '/../include/traits/AdminBarMenu.php';
-require_once __DIR__ . '/../include/traits/SendbackUrl.php';
+require_once __DIR__ . '/../include/Abstracts/Base.php';
+require_once __DIR__ . '/../include/Traits/AdminBarMenu.php';
+require_once __DIR__ . '/../include/Traits/SendbackUrl.php';
 require_once __DIR__ . '/../include/Revalidate.php';
 
 // The fixture site

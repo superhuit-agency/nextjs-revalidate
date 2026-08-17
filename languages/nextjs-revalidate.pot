@@ -67,7 +67,7 @@ msgid_plural "%d caches will be purged shortly."
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/traits/AdminBarMenu.php:24
+#: include/Traits/AdminBarMenu.php:24
 msgctxt "Admin top bar menu"
 msgid "Purge caches"
 msgstr ""
