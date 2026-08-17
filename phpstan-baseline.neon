@@ -31,12 +31,6 @@ parameters:
 			path: include/Logger.php
 
 		-
-			message: '#^Default value of the parameter \#3 \$level \(int\) of method NextJsRevalidate\\Logger\:\:log\(\) is incompatible with type string\.$#'
-			identifier: parameter.defaultValue
-			count: 1
-			path: include/Logger.php
-
-		-
 			message: '#^Access to an undefined property NextJsRevalidate\\RestApi\:\:\$queue\.$#'
 			identifier: property.notFound
 			count: 1

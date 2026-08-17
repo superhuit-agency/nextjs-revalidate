@@ -6,6 +6,7 @@ use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
+use WP_Error;
 use WP_Post;
 
 // Exit if accessed directly.
@@ -142,9 +143,38 @@ class Revalidate extends Base {
 		);
 	}
 
+	/**
+	 * Ask the front-end to rebuild the page held for the given permalink.
+	 *
+	 * Delivery is at most once: the drain deletes the queue entry before it gets
+	 * here, so what this returns is the only trace a revalidation which did not
+	 * succeed will ever leave. It therefore names *which* failure happened
+	 * rather than collapsing every one of them into a bare false — `unreachable`
+	 * and `http_401` send an operator to completely different places.
+	 * See `docs/adr/0004-at-most-once-revalidation.md`.
+	 *
+	 * @param string $permalink The permalink to revalidate.
+	 *
+	 * @return true|WP_Error True when the front-end rebuilt the page. Otherwise
+	 *                       a WP_Error whose code names the outcome:
+	 *                       `not_configured` when the site could not deliver at
+	 *                       all, `unreachable` when the front-end was not
+	 *                       reached, `no_response` when it answered without a
+	 *                       status, `http_{status}` when it answered with one
+	 *                       other than 200, and `exception` when the attempt
+	 *                       threw.
+	 */
 	function purge( $permalink ) {
 
-		if ( !$this->settings->is_configured() ) return false;
+		// A refusal rather than a failure: nothing was attempted. Unreachable
+		// from the drain, which refuses at enqueue time instead, and kept as a
+		// guard for any other caller.
+		if ( !$this->settings->is_configured() ) {
+			return new WP_Error(
+				'not_configured',
+				__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+			);
+		}
 
 		try {
 			$response = wp_remote_get(
@@ -152,10 +182,33 @@ class Revalidate extends Base {
 				[ 'timeout' => 60 ]
 			);
 
-			if ( is_wp_error($response) ) throw new \Exception("Unable to revalidate $permalink", 1);
-			return $response['response']['code'] === 200;
+			// The request never got an answer — DNS, TLS, a timeout. What the
+			// transport has to say about it is the diagnostic, so it is carried
+			// over rather than thrown away.
+			if ( is_wp_error($response) ) return new WP_Error( 'unreachable', $response->get_error_message() );
+
+			$status = intval( wp_remote_retrieve_response_code( $response ) );
+
+			if ( 200 === $status ) return true;
+
+			// An answer with no status line at all is not an HTTP outcome to
+			// report back, and `http_0` would name nothing an operator can act on.
+			if ( 0 === $status ) return new WP_Error( 'no_response', __( 'The front-end answered without a status code.', 'nextjs-revalidate' ) );
+
+			return new WP_Error(
+				"http_$status",
+				sprintf(
+					/* translators: %d: the HTTP status code the front-end answered with. */
+					__( 'The front-end answered %d.', 'nextjs-revalidate' ),
+					$status
+				)
+			);
 		} catch (\Throwable $th) {
-			return false;
+			// The drain runs this in a loop and keeps a running-cron count while
+			// it does, so a throw escaping here would cost more than the one
+			// revalidation. Caught, named, and handed back as a failure like any
+			// other.
+			return new WP_Error( 'exception', $th->getMessage() );
 		}
 	}
 
