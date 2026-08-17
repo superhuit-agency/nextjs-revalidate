@@ -1,11 +1,15 @@
 ---
 # The place this repo's checks run.
 #
-# Every step below is an existing npm script, run exactly as a developer runs it
-# by hand and as the AFK harness's `GATE_COMMAND` runs it in its sandbox. The
-# scripts are the definition of the gate; this file only says *when* they run, so
-# a pull request — from a human, from Dependabot, from a fork — gets the same
-# verdict the author would have got locally, whether or not they asked for one.
+# Every check below is an existing npm script, run exactly as a developer runs it
+# by hand and as the AFK harness's `GATE_COMMAND` runs it in its sandbox — the
+# same four, in the same order. The scripts are the definition of the gate; this
+# file only says *when* they run, so a pull request — from a human, from
+# Dependabot, from a fork — gets the same verdict the author would have got
+# locally, whether or not they asked for one. Nothing here is a check that is not
+# also an npm script; the toolchain and dependency steps are the only others.
+# `.sandcastle/test/implement.test.mts` reads this file and fails if the two
+# lists ever drift.
 #
 # `push` on `main` is here as well as `pull_request`, so a merge that silently
 # combined two green branches into a red `main` is visible on `main` itself.
@@ -82,8 +86,23 @@ jobs:
       - name: Standalone PHP tests
         run: npm run test:php
 
-      # `npm run analyse:php` (PHPStan) belongs in this job, after a
-      # `composer install`, and is deliberately not here yet: it is red on `main`
-      # as it stands, so adding it would land a workflow that fails on its first
-      # run for something no pull request did. See
-      # docs/adr/0009-checks-run-on-pull-requests.md.
+      # PHPStan is a dev dependency, so it comes last: the parse and the
+      # standalone tests need nothing installed and take seconds, so a PHP 8-only
+      # construct fails before this job pays for a Composer install. Cached on
+      # `composer.lock` the way the release workflow caches it.
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php74-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php74-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress
+
+      # `composer.json` pins `config.platform.php` to 7.4, so the resolved
+      # dependency set is the same one a developer gets — this step is not
+      # analysing a tree that only 7.4 could install.
+      - name: Analyse PHP
+        run: npm run analyse:php

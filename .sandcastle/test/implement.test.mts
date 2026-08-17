@@ -143,6 +143,46 @@ describe('the gate is the arbiter', () => {
 	});
 });
 
+describe('the pull request workflow runs the same gate', () => {
+	// ADR-0009: `.github/workflows/ci.yml` is a trigger, not a second definition
+	// of "shippable". The harness gates before a PR exists and CI gates after, so
+	// the two drift silently unless something reads both — this does.
+	const ci = readFileSync(fileURLToPath(new URL('../../.github/workflows/ci.yml', import.meta.url)), 'utf8');
+	// The file explains itself at length, and a comment naming a script is not a
+	// step that runs it — only the YAML counts here.
+	const steps = ci
+		.split('\n')
+		.filter((line) => !line.trimStart().startsWith('#'))
+		.join('\n');
+
+	it('runs every npm script the harness gate runs', () => {
+		const scripts = [...GATE_COMMAND.matchAll(/npm run ([\w:]+)/g)].map((match) => match[1]);
+		const missing = scripts.filter((script) => !steps.includes(`npm run ${script}`));
+
+		assert.deepEqual(missing, [], 'a check the harness runs that no pull request ever would');
+	});
+
+	it('invents no check the harness gate does not run', () => {
+		const inCi = new Set([...steps.matchAll(/npm run ([\w:]+)/g)].map((match) => match[1]));
+		const extra = [...inCi].filter((script) => !GATE_COMMAND.includes(`npm run ${script}`));
+
+		assert.deepEqual(extra, [], 'CI would be reporting on something no author can reproduce locally');
+	});
+
+	it('keeps the PHP job on 7.4 with no escape hatch', () => {
+		// `lint:php` refuses to run on anything else, and that refusal is the
+		// point: a newer parser accepts PHP 8-only syntax and proves nothing. A
+		// job that quieted the refusal would report a lint it did not do.
+		assert.match(steps, /php-version:\s*["']?7\.4["']?/);
+		assert.doesNotMatch(steps, /ALLOW_PHP_VERSION_MISMATCH/);
+	});
+
+	it('runs on a pull request against main, which is the whole ticket', () => {
+		assert.match(ci, /^on:$/m);
+		assert.match(ci, /pull_request:/);
+	});
+});
+
 describe('implementItem — one bad item never takes the batch down', () => {
 	it('turns a failure into an outcome instead of throwing', async () => {
 		const { deps } = fakeDeps({ runThrows: 'container died' });

@@ -79,7 +79,7 @@ export function epicNarrativePrompt(item: PlanItem, context: EpicContext): strin
 		'- Do NOT write any closing keyword ("Closes", "Fixes", "Resolves") — the harness adds the one that belongs.',
 		'- Do not invent testing, review or CI that you were not told about. This repository\'s only automated checks',
 		'  are a typecheck, a PHP 7.4 parse, a handful of standalone PHP tests and PHPStan — which the harness has',
-		'  already run on this branch, and most of which the PR workflow runs again. Nobody has reviewed it.',
+		'  already run on this branch, and which the PR workflow runs again. Nobody has reviewed it.',
 		'- Do not claim the work is correct. You did not write it and you cannot see the diff.',
 	].join('\n');
 }

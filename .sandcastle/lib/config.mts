@@ -84,9 +84,9 @@ export const SANDBOX_IMAGE = 'nextjs-revalidate-sandbox:latest';
  *
  * npm scripts, not a tracked shell script: the same `npm run typecheck`,
  * `npm run lint:php`, `npm run test:php` and `npm run analyse:php` a developer
- * runs by hand, and the first three of which `.github/workflows/ci.yml` runs on
- * every pull request — so there is one definition of "shippable" and no
- * harness-only file to keep in step with it. Each install sits directly in front
+ * runs by hand, and every one of which `.github/workflows/ci.yml` runs on every
+ * pull request — so there is one definition of "shippable" and no harness-only
+ * file to keep in step with it. Each install sits directly in front
  * of the steps that need it — `npm ci` because `tsc` has to exist,
  * `composer install` because PHPStan is a dev dependency — and the cheap checks
  * run before the slow analysis, so a PHP 8-only construct fails on `php -l`

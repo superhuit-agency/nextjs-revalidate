@@ -168,12 +168,11 @@ npm run test:php       # the standalone scripts above
 npm run analyse:php    # PHPStan over the 7.4–8.4 span the plugin claims
 ```
 
-`.github/workflows/ci.yml` runs the first three on every pull request against
-`main` and on every push to `main`. Nothing is defined there that is not an npm
-script here, so a green CI run means what a green local run means — and no more.
-`analyse:php` is the one that is not wired up yet: it is red on `main` as it
-stands, and both the why and the way back are in
-`docs/adr/0009-checks-run-on-pull-requests.md`.
+`.github/workflows/ci.yml` runs all four on every pull request against `main` and
+on every push to `main`. Nothing is defined there that is not an npm script here,
+so a green CI run means what a green local run means — and no more: syntax,
+types, PHP-range compatibility and the handful of behaviours the standalone
+scripts pin. It is not a claim that a change works.
 
 `lint:php` refuses to run on anything but PHP 7.4, the version
 `nextjs-revalidate.php` declares, because a newer parser accepts PHP 8-only

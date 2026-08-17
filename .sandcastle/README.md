@@ -60,9 +60,9 @@ Four phases, over every eligible issue:
    commits to the work branch and nothing else — it has no `gh` and no GitHub
    credential. When it stops, **the harness runs the gate itself**, in the same
    container: `npm run typecheck`, `npm run lint:php`, `npm run test:php` and
-   `npm run analyse:php` — the first three of which `.github/workflows/ci.yml`
-   also runs on a pull request. That verdict decides the item, not the agent's
-   claim. (`lint:php` parses with
+   `npm run analyse:php` — the same four `.github/workflows/ci.yml` runs on a
+   pull request, run here before there is a pull request. That verdict decides
+   the item, not the agent's claim. (`lint:php` parses with
    `$PHP_BIN`, which the image pins to PHP 7.4 — the version the plugin declares.
    On your own machine it refuses to run on any other version: point `PHP_BIN` at
    a 7.4 binary, or set `ALLOW_PHP_VERSION_MISMATCH=1` and know the lint proves
