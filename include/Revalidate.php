@@ -3,6 +3,7 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
@@ -11,14 +12,11 @@ use WP_Post;
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
-class Revalidate extends Base {
+class Revalidate extends Base implements Hookable {
 	use AdminBarMenu;
 	use SendbackUrl;
 
-	/**
-	 * Constructor.
-	 */
-	function __construct() {
+	public function register_hooks(): void {
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99, 4 );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );

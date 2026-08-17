@@ -3,15 +3,16 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
 
-class RestApi extends Base {
+class RestApi extends Base implements Hookable {
 
 	const NAMESPACE = 'nextjs-revalidate/v1';
 
-	public function __construct() {
+	public function register_hooks(): void {
 		add_action('rest_api_init', [$this, 'register_routes']);
 	}
 

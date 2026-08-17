@@ -37,6 +37,7 @@ function get_option( $name, $default = false ) {
 // The subject
 // ====
 
+require_once __DIR__ . '/../include/interfaces/Hookable.php';
 require_once __DIR__ . '/../include/abstracts/Base.php';
 require_once __DIR__ . '/../include/Settings.php';
 

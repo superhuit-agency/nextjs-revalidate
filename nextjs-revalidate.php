@@ -39,6 +39,7 @@ use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\Cron\ScheduledPurges;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\RevalidateQueue;
 
@@ -75,6 +76,13 @@ class NextJsRevalidate {
 	private RestApi $restApi;
 	private static NextJsRevalidate $instance;
 
+	/**
+	 * Every object this root has constructed, in construction order.
+	 *
+	 * @var Hookable[]
+	 */
+	private array $hookables = [];
+
 	public static function init(): NextJsRevalidate {
 
 		if (!isset(self::$instance)) {
@@ -84,17 +92,31 @@ class NextJsRevalidate {
 	return self::$instance;
 	}
 
+	/**
+	 * The composition root: which of this plugin's objects exist, in what
+	 * order, and when they register their hooks.
+	 *
+	 * Constructing a Hookable touches no global state, so the two are separate
+	 * acts here: everything is built first, then every one of them is asked to
+	 * register, in construction order. That order is load-bearing — WordPress
+	 * runs same-hook, same-priority callbacks in registration order, and eight
+	 * of this plugin's callbacks sit on `admin_init` at priority 10.
+	 *
+	 * See `docs/adr/0003-explicit-hook-registration.md`.
+	 */
 	protected function __construct() {
 
-		new I18n();
+		$this->hookable( new I18n() );
 
-		$this->assets              = new Assets();
-		$this->settings            = new Settings();
-		$this->revalidate          = new Revalidate();
-		$this->cronScheduledPurges = new ScheduledPurges();
-		$this->revalidateAll       = new RevalidateAll();
-		$this->queue               = new RevalidateQueue();
-		$this->restApi             = new RestApi();
+		$this->assets              = $this->hookable( new Assets() );
+		$this->settings            = $this->hookable( new Settings() );
+		$this->revalidate          = $this->hookable( new Revalidate() );
+		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
+		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
+		$this->queue               = $this->hookable( new RevalidateQueue() );
+		$this->restApi             = $this->hookable( new RestApi() );
+
+		foreach ( $this->hookables as $hookable ) $hookable->register_hooks();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -102,6 +124,27 @@ class NextJsRevalidate {
 
 		// Sites created after the plugin was activated are set up as they are created.
 		add_action( 'wp_initialize_site', [$this, 'setup_new_site'], 100 );
+	}
+
+	/**
+	 * Enrol a freshly constructed object into the registration above, and hand
+	 * it back so that constructing and enrolling stay a single expression.
+	 *
+	 * A class that is constructed and never registered is a silent failure —
+	 * for `Revalidate` it would be eight lost hooks and content that stops
+	 * revalidating on save, with nothing anywhere saying so. Returning the
+	 * object is what keeps that from being a mistake the shape permits: there
+	 * is no way to assign one of the properties above without going through
+	 * here.
+	 *
+	 * @template T of Hookable
+	 * @param T $hookable The object to register hooks for, once everything is built.
+	 * @return T The same object.
+	 */
+	private function hookable( Hookable $hookable ): Hookable {
+		$this->hookables[] = $hookable;
+
+		return $hookable;
 	}
 
 	function __get($name) {
