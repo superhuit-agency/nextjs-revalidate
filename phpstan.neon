@@ -1,0 +1,65 @@
+# PHPStan, as this repo's PHP *compatibility* gate.
+#
+# `npm run lint:php` parses every tracked file with PHP 7.4, the floor the plugin
+# header declares. That is a parser and nothing else: it holds the bottom of the
+# supported range — PHP 8-only syntax cannot reach a release claiming 7.4 — and
+# says nothing at all about the top of it, where the hazards are runtime rather
+# than syntax. Functions removed in 8.x, dynamic property creation, `null` into
+# an internal non-nullable parameter and implicit float-to-int precision loss all
+# lint clean on 7.4 and break, or warn, on a modern host. Linting on 8.4 as well
+# would not find them either: almost no syntax was removed in 8.x, so a second
+# parser adds noise instead of coverage.
+#
+# `phpVersion` below is what does find them. It is the whole span the plugin
+# claims — 7.4, the declared floor, through 8.4, the newest release hosts offer —
+# and PHPStan reports anything that breaks anywhere inside it, from one analysis
+# on whatever PHP the developer happens to have.
+#
+# The test suite here covers a handful of behaviours, so this and the lint are
+# still the only nets an incompatibility can fall into. Both of them run on every
+# pull request — `.github/workflows/ci.yml`.
+
+includes:
+	# WordPress core's functions, classes, constants and hooks, as stubs. Without
+	# them every `add_action()` in the plugin is an unknown function and the real
+	# findings drown.
+	- vendor/szepeviktor/phpstan-wordpress/extension.neon
+	# What the files in include/ were already carrying the day they were first
+	# analysed. Read phpstan-baseline.neon as a to-do list, never as settings:
+	# fix a finding and the gate asks you to regenerate the file
+	# (`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`),
+	# so the list can only get shorter. Nothing new belongs in it.
+	#
+	# Regenerate it only where every extension the code uses is loaded. PHPStan
+	# cannot report on a function whose extension is absent, so a baseline
+	# generated in a stripped environment silently *drops* entries and turns CI
+	# red. That has happened exactly once — the harness sandbox has no ext-curl,
+	# and the `curl_setopt` entry went with it. Nothing to do with `phpVersion`
+	# below: that finding reproduces on 7.4 and 8.3 alike. ADR 0009 has it.
+	#
+	# It was regenerated once, in #75, and that is the only reason it has ever
+	# grown: #69 generated it on a branch cut before #70 and merged it after, so
+	# the committed list described a tree `main` never had and the analysis was
+	# red from the moment it landed. See
+	# docs/adr/0009-checks-run-on-pull-requests.md — a regeneration is what an
+	# out-of-date baseline needs, and it is not licence to bank a new finding.
+	- phpstan-baseline.neon
+
+parameters:
+	# Level 5 adds argument types to the levels below it, which is where the
+	# compatibility findings live. Raising it is a separate piece of work: it
+	# lengthens the baseline rather than the gate.
+	level: 5
+
+	paths:
+		- include
+		# The plugin file itself: the composition root, the two public API
+		# functions and the activation hooks all live in it, and it ships.
+		- nextjs-revalidate.php
+
+	# A `{min, max}` range, not a single version. PHPStan 2.x is what supports
+	# this shape — an older major reads `phpVersion` as one int and would analyse
+	# a single point in the range — so composer.json pins `^2.2`.
+	phpVersion:
+		min: 70400
+		max: 80400

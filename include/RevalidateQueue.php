@@ -6,6 +6,7 @@ use DateTime;
 use DateTimeZone;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\SendbackUrl;
+use WP_Error;
 
 class RevalidateQueue extends Base {
 	use SendbackUrl;
@@ -15,27 +16,38 @@ class RevalidateQueue extends Base {
 
 	const MAX_NB_RUNNING_CRON = 4;
 
-	/**
-	 * @var string
-	 */
-	private $table_name;
-
-	/**
-	 * @var DateTimeZone
-	 */
-	private $timezone;
-
 	public function __construct() {
-		global $wpdb;
-
-		$this->table_name = $wpdb->prefix . 'revalidate_queue';
-		$this->timezone = new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
-
 		add_action( 'admin_init', [$this, 'action_reset_queue'] );
 		add_action( 'admin_init', [$this, 'ajax_queue_progress'] );
 		add_action( 'admin_notices', [$this, 'admin_queue_notice'] );
 
 		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron'] );
+	}
+
+	/**
+	 * The queue table of the site currently being served.
+	 *
+	 * Derived at call time and never cached: the prefix follows
+	 * switch_to_blog(), so a value kept from construction would name the
+	 * table of whichever site happened to build this instance.
+	 *
+	 * @return string
+	 */
+	private function get_table_name() {
+		global $wpdb;
+
+		return $wpdb->prefix . 'revalidate_queue';
+	}
+
+	/**
+	 * The timezone of the site currently being served.
+	 *
+	 * Derived at call time, for the same reason as the table name.
+	 *
+	 * @return DateTimeZone
+	 */
+	private function get_timezone() {
+		return new DateTimeZone( get_option('timezone_string') ?: 'Europe/Zurich' );
 	}
 
 	/**
@@ -46,12 +58,14 @@ class RevalidateQueue extends Base {
 	public function create_table() {
 		global $wpdb;
 
+		$table_name = $this->get_table_name();
+
 		// Do not continue if table already exists
-		if($wpdb->get_var("SHOW TABLES LIKE '$this->table_name'") === $this->table_name) return;
+		if($wpdb->get_var("SHOW TABLES LIKE '$table_name'") === $table_name) return;
 
 		$charset_collate = $wpdb->get_charset_collate();
 
-		$sql = "CREATE TABLE `{$this->table_name}` (
+		$sql = "CREATE TABLE `{$table_name}` (
 			id         bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			permalink  text                NOT NULL,
 			priority   int(10)             NOT NULL DEFAULT 10,
@@ -71,7 +85,9 @@ class RevalidateQueue extends Base {
 	public function delete_table() {
 		global $wpdb;
 
-		$wpdb->query("DROP TABLE IF EXISTS {$this->table_name}");
+		$table_name = $this->get_table_name();
+
+		$wpdb->query("DROP TABLE IF EXISTS {$table_name}");
 	}
 
 	/**
@@ -84,18 +100,39 @@ class RevalidateQueue extends Base {
 	 *                           priority are executed in the order in which
 	 *                           they were added. Default 10.
 	 *
-	 * @return bool Wether the permalink was added to the queue
+	 * @return bool|WP_Error Whether the permalink was added to the queue.
+	 *                       A `not_configured` WP_Error when the site is
+	 *                       unconfigured and the revalidation is refused.
 	 */
 	public function add_item( $permalink, $priority = 10 ) {
 		global $wpdb;
 
+		// Refuse rather than accept a revalidation which could never be
+		// delivered: an item queued on an unconfigured site is dropped at
+		// drain time, without a trace, long after anyone could connect it
+		// to the edit that produced it.
+		if ( !$this->settings->is_configured() ) {
+			Logger::log(
+				sprintf( '⛔ Refused %s — site not configured (missing: %s)', $permalink, implode(', ', $this->settings->missing_settings()) ),
+				__FILE__,
+				Logger::ERROR
+			);
+
+			return new WP_Error(
+				'not_configured',
+				__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+			);
+		}
+
+		$table_name = $this->get_table_name();
+
 		$inserted = false;
 
 		$wpdb->query("START TRANSACTION");
-		$in_db = $wpdb->get_results("SELECT * FROM `$this->table_name` WHERE `permalink`='$permalink'");
+		$in_db = $wpdb->get_results("SELECT * FROM `$table_name` WHERE `permalink`='$permalink'");
 		if (count($in_db) === 0) {
 			$inserted = $wpdb->insert(
-				$this->table_name,
+				$table_name,
 				[
 					'permalink' => $permalink,
 					'priority'  => $priority
@@ -120,13 +157,16 @@ class RevalidateQueue extends Base {
 	 */
 	public function get_next_item() {
 		global $wpdb;
+
+		$table_name = $this->get_table_name();
+
 		$wpdb->query("START TRANSACTION");
 
-		$item = $wpdb->get_row("SELECT * FROM `$this->table_name` ORDER BY `priority` ASC, `id` ASC LIMIT 1 FOR UPDATE");
+		$item = $wpdb->get_row("SELECT * FROM `$table_name` ORDER BY `priority` ASC, `id` ASC LIMIT 1 FOR UPDATE");
 
 		if ($item) {
 			$item = new RevalidateItem( $item );
-			$wpdb->delete($this->table_name, ['id' => $item->id]);
+			$wpdb->delete($table_name, ['id' => $item->id]);
 		}
 
 		$wpdb->query("COMMIT");
@@ -141,7 +181,10 @@ class RevalidateQueue extends Base {
 	 */
 	public function get_queue() {
 		global $wpdb;
-		return $wpdb->get_results("SELECT * FROM `$this->table_name` ORDER BY `priority` ASC, `id` ASC");
+
+		$table_name = $this->get_table_name();
+
+		return $wpdb->get_results("SELECT * FROM `$table_name` ORDER BY `priority` ASC, `id` ASC");
 	}
 
 	/**
@@ -152,9 +195,11 @@ class RevalidateQueue extends Base {
 	private function reset_queue() {
 		global $wpdb;
 
-		$wpdb->query("TRUNCATE TABLE `$this->table_name`");
+		$table_name = $this->get_table_name();
 
-		$wpdb->query("ALTER TABLE `$this->table_name` AUTO_INCREMENT = 1");
+		$wpdb->query("TRUNCATE TABLE `$table_name`");
+
+		$wpdb->query("ALTER TABLE `$table_name` AUTO_INCREMENT = 1");
 	}
 
 	/**
@@ -169,7 +214,7 @@ class RevalidateQueue extends Base {
 			return;
 		}
 
-		$next_cron_datetime = new DateTime( 'now', $this->timezone );
+		$next_cron_datetime = new DateTime( 'now', $this->get_timezone() );
 		wp_schedule_single_event( $next_cron_datetime->getTimestamp(), self::CRON_HOOK_NAME );
 	}
 

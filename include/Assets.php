@@ -2,6 +2,8 @@
 
 namespace NextJsRevalidate;
 
+use NextJsRevalidate;
+
 class Assets {
 
 	const WEBPACK_PORT = 8000;
@@ -14,6 +16,7 @@ class Assets {
 	function __construct() {
 		add_action( 'init', [$this, 'register_assets'] );
 		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_admin_assets'] );
+		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_editor_assets'] );
 		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_settings_assets'] );
 	}
 
@@ -23,6 +26,7 @@ class Assets {
 		$assets_uri = '';
 		$this->assets = [
 			'admin'    => [],
+			'editor'   => [],
 			'settings' => [],
 		];
 
@@ -48,6 +52,8 @@ class Assets {
 		$this->assets['admin']['js']  = !empty($manifest->{'admin.js'})  ? $assets_uri . $manifest->{'admin.js'}  : null;
 		// $this->assets['admin']['css']  = !empty($manifest->{'admin.css'})  ? $assets_uri . $manifest->{'admin.css'}  : null;
 
+		$this->assets['editor']['js']  = !empty($manifest->{'editor.js'})  ? $assets_uri . $manifest->{'editor.js'}  : null;
+
 		$this->assets['settings']['js']  = !empty($manifest->{'settings.js'})  ? $assets_uri . $manifest->{'settings.js'}  : null;
 		$this->assets['settings']['css']  = !empty($manifest->{'settings.css'})  ? $assets_uri . $manifest->{'settings.css'}  : null;
 	}
@@ -62,6 +68,21 @@ class Assets {
 			wp_enqueue_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
 		}
 		if ( !empty($this->assets['admin']['css']) ) wp_enqueue_style( 'njr-admin-styles', $this->assets['admin']['css'] );
+	}
+
+	/**
+	 * Enqueue the block editor script, which carries the purge notice core
+	 * would otherwise hide on an editor screen, and only when there is one.
+	 */
+	function enqueue_editor_assets() {
+		if ( empty($this->assets['editor']['js']) ) return;
+
+		$notice = NextJsRevalidate::init()->revalidate->get_block_editor_purged_notice();
+		if ( is_null($notice) ) return;
+
+		wp_register_script( 'njr-editor-script', $this->assets['editor']['js'], ['wp-data', 'wp-notices'], null, true );
+		wp_localize_script( 'njr-editor-script', 'nextjs_revalidate_notice', $notice );
+		wp_enqueue_script( 'njr-editor-script' );
 	}
 
 	function enqueue_settings_assets( $hook ) {
@@ -86,7 +107,10 @@ class Assets {
 		// Debug options
 		if (WP_DEBUG) {
 			if ( is_ssl() ) {
-				curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
+				// 0, not false: CURLOPT_SSL_VERIFYHOST is documented as 0 or 2,
+				// never a boolean. `false` coerces to 0 and has always behaved
+				// identically — this is the declared type, not a fix.
+				curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 0);
 				curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
 			}
 			// curl_setopt($curl, CURLOPT_VERBOSE, true); // to debug only

@@ -1,0 +1,199 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$revalidate\.$#'
+			identifier: property.private
+			count: 1
+			path: include/Assets.php
+
+		-
+			message: '#^Constant NJR_URI not found\.$#'
+			identifier: constant.notFound
+			count: 1
+			path: include/Assets.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\Cron\\ScheduledPurges\:\:\$queue\.$#'
+			identifier: property.notFound
+			count: 1
+			path: include/Cron/ScheduledPurges.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\Settings\:\:\$debug\.$#'
+			identifier: property.notFound
+			count: 1
+			path: include/Logger.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$settings\.$#'
+			identifier: property.private
+			count: 1
+			path: include/Logger.php
+
+		-
+			message: '#^Default value of the parameter \#3 \$level \(int\) of method NextJsRevalidate\\Logger\:\:log\(\) is incompatible with type string\.$#'
+			identifier: parameter.defaultValue
+			count: 1
+			path: include/Logger.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\RestApi\:\:\$queue\.$#'
+			identifier: property.notFound
+			count: 1
+			path: include/RestApi.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\RestApi\:\:\$settings\.$#'
+			identifier: property.notFound
+			count: 1
+			path: include/RestApi.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\Revalidate\:\:\$queue\.$#'
+			identifier: property.notFound
+			count: 2
+			path: include/Revalidate.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\Revalidate\:\:\$settings\.$#'
+			identifier: property.notFound
+			count: 6
+			path: include/Revalidate.php
+
+		-
+			message: '#^Call to function method_exists\(\) with WP_Screen and ''is_block_editor'' will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: include/Revalidate.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateAll\:\:\$queue\.$#'
+			identifier: property.notFound
+			count: 2
+			path: include/RevalidateAll.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateAll\:\:\$revalidate\.$#'
+			identifier: property.notFound
+			count: 1
+			path: include/RevalidateAll.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateAll\:\:\$settings\.$#'
+			identifier: property.notFound
+			count: 5
+			path: include/RevalidateAll.php
+
+		-
+			message: '#^Method NextJsRevalidate\\RevalidateAll\:\:revalidate_all\(\) should return int but returns false\.$#'
+			identifier: return.type
+			count: 1
+			path: include/RevalidateAll.php
+
+		-
+			message: '#^Parameter \#3 \$level of static method NextJsRevalidate\\Logger\:\:log\(\) expects string, int given\.$#'
+			identifier: argument.type
+			count: 1
+			path: include/RevalidateAll.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between false and int will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: include/RevalidateAll.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateQueue\:\:\$revalidate\.$#'
+			identifier: property.notFound
+			count: 1
+			path: include/RevalidateQueue.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateQueue\:\:\$settings\.$#'
+			identifier: property.notFound
+			count: 2
+			path: include/RevalidateQueue.php
+
+		-
+			message: '#^Parameter \#3 \$level of static method NextJsRevalidate\\Logger\:\:log\(\) expects string, int given\.$#'
+			identifier: argument.type
+			count: 1
+			path: include/RevalidateQueue.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: include/RevalidateQueue.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\Settings\:\:\$queue\.$#'
+			identifier: property.notFound
+			count: 1
+			path: include/Settings.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\Settings\:\:\$secret\.$#'
+			identifier: property.notFound
+			count: 2
+			path: include/Settings.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\Settings\:\:\$url\.$#'
+			identifier: property.notFound
+			count: 2
+			path: include/Settings.php
+
+		-
+			message: '#^Parameter \#3 \$callback of function add_settings_section expects callable\(\)\: mixed, null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: include/Settings.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$queue\.$#'
+			identifier: property.private
+			count: 1
+			path: include/abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$restApi\.$#'
+			identifier: property.private
+			count: 1
+			path: include/abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$revalidate\.$#'
+			identifier: property.private
+			count: 1
+			path: include/abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$revalidateAll\.$#'
+			identifier: property.private
+			count: 1
+			path: include/abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$settings\.$#'
+			identifier: property.private
+			count: 1
+			path: include/abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$cronScheduledPurges\.$#'
+			identifier: property.private
+			count: 1
+			path: nextjs-revalidate.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$queue\.$#'
+			identifier: property.private
+			count: 1
+			path: nextjs-revalidate.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: nextjs-revalidate.php

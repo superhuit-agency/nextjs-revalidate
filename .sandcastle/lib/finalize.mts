@@ -18,7 +18,8 @@
  *   git's own stderr, and it takes the run's exit code with it. Nothing here
  *   retries, and nothing anywhere forces — see `lib/git.mts`.
  * - **The PR is not a draft.** Nothing in this repo filters on draft state —
- *   no PR CI, no preview environments — so drafting would only add a click
+ *   `.github/workflows/ci.yml` runs on a draft the same as on any other PR, and
+ *   there are no preview environments — so drafting would only add a click
  *   between the harness and the human it is handing to.
  *
  * **The issue stays open.** The harness never closes a standalone issue. The
@@ -116,9 +117,9 @@ export function prBody(item: PlanItem): string {
 		`Implemented by the AFK agent harness (\`.sandcastle\`) from #${item.issue} — ${item.title}.`,
 		'',
 		`Branch \`${item.workBranch}\`, cut from \`${item.base}\`. After the implementer stopped, the harness ran`,
-		'the gate itself inside the same sandbox — `npm run typecheck` and `npm run lint:php` — and it passed. That',
-		'gate is syntax-level and it is the only automated verdict this pipeline has — review this as you would',
-		'any human PR.',
+		'the gate itself inside the same sandbox — `npm run typecheck`, `npm run lint:php` and `npm run analyse:php`',
+		'— and it passed. That gate is syntax, type and PHP compatibility only, and it is the only automated verdict',
+		'this pipeline has — review this as you would any human PR.',
 		'',
 		'🤖 Opened by `npm run sandcastle`. Nothing reaches `main` except a human merging this.',
 	].join('\n');

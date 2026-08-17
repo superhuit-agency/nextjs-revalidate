@@ -17,9 +17,30 @@ class Settings extends Base {
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
+	 * The settings this plugin reads, declared once.
+	 *
+	 * Keyed by the name the rest of the plugin reads, each entry pairs the
+	 * option the setting is stored under with the empty value a read yields on
+	 * a site holding no row for it — of the setting's own type, never false, so
+	 * a read is always safe to iterate or compare.
+	 *
+	 * Authoritative for reads, registration, seeding and teardown alike, so a
+	 * setting cannot be added to one of them and forgotten in another.
+	 */
+	private const OPTIONS = [
+		'url'                     => [ 'name' => self::SETTINGS_URL_NAME,                  'empty' => ''  ],
+		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => ''  ],
+		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => []  ],
+		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => []  ],
+		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => []  ],
+	];
+
+	/**
 	 * The migration ledger: the per-site record of the DB version, i.e. the
 	 * version of the plugin whose data shape this site's options match.
-	 * Not a setting — nothing an operator supplies is kept here.
+	 *
+	 * Deliberately outside the settings table above: nothing an operator
+	 * supplies is kept here, and it is neither registered nor rendered.
 	 */
 	const DB_VERSION_OPTION_NAME = 'nextjs_revalidate-db_version';
 
@@ -45,22 +66,24 @@ class Settings extends Base {
 		add_action( 'admin_init', [$this, 'register_fields'] );
 
 		add_action( 'admin_init', [$this, 'migrate_db'] );
+
+		add_action( 'admin_notices', [$this, 'unconfigured_notice'] );
 	}
 
 	public function __get( $name ) {
 
-		$opt_name = null;
-		if      ( $name === 'url'                     ) $opt_name = self::SETTINGS_URL_NAME;
-		else if ( $name === 'secret'                  ) $opt_name = self::SETTINGS_SECRET_NAME;
-		else if ( $name === 'allow_revalidate_all'    ) $opt_name = self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME;
-		else if ( $name === 'revalidate_on_menu_save' ) $opt_name = self::SETTINGS_REVALIDATE_ON_MENU_SAVE;
-		else if ( $name === 'debug'                   ) $opt_name = self::SETTINGS_DEBUG;
+		if ( !isset(self::OPTIONS[$name]) ) return parent::__get( $name );
 
-		$value = null;
-		if ( !empty($opt_name) ) $value = get_option($opt_name);
-		else                     $value = Parent::__get( $name );
+		$empty = self::OPTIONS[$name]['empty'];
+		$value = get_option( self::OPTIONS[$name]['name'], $empty );
 
-		return $value;
+		// A site can hold a row whose value does not match the setting's type:
+		// a row stored as false, or a set-shaped setting saved by a form which
+		// submitted none of its switches. For a read, such a row means exactly
+		// what an absent one means.
+		if ( is_array($empty) ) return is_array($value) ? $value : $empty;
+
+		return $value === false ? $empty : $value;
 	}
 
 	/**
@@ -152,7 +175,9 @@ class Settings extends Base {
 	 * Register and add settings
 	 */
 	public function register_fields() {
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_URL_NAME );
+		foreach ( self::OPTIONS as $setting ) {
+			register_setting( self::SETTINGS_GROUP, $setting['name'] );
+		}
 
 
 		// API section settings
@@ -183,7 +208,6 @@ class Settings extends Base {
 			'nextjs-revalidate-section'
 		);
 
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_SECRET_NAME );
 		add_settings_field(
 			'revalidate-secret',
 			__('Revalidate Secret', 'nextjs-revalidate'),
@@ -214,7 +238,6 @@ class Settings extends Base {
 		);
 
 		$post_types = get_post_types([ 'public' => true ]);
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME );
 		foreach ($post_types as $post_type) {
 			if ( $post_type === 'attachment' ) continue; // skip attachments
 
@@ -266,7 +289,6 @@ class Settings extends Base {
 			]
 		);
 
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_REVALIDATE_ON_MENU_SAVE );
 		foreach ($post_types as $post_type) {
 			if ( $post_type === 'attachment' ) continue; // skip attachments
 
@@ -316,7 +338,6 @@ class Settings extends Base {
 				'after_section'  => '</section>',
 			]
 		);
-		register_setting( self::SETTINGS_GROUP, self::SETTINGS_DEBUG );
 
 		$upload_dir = wp_upload_dir();
 		$id = "enable-logs";
@@ -339,32 +360,108 @@ class Settings extends Base {
 		);
 	}
 
+	/**
+	 * Delete every setting of the site currently being served.
+	 *
+	 * @return void
+	 */
 	public static function delete_settings() {
-		// The migration ledger goes with the data it describes: left behind, a
-		// later reinstall would trust it and skip migrations that must run.
-		delete_option( self::DB_VERSION_OPTION_NAME );
+		foreach ( self::OPTIONS as $setting ) {
+			delete_option( $setting['name'] );
+		}
 
-		return
-			delete_option( self::SETTINGS_URL_NAME ) &&
-			delete_option( self::SETTINGS_SECRET_NAME );
+		// The migration ledger goes with the data it describes: left behind, a
+		// later reinstall would read it, believe this site's options already
+		// have the running code's shape, and skip migrations that must run.
+		delete_option( self::DB_VERSION_OPTION_NAME );
 	}
 
+	/**
+	 * Register every setting of the site currently being served,
+	 * holding its empty value until an operator supplies one.
+	 *
+	 * @return void
+	 */
 	public function define_settings() {
-		add_option( self::SETTINGS_URL_NAME );
-		add_option( self::SETTINGS_SECRET_NAME );
-		add_option( self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, [] );
+		foreach ( self::OPTIONS as $setting ) {
+			add_option( $setting['name'], $setting['empty'] );
+		}
+	}
+
+	/**
+	 * The settings a revalidation cannot be delivered without,
+	 * which the site has no value for.
+	 *
+	 * @return string[] Any of 'url' and 'secret'. Empty on a configured site.
+	 */
+	public function missing_settings() {
+		$missing = [];
+
+		$url = $this->url;
+		if ( empty($url) ) $missing[] = 'url';
+
+		$secret = $this->secret;
+		if ( empty($secret) ) $missing[] = 'secret';
+
+		return $missing;
 	}
 
 	/**
 	 * Returns if the plugin is correctly configured.
+	 * Half-configured is unconfigured.
 	 *
 	 * @return boolean
 	 */
 	public function is_configured() {
-		$url = $this->url;
-		$secret = $this->secret;
-		return !(empty($url) || empty($secret));
+		return empty( $this->missing_settings() );
+	}
 
+	/**
+	 * Tell whoever is looking at the admin that this site revalidates nothing.
+	 *
+	 * Not dismissible on purpose: an unconfigured site accepts edits and looks
+	 * like it works, and a notice that can be dismissed for good recreates
+	 * exactly the silence this is here to break.
+	 */
+	public function unconfigured_notice() {
+		if ( $this->is_configured() ) return;
+
+		$can_configure = current_user_can( 'manage_options' );
+
+		// Only bother people whose work is being silently dropped,
+		// or who can do something about it.
+		if ( !$can_configure && !current_user_can( 'edit_posts' ) ) return;
+
+		$missing = $this->missing_settings();
+		if ( count($missing) > 1 )                     $what = __( 'its revalidate URL and secret are missing', 'nextjs-revalidate' );
+		else if ( in_array('url', $missing, true) )    $what = __( 'its revalidate URL is missing', 'nextjs-revalidate' );
+		else                                           $what = __( 'its secret is missing', 'nextjs-revalidate' );
+
+		$message = esc_html(
+			sprintf(
+				/* translators: %s: which of the two required settings are missing. */
+				__( 'Next.js revalidate is not configured for this site — %s. Content is still saved, but every revalidation is refused: the front-end is never asked to rebuild its pages.', 'nextjs-revalidate' ),
+				$what
+			)
+		);
+
+		$on_settings_page = ( isset($_GET['page']) && $_GET['page'] === self::PAGE_NAME );
+
+		if ( $can_configure && !$on_settings_page ) {
+			$message .= sprintf(
+				' <a href="%s">%s</a>',
+				esc_url( admin_url( 'options-general.php?page=' . self::PAGE_NAME ) ),
+				esc_html__( 'Configure Next.js revalidate', 'nextjs-revalidate' )
+			);
+		}
+		else if ( !$can_configure ) {
+			$message .= ' ' . esc_html__( 'Please contact a site administrator.', 'nextjs-revalidate' );
+		}
+
+		printf(
+			'<div class="notice notice-warning nextjs-revalidate-unconfigured__notice"><p>%s</p></div>',
+			$message
+		);
 	}
 
 	/**
