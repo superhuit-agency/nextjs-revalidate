@@ -46,10 +46,11 @@ export const IDLE_TIMEOUT_SECONDS = 600;
 /**
  * The implementer model.
  *
- * With a syntax-only gate and no PR CI, the implementer's own judgement is the
- * only real quality control this pipeline has, and the backlog is small enough
- * that the cost of the strongest model is bounded. Downgrade this and the gate
- * does not get any stricter.
+ * With a near-syntax-only gate — and a PR workflow that runs that same gate,
+ * not a stricter one — the implementer's own judgement is the only real quality
+ * control this pipeline has, and the backlog is small enough that the cost of
+ * the strongest model is bounded. Downgrade this and the gate does not get any
+ * stricter.
  */
 export const IMPLEMENTER_MODEL = 'claude-opus-5';
 
@@ -82,21 +83,31 @@ export const SANDBOX_IMAGE = 'nextjs-revalidate-sandbox:latest';
  * The gate, as run *by the harness* inside the sandbox after the agent stops.
  *
  * npm scripts, not a tracked shell script: the same `npm run typecheck`,
- * `npm run lint:php` and `npm run analyse:php` a developer runs by hand, so
- * there is one definition of "shippable" and no harness-only file to keep in
- * step with it. Each install sits directly in front of the steps that need it —
- * `npm ci` because `tsc` has to exist, `composer install` because PHPStan is a
- * dev dependency — and the two cheap parsers run before the slow analysis, so a
- * PHP 8-only construct fails on `php -l` without waiting for Composer.
+ * `npm run lint:php`, `npm run test:php` and `npm run analyse:php` a developer
+ * runs by hand, and every one of which `.github/workflows/ci.yml` runs on every
+ * pull request — so there is one definition of "shippable" and no harness-only
+ * file to keep in step with it. Each install sits directly in front
+ * of the steps that need it — `npm ci` because `tsc` has to exist,
+ * `composer install` because PHPStan is a dev dependency — and the cheap checks
+ * run before the slow analysis, so a PHP 8-only construct fails on `php -l`
+ * without waiting for Composer.
  *
- * Deliberately weak: this repo has no test suite, so it catches syntax, type and
- * PHP compatibility errors and zero logic errors. The implementer's own
- * judgement is the real quality control — see `IMPLEMENTER_MODEL`.
+ * `test:php` is the standalone-script suite of ADR-0008, and it is here because
+ * those scripts need nothing: no framework, no database, no Docker. The wp-env
+ * integration suite needs all three and cannot run in this container at all, so
+ * `npm run test:integration` is not part of the gate and will not become part of
+ * it.
+ *
+ * Still weak, if no longer test-free: it catches syntax, type and PHP
+ * compatibility errors and the few behaviours those scripts pin, and nothing
+ * else. The implementer's own judgement is the real quality control — see
+ * `IMPLEMENTER_MODEL`.
  */
 export const GATE_COMMAND = [
 	'npm ci --no-audit --no-fund',
 	'npm run typecheck',
 	'npm run lint:php',
+	'npm run test:php',
 	'composer install --no-interaction --no-progress',
 	'npm run analyse:php',
 ].join(' && ');

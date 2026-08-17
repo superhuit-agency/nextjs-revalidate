@@ -1,0 +1,108 @@
+---
+# The place this repo's checks run.
+#
+# Every check below is an existing npm script, run exactly as a developer runs it
+# by hand and as the AFK harness's `GATE_COMMAND` runs it in its sandbox — the
+# same four, in the same order. The scripts are the definition of the gate; this
+# file only says *when* they run, so a pull request — from a human, from
+# Dependabot, from a fork — gets the same verdict the author would have got
+# locally, whether or not they asked for one. Nothing here is a check that is not
+# also an npm script; the toolchain and dependency steps are the only others.
+# `.sandcastle/test/implement.test.mts` reads this file and fails if the two
+# lists ever drift.
+#
+# `push` on `main` is here as well as `pull_request`, so a merge that silently
+# combined two green branches into a red `main` is visible on `main` itself.
+#
+# There are deliberately no `paths` filters. A check that skips itself on some
+# diffs cannot be a required status check — GitHub waits forever for the run that
+# never started — and every script here is minutes at most.
+name: "CI"
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+# Pushing again to a PR branch makes the previous run's verdict worthless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: nothing here comments, labels or publishes, and a fork's PR must not
+# be able to ask it to.
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: "Typecheck"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          # 24, matching `.nvmrc` and the release workflow. `engines.node` is a
+          # floor (>=20.12.0); CI runs the version the project actually develops
+          # and releases on.
+          node-version: 24
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  php:
+    name: "PHP 7.4"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 7.4 is the whole point: `Requires PHP: 7.4` in the plugin header, and a
+      # newer parser accepts PHP 8-only syntax and proves nothing. `lint:php`
+      # refuses to run on any other version unless ALLOW_PHP_VERSION_MISMATCH=1,
+      # which is deliberately not set anywhere in this file — that refusal is a
+      # feature, and a CI job that silenced it would report a lint it did not do.
+      - name: Install PHP 7.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "7.4"
+          coverage: none
+
+      # `lint:php` and `test:php` are shell and PHP only — no node_modules — but
+      # npm is how this repo names its checks, so npm is what runs them.
+      - name: Lint PHP
+        run: npm run lint:php
+
+      - name: Standalone PHP tests
+        run: npm run test:php
+
+      # PHPStan is a dev dependency, so it comes last: the parse and the
+      # standalone tests need nothing installed and take seconds, so a PHP 8-only
+      # construct fails before this job pays for a Composer install. Cached on
+      # `composer.lock` the way the release workflow caches it.
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php74-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php74-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress
+
+      # `composer.json` pins `config.platform.php` to 7.4, so the resolved
+      # dependency set is the same one a developer gets — this step is not
+      # analysing a tree that only 7.4 could install.
+      - name: Analyse PHP
+        run: npm run analyse:php

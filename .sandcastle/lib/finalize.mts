@@ -18,7 +18,8 @@
  *   git's own stderr, and it takes the run's exit code with it. Nothing here
  *   retries, and nothing anywhere forces — see `lib/git.mts`.
  * - **The PR is not a draft.** Nothing in this repo filters on draft state —
- *   no PR CI, no preview environments — so drafting would only add a click
+ *   `.github/workflows/ci.yml` runs on a draft the same as on any other PR, and
+ *   there are no preview environments — so drafting would only add a click
  *   between the harness and the human it is handing to.
  *
  * **The issue stays open.** The harness never closes a standalone issue. The
