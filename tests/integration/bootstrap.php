@@ -48,6 +48,21 @@ tests_add_filter(
 	}
 );
 
+// The Redirection plugin, which `.wp-env.json` installs alongside this one, so
+// the integration that listens to its redirects can be exercised. Loaded after
+// this plugin, as WordPress would load it, and only if it is there: an
+// integration is supported, never required, and this suite has to be able to
+// run without it.
+$njr_redirection = dirname( $njr_plugin_dir ) . '/redirection/redirection.php';
+if ( file_exists( $njr_redirection ) ) {
+	tests_add_filter(
+		'muplugins_loaded',
+		function () use ( $njr_redirection ) {
+			require_once $njr_redirection;
+		}
+	);
+}
+
 require $njr_tests_dir . '/includes/bootstrap.php';
 
 // Test cases and helpers autoload through composer's `autoload-dev`, so adding
@@ -57,3 +72,15 @@ require $njr_tests_dir . '/includes/bootstrap.php';
 // cannot create it, because the DDL would commit the transaction that isolates
 // that test. QueueTestCase empties the table between tests instead.
 NextJsRevalidate::init()->queue->create_table();
+
+// Redirection's tables, for the same reason and in the same place. The test
+// library activates no plugin, so nothing has run Redirection's installer;
+// its own integration suite creates them exactly this way. The class moved
+// into a namespace in 5.9.0 and is reachable under both names.
+foreach ( [ 'Redirection\\Database\\Schema\\Latest', 'Red_Latest_Database' ] as $njr_schema_class ) {
+	if ( ! class_exists( $njr_schema_class ) ) continue;
+
+	$njr_schema = new $njr_schema_class();
+	$njr_schema->install();
+	break;
+}

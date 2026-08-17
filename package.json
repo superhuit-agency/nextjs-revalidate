@@ -16,7 +16,7 @@
     "stop": "wp-env stop",
     "start:revalidateServer": "node ./config/revalidate-server.js",
     "typecheck": "tsc --noEmit",
-    "test:php": "${PHP_BIN:-php} tests/LoggerTest.php && ${PHP_BIN:-php} tests/revalidatable-post-test.php && ${PHP_BIN:-php} tests/SettingsTest.php",
+    "test:php": "${PHP_BIN:-php} tests/LoggerTest.php && ${PHP_BIN:-php} tests/revalidatable-post-test.php && ${PHP_BIN:-php} tests/SettingsTest.php && ${PHP_BIN:-php} tests/redirect-integration-registration-test.php",
     "test:integration": "[ -f vendor/bin/phpunit ] || { echo \"test:integration: vendor/bin/phpunit is missing — run 'composer install'. Starting wp-env first would only fail later, inside the container, in the bootstrap.\" >&2; exit 1; }; wp-env start --no-scripts && wp-env run tests-cli --env-cwd=\"wp-content/plugins/$(basename \"$PWD\")\" -- vendor/bin/phpunit",
     "lint:php": "php=${PHP_BIN:-php}; v=$($php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;') || exit 1; [ \"$v\" = 7.4 ] || [ \"${ALLOW_PHP_VERSION_MISMATCH:-}\" = 1 ] || { echo \"lint:php: $php is PHP $v, not 7.4 — a newer parser accepts PHP 8-only syntax and proves nothing. Point PHP_BIN at a 7.4 binary, or set ALLOW_PHP_VERSION_MISMATCH=1.\" >&2; exit 1; }; files=$(git ls-files '*.php') || exit 1; for f in $files; do $php -l \"$f\" || exit 1; done",
     "analyse:php": "php=${PHP_BIN:-php}; [ -f vendor/bin/phpstan ] || { echo \"analyse:php: vendor/bin/phpstan is missing — run 'composer install'. PHPStan is a dev dependency, and skipping the analysis would be worse than not running it.\" >&2; exit 1; }; $php vendor/bin/phpstan analyse --no-progress",
