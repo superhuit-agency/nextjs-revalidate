@@ -16,9 +16,8 @@
 # on whatever PHP the developer happens to have.
 #
 # The test suite here covers a handful of behaviours, so this and the lint are
-# still the only nets an incompatibility can fall into. The lint runs on every
-# pull request — `.github/workflows/ci.yml` — and this analysis does not yet:
-# see docs/adr/0009-checks-run-on-pull-requests.md.
+# still the only nets an incompatibility can fall into. Both of them run on every
+# pull request — `.github/workflows/ci.yml`.
 
 includes:
 	# WordPress core's functions, classes, constants and hooks, as stubs. Without
@@ -30,6 +29,13 @@ includes:
 	# fix a finding and the gate asks you to regenerate the file
 	# (`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`),
 	# so the list can only get shorter. Nothing new belongs in it.
+	#
+	# It was regenerated once, in #75, and that is the only reason it has ever
+	# grown: #69 generated it on a branch cut before #70 and merged it after, so
+	# the committed list described a tree `main` never had and the analysis was
+	# red from the moment it landed. See
+	# docs/adr/0009-checks-run-on-pull-requests.md — a regeneration is what an
+	# out-of-date baseline needs, and it is not licence to bank a new finding.
 	- phpstan-baseline.neon
 
 parameters:
