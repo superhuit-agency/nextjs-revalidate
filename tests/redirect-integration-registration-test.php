@@ -9,8 +9,11 @@
  * — so it is asserted here instead, where the answer is decided by whether a
  * constant exists.
  *
- * Everything else about redirect revalidation is asserted on the revalidation
- * queue, in `tests/integration/RedirectRevalidationTest.php`. See
+ * The decision taken before the queue is reached — whether a redirect is a
+ * candidate at all, and which path its source names — is stubbed the same way,
+ * in `tests/revalidatable-redirect-test.php`. Everything else about redirect
+ * revalidation is asserted on the revalidation queue itself, in
+ * `tests/integration/RedirectRevalidationTest.php`. See
  * `docs/adr/0008-two-testing-idioms.md` for the split.
  *
  * Run with `npm run test:php`, or `php tests/redirect-integration-registration-test.php`.
