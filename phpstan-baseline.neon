@@ -85,12 +85,6 @@ parameters:
 			path: include/RevalidateAll.php
 
 		-
-			message: '#^Parameter \#3 \$level of static method NextJsRevalidate\\Logger\:\:log\(\) expects string, int given\.$#'
-			identifier: argument.type
-			count: 1
-			path: include/RevalidateAll.php
-
-		-
 			message: '#^Strict comparison using \=\=\= between false and int will always evaluate to false\.$#'
 			identifier: identical.alwaysFalse
 			count: 1
@@ -106,12 +100,6 @@ parameters:
 			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateQueue\:\:\$settings\.$#'
 			identifier: property.notFound
 			count: 2
-			path: include/RevalidateQueue.php
-
-		-
-			message: '#^Parameter \#3 \$level of static method NextJsRevalidate\\Logger\:\:log\(\) expects string, int given\.$#'
-			identifier: argument.type
-			count: 1
 			path: include/RevalidateQueue.php
 
 		-
