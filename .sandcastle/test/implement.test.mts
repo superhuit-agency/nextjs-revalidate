@@ -97,6 +97,7 @@ describe('the gate is the arbiter', () => {
 		// to leave items ungated with nobody at fault.
 		assert.match(GATE_COMMAND, /npm run typecheck/);
 		assert.match(GATE_COMMAND, /npm run lint:php/);
+		assert.match(GATE_COMMAND, /npm run test:php/);
 		assert.match(GATE_COMMAND, /npm run analyse:php/);
 	});
 
@@ -113,6 +114,16 @@ describe('the gate is the arbiter', () => {
 		assert.ok(step('npm run lint:php') < step('npm run analyse:php'));
 		assert.ok(step('npm ci') < step('npm run typecheck'));
 		assert.ok(step('composer install') < step('npm run analyse:php'));
+		// The standalone tests need nothing installed, so they report before the
+		// item pays for a Composer install.
+		assert.ok(step('npm run test:php') < step('composer install'));
+	});
+
+	it('leaves the wp-env suite out of the gate', () => {
+		// ADR-0008: `test:integration` needs Docker and MySQL, and this sandbox has
+		// neither. A gate that reached for it would fail every item for a reason
+		// that has nothing to do with the item.
+		assert.doesNotMatch(GATE_COMMAND, /test:integration/);
 	});
 
 	it('overrules an agent that signalled completion over a red gate', async () => {
