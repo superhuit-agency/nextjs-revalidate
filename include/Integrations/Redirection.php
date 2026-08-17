@@ -262,9 +262,11 @@ class Redirection extends Base {
 	 */
 	private function get_redirect( $id ) {
 
-		// Asking for the class is also what loads it: Redirection resolves its
-		// own class names through an autoloader, and is midway through a
-		// rename that keeps `Red_Item` reachable as an alias.
+		// Redirection requires this class from its own main file, so it is there
+		// whenever the constant these hooks registered on is — the check is what
+		// keeps that true for anything else that fires the action. The class is
+		// named rather than referenced statically because PHPStan analyses this
+		// plugin on its own, where `Red_Item` is a class that does not exist.
 		if ( ! class_exists( 'Red_Item' ) ) return null;
 
 		$redirect = call_user_func( ['Red_Item', 'get_by_id'], intval( $id ) );

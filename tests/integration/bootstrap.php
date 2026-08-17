@@ -75,8 +75,10 @@ NextJsRevalidate::init()->queue->create_table();
 
 // Redirection's tables, for the same reason and in the same place. The test
 // library activates no plugin, so nothing has run Redirection's installer;
-// its own integration suite creates them exactly this way. The class moved
-// into a namespace in 5.9.0 and is reachable under both names.
+// its own integration suite creates them exactly this way. 5.9.0 declares the
+// installer globally, as `Red_Latest_Database`; the namespaced name is tried
+// first because upstream has begun moving its classes under a `Redirection\`
+// namespace, and that is where this one would land.
 foreach ( [ 'Redirection\\Database\\Schema\\Latest', 'Red_Latest_Database' ] as $njr_schema_class ) {
 	if ( ! class_exists( $njr_schema_class ) ) continue;
 
