@@ -156,3 +156,33 @@ the site's home url, so a test survives a change of `testsPort`.
 The queue table is created once in the bootstrap and emptied around every test.
 It has to be: `RevalidateQueue::add_item()` runs its own transaction, whose
 `COMMIT` also commits the one `WP_UnitTestCase` uses to roll a test back.
+
+## Checks
+
+Four npm scripts, and they are the whole gate:
+
+```bash
+npm run typecheck      # tsc --noEmit over src/
+npm run lint:php       # php -l over every tracked PHP file, on PHP 7.4
+npm run test:php       # the standalone scripts above
+npm run analyse:php    # PHPStan over the 7.4–8.4 span the plugin claims
+```
+
+`.github/workflows/ci.yml` runs all four on every pull request against `main` and
+on every push to `main`. Nothing is defined there that is not an npm script here,
+so a green CI run means what a green local run means — and no more: syntax,
+types, PHP-range compatibility and the handful of behaviours the standalone
+scripts pin. It is not a claim that a change works.
+
+`lint:php` refuses to run on anything but PHP 7.4, the version
+`nextjs-revalidate.php` declares, because a newer parser accepts PHP 8-only
+syntax and proves nothing. Point `PHP_BIN` at a 7.4 binary, or set
+`ALLOW_PHP_VERSION_MISMATCH=1` and know the lint proves nothing. `analyse:php`
+needs `composer install` first — PHPStan is a dev dependency.
+
+`npm run test:integration` is **not** in CI yet: it needs Docker, and wiring it up
+is its own piece of work.
+
+Requiring a green run to merge is a repo setting, not a file — branch protection
+on `main`, with **Typecheck** and **PHP 7.4** as required status checks. Until
+that is switched on, CI reports and merging is still possible over a red run.

@@ -97,6 +97,7 @@ describe('the gate is the arbiter', () => {
 		// to leave items ungated with nobody at fault.
 		assert.match(GATE_COMMAND, /npm run typecheck/);
 		assert.match(GATE_COMMAND, /npm run lint:php/);
+		assert.match(GATE_COMMAND, /npm run test:php/);
 		assert.match(GATE_COMMAND, /npm run analyse:php/);
 	});
 
@@ -113,6 +114,16 @@ describe('the gate is the arbiter', () => {
 		assert.ok(step('npm run lint:php') < step('npm run analyse:php'));
 		assert.ok(step('npm ci') < step('npm run typecheck'));
 		assert.ok(step('composer install') < step('npm run analyse:php'));
+		// The standalone tests need nothing installed, so they report before the
+		// item pays for a Composer install.
+		assert.ok(step('npm run test:php') < step('composer install'));
+	});
+
+	it('leaves the wp-env suite out of the gate', () => {
+		// ADR-0008: `test:integration` needs Docker and MySQL, and this sandbox has
+		// neither. A gate that reached for it would fail every item for a reason
+		// that has nothing to do with the item.
+		assert.doesNotMatch(GATE_COMMAND, /test:integration/);
 	});
 
 	it('overrules an agent that signalled completion over a red gate', async () => {
@@ -129,6 +140,46 @@ describe('the gate is the arbiter', () => {
 		assert.equal(classifyRun(0, { passed: true, exitCode: 0, tail: '' }), 'no-commits');
 		assert.equal(classifyRun(1, { passed: true, exitCode: 0, tail: '' }), 'implemented');
 		assert.equal(classifyRun(1, { passed: false, exitCode: 2, tail: '' }), 'gate-failed');
+	});
+});
+
+describe('the pull request workflow runs the same gate', () => {
+	// ADR-0009: `.github/workflows/ci.yml` is a trigger, not a second definition
+	// of "shippable". The harness gates before a PR exists and CI gates after, so
+	// the two drift silently unless something reads both — this does.
+	const ci = readFileSync(fileURLToPath(new URL('../../.github/workflows/ci.yml', import.meta.url)), 'utf8');
+	// The file explains itself at length, and a comment naming a script is not a
+	// step that runs it — only the YAML counts here.
+	const steps = ci
+		.split('\n')
+		.filter((line) => !line.trimStart().startsWith('#'))
+		.join('\n');
+
+	it('runs every npm script the harness gate runs', () => {
+		const scripts = [...GATE_COMMAND.matchAll(/npm run ([\w:]+)/g)].map((match) => match[1]);
+		const missing = scripts.filter((script) => !steps.includes(`npm run ${script}`));
+
+		assert.deepEqual(missing, [], 'a check the harness runs that no pull request ever would');
+	});
+
+	it('invents no check the harness gate does not run', () => {
+		const inCi = new Set([...steps.matchAll(/npm run ([\w:]+)/g)].map((match) => match[1]));
+		const extra = [...inCi].filter((script) => !GATE_COMMAND.includes(`npm run ${script}`));
+
+		assert.deepEqual(extra, [], 'CI would be reporting on something no author can reproduce locally');
+	});
+
+	it('keeps the PHP job on 7.4 with no escape hatch', () => {
+		// `lint:php` refuses to run on anything else, and that refusal is the
+		// point: a newer parser accepts PHP 8-only syntax and proves nothing. A
+		// job that quieted the refusal would report a lint it did not do.
+		assert.match(steps, /php-version:\s*["']?7\.4["']?/);
+		assert.doesNotMatch(steps, /ALLOW_PHP_VERSION_MISMATCH/);
+	});
+
+	it('runs on a pull request against main, which is the whole ticket', () => {
+		assert.match(ci, /^on:$/m);
+		assert.match(ci, /pull_request:/);
 	});
 });
 

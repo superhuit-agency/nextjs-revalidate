@@ -1,14 +1,14 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Constant NJR_URI not found\.$#'
-			identifier: constant.notFound
+			message: '#^Access to private property NextJsRevalidate\:\:\$revalidate\.$#'
+			identifier: property.private
 			count: 1
 			path: include/Assets.php
 
 		-
-			message: '#^Parameter \#3 \$value of function curl_setopt expects 0\|2, false given\.$#'
-			identifier: argument.type
+			message: '#^Constant NJR_URI not found\.$#'
+			identifier: constant.notFound
 			count: 1
 			path: include/Assets.php
 
@@ -51,13 +51,19 @@ parameters:
 		-
 			message: '#^Access to an undefined property NextJsRevalidate\\Revalidate\:\:\$queue\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: include/Revalidate.php
 
 		-
 			message: '#^Access to an undefined property NextJsRevalidate\\Revalidate\:\:\$settings\.$#'
 			identifier: property.notFound
-			count: 5
+			count: 6
+			path: include/Revalidate.php
+
+		-
+			message: '#^Call to function method_exists\(\) with WP_Screen and ''is_block_editor'' will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
 			path: include/Revalidate.php
 
 		-
@@ -75,7 +81,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateAll\:\:\$settings\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 5
 			path: include/RevalidateAll.php
 
 		-
@@ -85,8 +91,32 @@ parameters:
 			path: include/RevalidateAll.php
 
 		-
+			message: '#^Parameter \#3 \$level of static method NextJsRevalidate\\Logger\:\:log\(\) expects string, int given\.$#'
+			identifier: argument.type
+			count: 1
+			path: include/RevalidateAll.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between false and int will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: include/RevalidateAll.php
+
+		-
 			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateQueue\:\:\$revalidate\.$#'
 			identifier: property.notFound
+			count: 1
+			path: include/RevalidateQueue.php
+
+		-
+			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateQueue\:\:\$settings\.$#'
+			identifier: property.notFound
+			count: 2
+			path: include/RevalidateQueue.php
+
+		-
+			message: '#^Parameter \#3 \$level of static method NextJsRevalidate\\Logger\:\:log\(\) expects string, int given\.$#'
+			identifier: argument.type
 			count: 1
 			path: include/RevalidateQueue.php
 

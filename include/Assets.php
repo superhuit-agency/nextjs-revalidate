@@ -107,7 +107,10 @@ class Assets {
 		// Debug options
 		if (WP_DEBUG) {
 			if ( is_ssl() ) {
-				curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
+				// 0, not false: CURLOPT_SSL_VERIFYHOST is documented as 0 or 2,
+				// never a boolean. `false` coerces to 0 and has always behaved
+				// identically — this is the declared type, not a fix.
+				curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 0);
 				curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
 			}
 			// curl_setopt($curl, CURLOPT_VERBOSE, true); // to debug only
