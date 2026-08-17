@@ -19,7 +19,7 @@ class Logger {
 	 *
 	 * @param string $text        Text/Message to log
 	 * @param string $currentFile Filename of the file that is logging
-	 * @param string $level       Logging level
+	 * @param int    $level       Logging level. One of this class's constants.
 	 *
 	 * Will produce
 	 * ------------
@@ -35,18 +35,21 @@ class Logger {
 		$debug = NextJsRevalidate::init()->settings->debug ?: [];
 		if ( ! filter_var( $debug['enable-logs'] ?? false, FILTER_VALIDATE_BOOLEAN ) ) return;
 
-		switch (strtolower($level)) {
+		// The levels are integers, and are compared as such: the round trip
+		// through `strtolower()` this once did coerced an int to a string on
+		// every line logged, which PHP 8.1 deprecates.
+		switch ($level) {
 			case self::ERROR:
-				$level='ERROR';
+				$label = 'ERROR';
 				break;
 
 			case self::DEBUG:
-				$level='DEBUG';
+				$label = 'DEBUG';
 				break;
 
 			case self::INFO:
 			default:
-				$level='INFO';
+				$label = 'INFO';
 				break;
 		}
 
@@ -61,7 +64,7 @@ class Logger {
 			sprintf(
 				"%s\t[%s]\t[%s]%s %s\n",
 				date("[Y-m-d H:i:s]"),
-				$level,
+				$label,
 				$filename,
 				$alignment,
 				$text

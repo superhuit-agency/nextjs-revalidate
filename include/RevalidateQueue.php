@@ -280,10 +280,31 @@ class RevalidateQueue extends Base {
 			$item = $this->get_next_item();
 
 			if ( $item ) {
-				$this->revalidate->purge( $item->permalink );
+				$outcome = $this->revalidate->purge( $item->permalink );
 
 				$t_to_revalidate = microtime(true) - $rev_start;
-				Logger::log("#$id: ✅ Revalidated in {$t_to_revalidate}s {$item->permalink} (priority: {$item->priority})", __FILE__);
+
+				// `get_next_item()` has already deleted the row, and delivery is
+				// at most once, so this log line is the whole record the attempt
+				// ever leaves behind.
+				if ( true === $outcome ) {
+					Logger::log("#$id: ✅ Revalidated in {$t_to_revalidate}s {$item->permalink} (priority: {$item->priority})", __FILE__);
+				}
+				else {
+					Logger::log(
+						sprintf(
+							'#%s: ❌ Failed in %ss %s (priority: %s) — %s: %s',
+							$id,
+							$t_to_revalidate,
+							$item->permalink,
+							$item->priority,
+							$outcome->get_error_code(),
+							$outcome->get_error_message()
+						),
+						__FILE__,
+						Logger::ERROR
+					);
+				}
 			}
 
 		} while ($item && $max_exec_time > (time() - $start_time) );
