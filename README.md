@@ -23,12 +23,16 @@ https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-str
 
 ## API functions
 
-Both functions answer whether the revalidation was **accepted**, and neither can
-tell you whether the front-end has rebuilt anything. A revalidation is enqueued
-by these calls and delivered later, by cron; there is no return value in this
-plugin that could report the outcome of a delivery that has not happened yet.
-Delivery is at most once — a revalidation that is attempted and fails is written
-to the log and dropped, never retried.
+Neither function can tell you whether the front-end has rebuilt anything. Each
+answers what the plugin took on: `nextjs_revalidate_purge_url` whether the
+revalidation was **accepted** into the queue, and
+`nextjs_revalidate_schedule_purge_url` whether the schedule was registered —
+which is one step further away, since that revalidation is only enqueued when
+the date time passes, and can be refused then. The queue is drained afterwards,
+by cron, so there is no return value in this plugin that could report the
+outcome of a delivery that has not happened yet. Delivery is at most once — a
+revalidation that is attempted and fails is written to the log and dropped,
+never retried.
 
 ### nextjs_revalidate_purge_url
 
