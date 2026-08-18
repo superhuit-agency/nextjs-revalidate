@@ -1,7 +1,7 @@
 # Hook registration is explicit, uniform across every class, and owned by the composition root
 
 Every class the plugin constructs registered its WordPress hooks inside its own
-constructor — 24 registrations across eight classes. Construction and
+constructor — 28 registrations across eight classes. Construction and
 registration were therefore inseparable: obtaining an instance in order to call
 one method also mutated global hook state. `NextJsRevalidate::uninstall()` did
 exactly that, constructing a second `RevalidateQueue` purely to reach
@@ -45,7 +45,7 @@ existing style, where `NextJsRevalidate` holds these as plain properties and
 makes this codebase hard to test. It removes the mistake by removing the
 capability.
 
-**The composition root registers all 24 hooks itself.** One file would show the
+**The composition root registers all 28 hooks itself.** One file would show the
 plugin's entire WordPress surface, which is genuinely useful to read. Rejected
 because it separates each hook from the callback it names: priorities and
 argument counts would live in the main plugin file while the methods they govern
@@ -76,32 +76,46 @@ that holds for two classes out of eight is not a convention.
 
 ## Consequences
 
-Registration order is now load-bearing in a place it was not before. Ten
-callbacks sit on `admin_init` at priority 10 across six classes, and WordPress
+Registration order is now load-bearing in a place it was not before. Eight
+callbacks sit on `admin_init` at priority 10 across four classes, and WordPress
 runs same-hook, same-priority callbacks in registration order. The root's
 enrolment order must therefore reproduce today's construction order exactly, or
 the refactor silently reorders `admin_init` — `Settings::migrate_db` no longer
 running before `RevalidateQueue::action_reset_queue`, and so on.
 
 The change introduces a **new silent failure mode**: a class can now be
-constructed and never registered, which for `Revalidate` would mean six lost
+constructed and never registered, which for `Revalidate` would mean eight lost
 hooks and content that stops revalidating on save, with no error anywhere. This
 is why the root enrols through a `hookable()` helper that stores and returns,
 making construction and enrolment a single expression, rather than pairing eight
 constructions with eight separate registration calls. Adding a ninth class
 without registering it is not a mistake the shape permits.
 
-Six of the eight constructors did nothing but register hooks and are deleted
-outright. `ScheduledPurges` keeps its `$timezone`; `RevalidateQueue` keeps
-`$table_name` and `$timezone` only until #24 makes both call-time derivations, at
-which point its constructor goes too. That six of eight classes had a constructor
+Seven of the eight constructors did nothing but register hooks and are deleted
+outright. `ScheduledPurges` is the only one that survives, and only for its
+`$timezone`. `RevalidateQueue`'s went with the rest rather than lingering as this
+record first anticipated: #24 landed first and had already made both the table
+name and the timezone call-time derivations, leaving its constructor holding
+nothing but the four registrations. That seven of eight classes had a constructor
 that constructed nothing is the clearest evidence the two concerns were conflated.
 
-The gate cannot verify this change. It is a syntax and type gate over a repo
-with no test suite, and it goes green on a refactor that drops six hooks.
-Acceptance is instead a `$wp_filter` dump under `wp-env`, filtered to this
-plugin's callbacks and compared byte-for-byte across the change — the only check
-that proves both that nothing was lost and that nothing was reordered.
+A syntax and type gate cannot verify this change: it goes green on a refactor
+that silently drops eight hooks. So the change carries its own check,
+`tests/HookRegistrationTest.php`, in the standalone idiom of ADR 0008. It stubs
+`add_action()` and `add_filter()`, records what it is asked for, and asserts the
+two halves of this decision. That constructing any of the eight registers nothing
+at all is the property the whole convention exists for. That `register_hooks()`
+then produces exactly the sequence the constructors produced before is what
+proves nothing was lost and nothing was reordered, and it is asserted twice: per
+class, and again through the composition root, which is the only place the
+*inter*-class order is decided. The expected sequence is written out literally
+rather than derived from the classes, so a dropped or reordered registration
+fails the test instead of agreeing with itself.
+
+The root half of that needs the composer autoloader — the plugin file returns
+early without it — so with no `vendor/` it reports itself skipped rather than
+failed, and the file keeps the one property the standalone idiom is for: it needs
+nothing.
 
 Sequenced after #24, which rewrites `uninstall()` and empties `RevalidateQueue`'s
 constructor. #24 retains ownership of the second-construction site itself. Taking
