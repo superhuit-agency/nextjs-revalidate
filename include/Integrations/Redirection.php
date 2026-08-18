@@ -245,13 +245,32 @@ class Redirection extends Base {
 	}
 
 	/**
-	 * The permalink the queue holds for a path of this site.
+	 * The permalink the queue holds for a source path.
 	 *
-	 * @param string $path The path to revalidate.
+	 * A source names a path from the *domain* root rather than from the site:
+	 * Redirection matches its redirects against the request uri, and its post
+	 * slug monitor stores the path component of a post's permalink, so the
+	 * directory a site is served from is already part of every source it holds.
+	 * The permalink is therefore built from the site's own scheme, host and port
+	 * and that path, rather than by handing the path to `home_url()` — which on
+	 * a site served from a subdirectory would name that directory twice and
+	 * enqueue a path the front-end holds nothing for. On a site at the root of
+	 * its domain the two are the same string.
+	 *
+	 * @param string $path The source path to revalidate.
 	 * @return string
 	 */
 	private function permalink_of( $path ) {
-		return home_url( $path );
+
+		$home = wp_parse_url( home_url() );
+
+		// A home url this plugin cannot read apart is not worth guessing at:
+		// the site is served from wherever `home_url()` says it is.
+		if ( ! is_array($home) || empty($home['scheme']) || empty($home['host']) ) return home_url( $path );
+
+		$port = empty($home['port']) ? '' : ':' . $home['port'];
+
+		return $home['scheme'] . '://' . $home['host'] . $port . $path;
 	}
 
 	/**

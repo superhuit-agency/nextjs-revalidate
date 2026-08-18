@@ -244,6 +244,36 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->assertQueueRevalidates( [ '/about-us' ] );
 	}
 
+	/**
+	 * A source names a path from the *domain* root: Redirection matches its
+	 * redirects against the request uri, and its monitor stores the path
+	 * component of a post's permalink, so a site served from a subdirectory
+	 * has that directory in every source it holds. The permalink the queue is
+	 * handed names it once — a second helping would revalidate a path the
+	 * front-end has nothing behind, and under ADR 0004 nothing retries it.
+	 */
+	public function test_a_site_served_from_a_subdirectory_names_that_directory_once() {
+		$origin = home_url();
+
+		// Served from a directory for the length of this test only. Filtered
+		// rather than stored, because a test that enqueues anything commits the
+		// transaction its options would otherwise roll back — see
+		// `QueueTestCase::tear_down()` — while a filter is taken back down
+		// whatever the test does.
+		add_filter(
+			'pre_option_home',
+			function () use ( $origin ) {
+				return $origin . '/blog';
+			}
+		);
+
+		$this->configure_site();
+
+		$this->create_redirect( [ 'url' => '/blog/about-us' ] );
+
+		$this->assertQueueHolds( [ $origin . '/blog/about-us/' ] );
+	}
+
 	// Bulk operations
 	// ====
 

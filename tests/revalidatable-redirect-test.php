@@ -63,6 +63,13 @@ namespace {
 	$GLOBALS['njr_test_trailing_slash'] = true;
 
 	/**
+	 * The directory the fixture site is served from, '' for a site at the root
+	 * of its domain.
+	 * @var string
+	 */
+	$GLOBALS['njr_test_home_path'] = '';
+
+	/**
 	 * The fixture site's home url, without a trailing slash.
 	 */
 	define( 'NJR_TEST_HOME', 'https://example.test' );
@@ -99,7 +106,9 @@ namespace {
 	}
 
 	function home_url( $path = '' ) {
-		return NJR_TEST_HOME . ( $path ? '/' . ltrim( $path, '/' ) : '' );
+		$home = untrailingslashit( NJR_TEST_HOME . $GLOBALS['njr_test_home_path'] );
+
+		return $path ? $home . '/' . ltrim( $path, '/' ) : $home;
 	}
 
 	function is_wp_error( $thing ) {
@@ -306,6 +315,20 @@ namespace {
 	// disabled, which makes this an everyday case rather than a hypothetical.
 	njr_test_redirect_created( [ 'url' => '/a-trashed-page', 'enabled' => false ] );
 	njr_test_enqueued( 'a redirect created disabled enqueues nothing', [] );
+
+	// A site served from a subdirectory. A source names a path from the domain
+	// root — Redirection matches against the request uri, and its monitor stores
+	// the path component of a permalink — so the directory the site is served
+	// from is already in the source, and the permalink must not name it twice.
+	$GLOBALS['njr_test_home_path'] = '/blog';
+
+	njr_test_redirect_created( [ 'url' => '/blog/about-us' ] );
+	njr_test_enqueued(
+		'a site served from a subdirectory names that directory once',
+		[ [ 'https://example.test/blog/about-us/', 10 ] ]
+	);
+
+	$GLOBALS['njr_test_home_path'] = '';
 
 	// Match type is irrelevant: a redirect matched on a cookie, a referrer or a
 	// user agent still has a single source path.

@@ -109,3 +109,14 @@ permalink it holds exactly once, so a second answer here would only add a way to
 be wrong: a set kept in memory outlives the queue entry it describes, and in a
 long-running process (a WP-CLI import) it would decline a path that had already
 been enqueued, drained, and made stale again.
+
+**A source names a path from the domain root, not from the site.** Redirection
+matches its redirects against `REQUEST_URI`, and its post slug monitor stores the
+path component of a post's permalink, so on a site served from a subdirectory
+every source it holds already carries that directory. The permalink handed to the
+queue is therefore the site's scheme, host and port with the source path after
+it, rather than `home_url( $path )`, which would name the directory a second time
+and enqueue a path the front-end has nothing behind — a revalidation ADR 0004
+does not retry. On a site at the root of its domain, which is most of them, the
+two are the same string, which is why the difference went unnoticed until the
+integration was read against upstream's matching.
