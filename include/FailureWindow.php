@@ -3,6 +3,7 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Traits\BlockEditorScreen;
 use WP_Error;
 
 /**
@@ -28,6 +29,7 @@ use WP_Error;
  * @property Settings $settings
  */
 class FailureWindow extends Base {
+	use BlockEditorScreen;
 
 	/**
 	 * The option the window is kept in.
@@ -58,6 +60,7 @@ class FailureWindow extends Base {
 
 	public function __construct() {
 		add_action( 'admin_notices', [$this, 'degraded_notice'] );
+		add_action( 'admin_enqueue_scripts', [$this, 'enqueue_editor_notice'], 11 );
 	}
 
 	/**
@@ -196,6 +199,81 @@ class FailureWindow extends Base {
 	}
 
 	/**
+	 * What the current screen has to say about degraded revalidation, if it
+	 * has anything to say to whoever is reading it.
+	 *
+	 * The notice itself rather than its markup: a block editor screen renders
+	 * the same words through `core/notices` instead of printing them, so the
+	 * question of *what to say* is answered once here and the two renderers
+	 * only decide how.
+	 *
+	 * The text is unescaped — each renderer escapes for its own destination,
+	 * and the link travels beside the message rather than inside it so a
+	 * renderer that cannot take markup still gets both.
+	 *
+	 * @return array{message: string, action_label: string, action_url: string}|null
+	 *         Null when this screen says nothing.
+	 */
+	public function get_degraded_notice() {
+
+		// Yields to the unconfigured notice. The two are nearly exclusive
+		// already, since an unconfigured site refuses at enqueue and never
+		// attempts anything; the overlap is a site that was configured and
+		// failing and then lost a setting, where the window is evidence about a
+		// configuration that no longer exists and the missing setting is the
+		// thing to fix.
+		if ( !$this->settings->is_configured() ) return null;
+
+		if ( !self::is_degraded() ) return null;
+
+		$can_configure = current_user_can( 'manage_options' );
+
+		// The same audience as the unconfigured notice: whoever can do
+		// something about it, and whoever's edits are being dropped.
+		if ( !$can_configure && !current_user_can( 'edit_posts' ) ) return null;
+
+		$nb_attempts = count( self::outcomes() );
+		$nb_failures = count( self::failures() );
+
+		$message = sprintf(
+			/* translators: 1: number of failed revalidations. 2: number of attempts on record. */
+			__( 'Next.js revalidate is not keeping this site up to date — %1$d of the last %2$d revalidations failed. Content is still saved, but the front-end is serving pages which are quietly out of date.', 'nextjs-revalidate' ),
+			$nb_failures,
+			$nb_attempts
+		);
+
+		$code = self::last_failure_code();
+		if ( '' !== $code ) {
+			$message .= ' ' . sprintf(
+				/* translators: %s: the cause of the most recent failure. */
+				__( 'Most recent error: %s.', 'nextjs-revalidate' ),
+				self::describe_code( $code )
+			);
+		}
+
+		if ( count( self::failure_codes() ) > 1 ) {
+			$message .= ' ' . __( 'Other errors occurred as well.', 'nextjs-revalidate' );
+		}
+
+		if ( !$can_configure ) {
+			return [
+				'message'      => $message . ' ' . __( 'Please contact a site administrator.', 'nextjs-revalidate' ),
+				'action_label' => '',
+				'action_url'   => '',
+			];
+		}
+
+		// Nothing to link to from the screen the link would lead to.
+		$on_settings_page = ( isset($_GET['page']) && $_GET['page'] === Settings::PAGE_NAME );
+
+		return [
+			'message'      => $message,
+			'action_label' => $on_settings_page ? '' : __( 'Check the Next.js revalidate settings', 'nextjs-revalidate' ),
+			'action_url'   => $on_settings_page ? '' : admin_url( 'options-general.php?page=' . Settings::PAGE_NAME ),
+		];
+	}
+
+	/**
 	 * Tell whoever is looking at the admin that the front-end is not being
 	 * rebuilt.
 	 *
@@ -207,66 +285,82 @@ class FailureWindow extends Base {
 	 */
 	public function degraded_notice() {
 
-		// Yields to the unconfigured notice. The two are nearly exclusive
-		// already, since an unconfigured site refuses at enqueue and never
-		// attempts anything; the overlap is a site that was configured and
-		// failing and then lost a setting, where the window is evidence about a
-		// configuration that no longer exists and the missing setting is the
-		// thing to fix.
-		if ( !$this->settings->is_configured() ) return;
+		// A block editor screen hides what is printed here and is handed the
+		// same notice through `core/notices` instead. Printing it anyway would
+		// only risk saying it twice the day core stops hiding it.
+		if ( $this->is_block_editor_screen() ) return;
 
-		if ( !self::is_degraded() ) return;
+		$notice = $this->get_degraded_notice();
+		if ( is_null($notice) ) return;
 
-		$can_configure = current_user_can( 'manage_options' );
+		$message = esc_html( $notice['message'] );
 
-		// The same audience as the unconfigured notice: whoever can do
-		// something about it, and whoever's edits are being dropped.
-		if ( !$can_configure && !current_user_can( 'edit_posts' ) ) return;
-
-		$nb_attempts = count( self::outcomes() );
-		$nb_failures = count( self::failures() );
-
-		$message = esc_html(
-			sprintf(
-				/* translators: 1: number of failed revalidations. 2: number of attempts on record. */
-				__( 'Next.js revalidate is not keeping this site up to date — %1$d of the last %2$d revalidations failed. Content is still saved, but the front-end is serving pages which are quietly out of date.', 'nextjs-revalidate' ),
-				$nb_failures,
-				$nb_attempts
-			)
-		);
-
-		$code = self::last_failure_code();
-		if ( '' !== $code ) {
-			$message .= ' ' . esc_html(
-				sprintf(
-					/* translators: %s: the cause of the most recent failure. */
-					__( 'Most recent error: %s.', 'nextjs-revalidate' ),
-					self::describe_code( $code )
-				)
-			);
-		}
-
-		if ( count( self::failure_codes() ) > 1 ) {
-			$message .= ' ' . esc_html__( 'Other errors occurred as well.', 'nextjs-revalidate' );
-		}
-
-		$on_settings_page = ( isset($_GET['page']) && $_GET['page'] === Settings::PAGE_NAME );
-
-		if ( $can_configure && !$on_settings_page ) {
+		if ( '' !== $notice['action_url'] ) {
 			$message .= sprintf(
 				' <a href="%s">%s</a>',
-				esc_url( admin_url( 'options-general.php?page=' . Settings::PAGE_NAME ) ),
-				esc_html__( 'Check the Next.js revalidate settings', 'nextjs-revalidate' )
+				esc_url( $notice['action_url'] ),
+				esc_html( $notice['action_label'] )
 			);
-		}
-		else if ( !$can_configure ) {
-			$message .= ' ' . esc_html__( 'Please contact a site administrator.', 'nextjs-revalidate' );
 		}
 
 		printf(
 			'<div class="notice notice-error nextjs-revalidate-degraded__notice"><p>%s</p></div>',
 			$message
 		);
+	}
+
+	/**
+	 * The degraded notice to hand over to the block editor, if this screen is
+	 * one.
+	 *
+	 * The post edit screen is where the operator this notice exists for
+	 * actually is: an author saving a post is told the save succeeded, and the
+	 * revalidation it produced is the one being dropped. A warning that reaches
+	 * every admin screen except that one leaves the silence in place exactly
+	 * where it costs the most.
+	 *
+	 * Not dismissible there either, for the reason it is not here: it is a
+	 * condition, not an event, and there is nothing to acknowledge.
+	 *
+	 * @return array{status: string, message: string, actions: array<int, array{label: string, url: string}>}|null
+	 *         Same family as `Revalidate::get_block_editor_purged_notice()`.
+	 */
+	public function get_block_editor_degraded_notice() {
+
+		if ( ! $this->is_block_editor_screen() ) return null;
+
+		$notice = $this->get_degraded_notice();
+		if ( is_null($notice) ) return null;
+
+		return [
+			'status'  => 'error',
+			'message' => $notice['message'],
+			'actions' => ( '' !== $notice['action_url'] )
+				? [ [ 'label' => $notice['action_label'], 'url' => $notice['action_url'] ] ]
+				: [],
+		];
+	}
+
+	/**
+	 * Hand the block editor the degraded notice, on the script `Assets`
+	 * registers for the purpose.
+	 *
+	 * Priority 11: `Assets` registers the handle at 10, and nothing can be
+	 * localized onto a script that is not registered yet. A site whose assets
+	 * have never been built has no handle to localize onto and no editor
+	 * notice — the same silence a missing script leaves everywhere else.
+	 *
+	 * @return void
+	 */
+	public function enqueue_editor_notice() {
+
+		if ( ! wp_script_is( Assets::EDITOR_SCRIPT_HANDLE, 'registered' ) ) return;
+
+		$notice = $this->get_block_editor_degraded_notice();
+		if ( is_null($notice) ) return;
+
+		wp_localize_script( Assets::EDITOR_SCRIPT_HANDLE, 'nextjs_revalidate_degraded_notice', $notice );
+		wp_enqueue_script( Assets::EDITOR_SCRIPT_HANDLE );
 	}
 
 	/**

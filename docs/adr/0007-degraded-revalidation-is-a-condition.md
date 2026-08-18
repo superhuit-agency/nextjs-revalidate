@@ -66,6 +66,19 @@ and rejected for the reason the condition model exists: nothing per-failure is
 actionable. Delivery is at most once, so no listed failure can be retried or
 inspected to any purpose, and a list invites a reader to assume otherwise.
 
+**An `admin_notices` notice and nothing else.** The established pattern, and how
+the unconfigured notice reaches its reader. Kept, but not sufficient on its own:
+core hides every `admin_notices` output on a block editor screen — the selector
+`body.js.block-editor-page #wpbody-content > div:not(.block-editor)` in core's
+editor stylesheet — and the post edit screen is where the person this notice
+exists for actually is. An author saving a post is told the save succeeded, and
+the revalidation it produced is the one being dropped; a warning that reaches
+every admin screen except that one leaves the silence in place exactly where it
+costs the most. The notice is therefore dispatched to `core/notices` there
+instead, on the script the purge notice already travels on, and printed exactly
+once either way. It is not dismissible there either, for the reason it is not
+anywhere: it is a condition, and there is nothing to acknowledge.
+
 ## Consequences
 
 The failure window is the only piece of this plugin's state that is cleared on
@@ -86,6 +99,12 @@ There is no aggregate view for a network administrator. Every piece of this
 plugin's state is per-site, so a network-admin notice would have no window to
 read, and computing a rollup means a sweep. Twenty sites means twenty dashboards
 to check, and that is a known gap rather than an oversight.
+
+The unconfigured notice (#37) is still an `admin_notices` one only, so it is
+hidden on a block editor screen the way this one was. Widening it is that
+issue's to make: the mechanism is now shared — a notice source localizes its own
+payload onto the editor script handle rather than being collected by `Assets` —
+and taking it is a couple of lines.
 
 The notice yields to #37's unconfigured notice when both would render. They are
 nearly exclusive already, since an unconfigured site refuses at enqueue and never
