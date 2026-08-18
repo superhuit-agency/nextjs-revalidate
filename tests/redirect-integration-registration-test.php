@@ -89,6 +89,14 @@ $redirect_actions = [
 	'redirection_redirect_disabled',
 ];
 
+// Constructing the integration is not registering it: registration is a
+// separate act, owned by the composition root, so an object that hooks nothing
+// on the way in is one a caller can construct for a single method call — which
+// is exactly what `tests/revalidatable-redirect-test.php` does.
+$GLOBALS['njr_test_actions'] = [];
+new NextJsRevalidate\Integrations\Redirection();
+njr_test_registered( 'constructing the integration registers nothing', [] );
+
 // While the plugins are still loading, nothing can be said about which of them
 // are there — the question waits for `plugins_loaded`.
 $GLOBALS['njr_test_actions'] = [];
