@@ -300,6 +300,24 @@ class RevalidateQueue extends Base {
 				if ( true === $outcome ) {
 					Logger::log("#$id: ✅ Revalidated in {$t_to_revalidate}s {$item->permalink} (priority: {$item->priority})", __FILE__);
 				}
+				// A refusal reads as one in the log too. It was declined
+				// without the front-end being asked anything at all, so calling
+				// it a failure would send a reader looking at a front-end that
+				// was never involved.
+				else if ( $refused ) {
+					Logger::log(
+						sprintf(
+							'#%s: 🚫 Refused %s (priority: %s) — %s: %s',
+							$id,
+							$item->permalink,
+							$item->priority,
+							$outcome->get_error_code(),
+							$outcome->get_error_message()
+						),
+						__FILE__,
+						Logger::ERROR
+					);
+				}
 				else {
 					Logger::log(
 						sprintf(
