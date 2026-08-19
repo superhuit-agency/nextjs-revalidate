@@ -146,32 +146,34 @@ class Revalidate extends Base {
 	}
 
 	/**
-	 * Ask the front-end to rebuild the page it holds for the given permalink.
+	 * Ask the front-end to rebuild the page held for the given permalink.
 	 *
-	 * Answers `true`, or a WP_Error naming what went wrong. Delivery is at most
-	 * once — a failure is recorded and dropped, never retried — so this answer
-	 * is the whole record of the attempt, and the code it carries is the only
-	 * thing that distinguishes a front-end that cannot be reached from one that
-	 * rejected the secret. See `docs/adr/0004-at-most-once-revalidation.md`.
+	 * Delivery is at most once: the drain deletes the queue entry before it gets
+	 * here, so what this returns is the only trace a revalidation which did not
+	 * succeed will ever leave. It therefore names *which* failure happened
+	 * rather than collapsing every one of them into a bare false — `unreachable`
+	 * and `http_401` send an operator to completely different places.
+	 * See `docs/adr/0004-at-most-once-revalidation.md`.
 	 *
 	 * @param string $permalink The permalink to revalidate.
-	 * @return true|WP_Error
+	 *
+	 * @return true|WP_Error True when the front-end rebuilt the page. Otherwise
+	 *                       a WP_Error whose code names the outcome:
+	 *                       `not_configured` when the site could not deliver at
+	 *                       all, `unreachable` when the front-end was not
+	 *                       reached, `no_response` when it answered without a
+	 *                       status, `http_{status}` when it answered with one
+	 *                       other than 200, and `exception` when the attempt
+	 *                       threw.
 	 */
 	function purge( $permalink ) {
 
-		// A guard rather than a live path: the queue refuses an unconfigured
-		// site at the door, so nothing unconfigured reaches the drain. A
-		// refusal is not a failure, and the code says which this is.
-		if ( !$this->settings->is_configured() ) {
-			return new WP_Error(
-				'not_configured',
-				sprintf(
-					/* translators: %s: the permalink that was not revalidated. */
-					__( 'Next.js revalidate is not configured for this site: %s was not revalidated.', 'nextjs-revalidate' ),
-					$permalink
-				)
-			);
-		}
+		// A refusal rather than a failure: the front-end is asked nothing at
+		// all. `add_item()` refuses at enqueue time, so the drain reaches this
+		// only for items enqueued while the site was still configured and
+		// drained after its settings were cleared — the same refusal, given
+		// later. It is also the guard for any other caller.
+		if ( !$this->settings->is_configured() ) return $this->settings->not_configured_error();
 
 		try {
 			$response = wp_remote_get(
@@ -179,54 +181,33 @@ class Revalidate extends Base {
 				[ 'timeout' => 60 ]
 			);
 
-			if ( is_wp_error($response) ) {
-				return new WP_Error(
-					'unreachable',
-					sprintf(
-						/* translators: 1: the permalink being revalidated. 2: the error the request failed with. */
-						__( 'Unable to revalidate %1$s: %2$s', 'nextjs-revalidate' ),
-						$permalink,
-						$response->get_error_message()
-					)
-				);
-			}
+			// The request never got an answer — DNS, TLS, a timeout. What the
+			// transport has to say about it is the diagnostic, so it is carried
+			// over rather than thrown away.
+			if ( is_wp_error($response) ) return new WP_Error( 'unreachable', $response->get_error_message() );
 
 			$status = intval( wp_remote_retrieve_response_code( $response ) );
 
 			if ( 200 === $status ) return true;
 
-			// A response carrying no status of its own never arrived intact,
-			// which is the same thing as not having reached the front-end.
-			if ( 0 === $status ) {
-				return new WP_Error(
-					'unreachable',
-					sprintf(
-						/* translators: %s: the permalink being revalidated. */
-						__( 'The front-end answered nothing revalidating %s.', 'nextjs-revalidate' ),
-						$permalink
-					)
-				);
-			}
+			// An answer with no status line at all is not an HTTP outcome to
+			// report back, and `http_0` would name nothing an operator can act on.
+			if ( 0 === $status ) return new WP_Error( 'no_response', __( 'The front-end answered without a status code.', 'nextjs-revalidate' ) );
 
 			return new WP_Error(
 				"http_$status",
 				sprintf(
-					/* translators: 1: an HTTP status code. 2: the permalink being revalidated. */
-					__( 'The front-end answered %1$d revalidating %2$s.', 'nextjs-revalidate' ),
-					$status,
-					$permalink
+					/* translators: %d: the HTTP status code the front-end answered with. */
+					__( 'The front-end answered %d.', 'nextjs-revalidate' ),
+					$status
 				)
 			);
 		} catch (\Throwable $th) {
-			return new WP_Error(
-				'unreachable',
-				sprintf(
-					/* translators: 1: the permalink being revalidated. 2: the error the request failed with. */
-					__( 'Unable to revalidate %1$s: %2$s', 'nextjs-revalidate' ),
-					$permalink,
-					$th->getMessage()
-				)
-			);
+			// The drain runs this in a loop and keeps a running-cron count while
+			// it does, so a throw escaping here would cost more than the one
+			// revalidation. Caught, named, and handed back as a failure like any
+			// other.
+			return new WP_Error( 'exception', $th->getMessage() );
 		}
 	}
 
