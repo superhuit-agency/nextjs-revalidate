@@ -79,6 +79,9 @@ class ScheduledPurges extends Base {
 	 * @param String $datetime The date time string when to purge.
 	 * @param String $url      The URL to purge.
 	 *
+	 * @return bool Whether this call registered the scheduled purge. False when
+	 *              the URL is already registered for that date time, and false
+	 *              when the write itself failed.
 	 */
 	public function schedule_purge( $datetime, $url ) {
 
@@ -96,11 +99,17 @@ class ScheduledPurges extends Base {
 		// Sort in chronological order
 		ksort( $entries );
 
-		// Save new entries
-		update_option( self::OPTION_NAME, $entries );
+		// Save new entries. The answer is the write's, not a constant: the
+		// entries always differ from the stored ones by the time we get here —
+		// the duplicate case returned above — so a false is a failed write
+		// rather than update_option()'s "nothing changed".
+		$registered = update_option( self::OPTION_NAME, $entries );
 
+		// Scheduled from what was actually stored, so a failed write leaves the
+		// cron describing the entries that survived rather than the ones it
+		// meant to add.
 		$this->schedule_cron();
 
-		return true;
+		return $registered;
 	}
 }

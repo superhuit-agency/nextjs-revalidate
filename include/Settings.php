@@ -36,6 +36,29 @@ class Settings extends Base {
 	];
 
 	/**
+	 * The migration ledger: the per-site record of the DB version, i.e. the
+	 * version of the plugin whose data shape this site's options match.
+	 *
+	 * Deliberately outside the settings table above: nothing an operator
+	 * supplies is kept here, and it is neither registered nor rendered.
+	 */
+	const DB_VERSION_OPTION_NAME = 'nextjs_revalidate-db_version';
+
+	/**
+	 * Fingerprints used to backfill the ledger on sites which predate it.
+	 *
+	 * Each entry maps a DB version to the legacy options a site still holding
+	 * any of them stopped at. Ordered oldest first: a site left behind by
+	 * several releases holds several of these, and the oldest one wins.
+	 */
+	private const DB_VERSION_FINGERPRINTS = [
+		// Options renamed by 1.5.0, when purge became revalidate.
+		'1.4.0' => [ 'nextjs_revalidate-allow_purge_all', 'nextjs-revalidate-purge_all' ],
+		// Options dropped by 1.6.0, when the queue moved to its own table.
+		'1.5.0' => [ 'nextjs-revalidate-queue', 'nextjs-revalidate-revalidate_all' ],
+	];
+
+	/**
 	 * Settings constructor.
 	 */
 	function __construct() {
@@ -346,6 +369,11 @@ class Settings extends Base {
 		foreach ( self::OPTIONS as $setting ) {
 			delete_option( $setting['name'] );
 		}
+
+		// The migration ledger goes with the data it describes: left behind, a
+		// later reinstall would read it, believe this site's options already
+		// have the running code's shape, and skip migrations that must run.
+		delete_option( self::DB_VERSION_OPTION_NAME );
 	}
 
 	/**
@@ -386,6 +414,25 @@ class Settings extends Base {
 	 */
 	public function is_configured() {
 		return empty( $this->missing_settings() );
+	}
+
+	/**
+	 * The refusal an unconfigured site answers every revalidation with.
+	 *
+	 * Declared once because it is raised from two places — `add_item()` refuses
+	 * at enqueue time, `purge()` guards the delivery it is unreachable from —
+	 * and a refusal that reads differently depending on which guard caught it
+	 * is a refusal an operator has to learn twice. The code is the contract:
+	 * `RestApi::process_items` reports it per item, and the drain branches on it
+	 * to write ⛔ rather than ❌.
+	 *
+	 * @return \WP_Error Always `not_configured`.
+	 */
+	public function not_configured_error() {
+		return new \WP_Error(
+			'not_configured',
+			__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+		);
 	}
 
 	/**
@@ -437,15 +484,21 @@ class Settings extends Base {
 	}
 
 	/**
-	 * Migrate the database options
-	 * according to the version of the plugin
+	 * Migrate this site's options to the data shape the running code expects.
+	 *
+	 * Each migration is gated on the site's DB version — read from the
+	 * migration ledger, never from the plugin version, which is always the
+	 * release being run and so never says anything about the stored data.
+	 * The migrations are cumulative: a site left several releases behind runs
+	 * each one it missed, in order, on the same request.
 	 */
 	public function migrate_db() {
 
-		$plugin_data = get_plugin_data( __FILE__ );
-		$version = intval(str_replace('.', '', $plugin_data['Version']));
+		$stored     = get_option( self::DB_VERSION_OPTION_NAME );
+		$db_version = ( is_string($stored) && $stored !== '' ) ? $stored : $this->backfill_db_version();
 
-		if ( $version < 150 ) {
+		// 1.5.0 — purge became revalidate: carry the options to their new names.
+		if ( version_compare( $db_version, '1.5.0', '<' ) ) {
 			$revalidate_all_opt = get_option('nextjs_revalidate-allow_purge_all');
 			delete_option('nextjs_revalidate-allow_purge_all');
 
@@ -460,9 +513,62 @@ class Settings extends Base {
 				update_option( 'nextjs-revalidate-revalidate_all', $revalidate_all_cron_opt );
 			}
 		}
-		else if ( $version < 160 ) {
+
+		// 1.6.0 — the queue moved out of the options and into its own table.
+		if ( version_compare( $db_version, '1.6.0', '<' ) ) {
 			delete_option('nextjs-revalidate-queue');
 			delete_option('nextjs-revalidate-revalidate_all');
 		}
+
+		// Stamp the ledger, so none of the above is eligible to run again.
+		// A site whose data was migrated by newer code than is running now
+		// keeps its higher version: a downgrade must not make migrations it
+		// has already been through eligible again.
+		$stamp = version_compare( $db_version, NJR_VERSION, '>' ) ? $db_version : NJR_VERSION;
+		if ( $stamp !== $stored ) update_option( self::DB_VERSION_OPTION_NAME, $stamp );
+	}
+
+	/**
+	 * Infer the DB version of a site which predates the migration ledger,
+	 * from the legacy options it still holds.
+	 *
+	 * A site holding none of them has data of the shape the running code
+	 * expects — either a fresh install, or one already carried past every
+	 * migration by the version comparison this replaces.
+	 *
+	 * That default is the limit of this inference, and it binds whoever adds
+	 * the next migration: a backfilled site is stamped with the release it is
+	 * running, so **a migration introduced by the same release that first runs
+	 * this code cannot be gated on the version alone** — every existing site
+	 * lands on that version before the gate is ever read, and skips it. Such a
+	 * migration needs a guard on the data's own state, as the settings split of
+	 * #29 has. From the release after, the ledger is authoritative and the
+	 * version gate is enough.
+	 *
+	 * @return string A version string, comparable with `version_compare()`.
+	 */
+	private function backfill_db_version() {
+		foreach ( self::DB_VERSION_FINGERPRINTS as $version => $legacy_options ) {
+			foreach ( $legacy_options as $option_name ) {
+				if ( self::option_exists( $option_name ) ) return $version;
+			}
+		}
+
+		return NJR_VERSION;
+	}
+
+	/**
+	 * Whether the site has a row for an option, regardless of its value.
+	 *
+	 * `get_option()` answers `false` both for an absent option and for one
+	 * holding an empty value, and a legacy option left empty is still evidence
+	 * of the release that wrote it.
+	 *
+	 * @param string $name
+	 * @return bool
+	 */
+	private static function option_exists( $name ) {
+		$absent = "\0njr-absent";
+		return get_option( $name, $absent ) !== $absent;
 	}
 }
