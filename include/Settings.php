@@ -12,8 +12,8 @@ use NextJsRevalidate\Interfaces\Hookable;
  * added to `OPTIONS` and forgotten here reads fine and analyses as undefined.
  *
  * @property string $domain                  The scheme, host and port of the front-end.
- * @property string $path                    The revalidate route, or '' for the default.
- * @property string $fse_path                The FSE revalidate route, or '' for the default.
+ * @property string $endpoint_path           The revalidate route, or '' for the default.
+ * @property string $fse_endpoint_path       The FSE revalidate route, or '' for the default.
  * @property string $secret                  The shared secret every request carries.
  * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
@@ -26,8 +26,8 @@ class Settings extends Base implements Hookable {
 	const SETTINGS_GROUP = 'nextjs-revalidate-settings';
 
 	const SETTINGS_DOMAIN_NAME = 'nextjs_revalidate-domain';
-	const SETTINGS_PATH_NAME = 'nextjs_revalidate-path';
-	const SETTINGS_FSE_PATH_NAME = 'nextjs_revalidate-fse_path';
+	const SETTINGS_ENDPOINT_PATH_NAME = 'nextjs_revalidate-endpoint_path';
+	const SETTINGS_FSE_ENDPOINT_PATH_NAME = 'nextjs_revalidate-fse_endpoint_path';
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
 	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
@@ -45,13 +45,13 @@ class Settings extends Base implements Hookable {
 	 * setting cannot be added to one of them and forgotten in another.
 	 */
 	private const OPTIONS = [
-		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,               'empty' => ''  ],
-		'path'                    => [ 'name' => self::SETTINGS_PATH_NAME,                 'empty' => ''  ],
-		'fse_path'                => [ 'name' => self::SETTINGS_FSE_PATH_NAME,             'empty' => ''  ],
-		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => ''  ],
-		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => []  ],
-		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => []  ],
-		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => []  ],
+		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,                   'empty' => ''  ],
+		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,            'empty' => ''  ],
+		'fse_endpoint_path'       => [ 'name' => self::SETTINGS_FSE_ENDPOINT_PATH_NAME,        'empty' => ''  ],
+		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,                   'empty' => ''  ],
+		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,     'empty' => []  ],
+		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,       'empty' => []  ],
+		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                         'empty' => []  ],
 	];
 
 	/**
@@ -62,8 +62,8 @@ class Settings extends Base implements Hookable {
 	 * this release ships", so an app that renames its route later is a one-field
 	 * edit, and a standard install never has to look at these at all.
 	 */
-	const DEFAULT_PATH = '/api/revalidate';
-	const DEFAULT_FSE_PATH = '/api/revalidate-fse';
+	const DEFAULT_ENDPOINT_PATH = '/api/revalidate';
+	const DEFAULT_FSE_ENDPOINT_PATH = '/api/revalidate-fse';
 
 	/**
 	 * The single, fully-qualified revalidate URL this plugin stored until 1.7.0.
@@ -288,9 +288,9 @@ class Settings extends Base implements Hookable {
 			__('Revalidate path', 'nextjs-revalidate'),
 			function ($args) use ( $path_field ) {
 				$path_field(
-					self::SETTINGS_PATH_NAME,
-					$this->path,
-					self::DEFAULT_PATH,
+					self::SETTINGS_ENDPOINT_PATH_NAME,
+					$this->endpoint_path,
+					self::DEFAULT_ENDPOINT_PATH,
 					__('Optional. The route that revalidates a single path on the front-end. Leave empty for the default.', 'nextjs-revalidate')
 				);
 			},
@@ -303,9 +303,9 @@ class Settings extends Base implements Hookable {
 			__('FSE revalidate path', 'nextjs-revalidate'),
 			function ($args) use ( $path_field ) {
 				$path_field(
-					self::SETTINGS_FSE_PATH_NAME,
-					$this->fse_path,
-					self::DEFAULT_FSE_PATH,
+					self::SETTINGS_FSE_ENDPOINT_PATH_NAME,
+					$this->fse_endpoint_path,
+					self::DEFAULT_FSE_ENDPOINT_PATH,
 					__('Optional. The route that invalidates the front-end’s FSE template snapshot. Leave empty for the default.', 'nextjs-revalidate')
 				);
 			},
@@ -503,8 +503,8 @@ class Settings extends Base implements Hookable {
 	 *
 	 * @return string Empty on a site holding no domain.
 	 */
-	public function revalidate_url() {
-		return $this->endpoint_url( $this->path, self::DEFAULT_PATH );
+	public function revalidate_endpoint_url() {
+		return $this->endpoint_url( $this->endpoint_path, self::DEFAULT_ENDPOINT_PATH );
 	}
 
 	/**
@@ -512,8 +512,8 @@ class Settings extends Base implements Hookable {
 	 *
 	 * @return string Empty on a site holding no domain.
 	 */
-	public function fse_revalidate_url() {
-		return $this->endpoint_url( $this->fse_path, self::DEFAULT_FSE_PATH );
+	public function fse_endpoint_url() {
+		return $this->endpoint_url( $this->fse_endpoint_path, self::DEFAULT_FSE_ENDPOINT_PATH );
 	}
 
 	/**
@@ -711,9 +711,9 @@ class Settings extends Base implements Hookable {
 	 *
 	 * The path is preserved verbatim rather than assumed to be the default —
 	 * it is whatever the operator's Next.js app routes, and nothing else in the
-	 * system knows it. Only the scheme, host, port and path are carried over,
-	 * so query args an operator pasted in with the URL are dropped by
-	 * construction rather than stripped.
+	 * system knows it. Only the scheme, credentials, host, port and path are
+	 * carried over, so query args an operator pasted in with the URL are
+	 * dropped by construction rather than stripped.
 	 *
 	 * @return void
 	 */
@@ -731,7 +731,18 @@ class Settings extends Base implements Hookable {
 		// than the unconfigured site they have until they retype it.
 		if ( ! is_array($parts) || empty($parts['host']) ) return;
 
-		$domain = ( empty($parts['scheme']) ? 'https' : $parts['scheme'] ) . '://' . $parts['host'];
+		$domain = ( empty($parts['scheme']) ? 'https' : $parts['scheme'] ) . '://';
+
+		// Basic-auth credentials belong to the domain. A protected staging
+		// front-end is exactly the kind of site that carries them, and dropping
+		// them turns a working install into one that 401s silently.
+		if ( ! empty($parts['user']) ) {
+			$domain .= $parts['user'];
+			if ( ! empty($parts['pass']) ) $domain .= ':' . $parts['pass'];
+			$domain .= '@';
+		}
+
+		$domain .= $parts['host'];
 		if ( ! empty($parts['port']) ) $domain .= ':' . $parts['port'];
 
 		// A trailing slash belongs to neither half — the composition puts
@@ -742,7 +753,7 @@ class Settings extends Base implements Hookable {
 
 		// A legacy URL that was a bare domain carries no path to preserve, and
 		// writing an empty one would say the operator had cleared the field.
-		if ( $path !== '' ) update_option( self::SETTINGS_PATH_NAME, $path );
+		if ( $path !== '' ) update_option( self::SETTINGS_ENDPOINT_PATH_NAME, $path );
 
 		delete_option( self::LEGACY_URL_OPTION_NAME );
 	}

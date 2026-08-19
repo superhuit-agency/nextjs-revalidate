@@ -98,7 +98,7 @@ const LEDGER               = Settings::DB_VERSION_OPTION_NAME;
 const ALLOW_REVALIDATE_ALL = Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME;
 const LEGACY_URL           = Settings::LEGACY_URL_OPTION_NAME;
 const DOMAIN               = Settings::SETTINGS_DOMAIN_NAME;
-const PATH_OPT             = Settings::SETTINGS_PATH_NAME;
+const PATH_OPT             = Settings::SETTINGS_ENDPOINT_PATH_NAME;
 const SECRET               = Settings::SETTINGS_SECRET_NAME;
 
 $failures = 0;
@@ -237,6 +237,17 @@ check_same( '/revalidate', options()[ PATH_OPT ], 'the path of a URL with a port
 migrate( [ LEGACY_URL => 'https://front-end.test/api/revalidate?path=/hello/&secret=s3cret' ] );
 check_same( 'https://front-end.test', options()[ DOMAIN ], 'query args are stripped from the domain' );
 check_same( '/api/revalidate', options()[ PATH_OPT ], 'query args are stripped from the path' );
+
+// Basic-auth credentials belong to the domain. A protected staging front-end is
+// exactly the kind of site that carries them, and dropping them silently turns a
+// working install into one that 401s with nothing on screen to explain it.
+migrate( [ LEGACY_URL => 'https://user:pass@front-end.test/api/revalidate' ] );
+check_same( 'https://user:pass@front-end.test', options()[ DOMAIN ], 'credentials stay with the domain' );
+check_same( '/api/revalidate', options()[ PATH_OPT ], 'credentials do not disturb the path' );
+
+// A user with no password is still a user.
+migrate( [ LEGACY_URL => 'https://user@front-end.test/api/revalidate' ] );
+check_same( 'https://user@front-end.test', options()[ DOMAIN ], 'a user without a password stays with the domain' );
 
 // A trailing slash belongs to neither half: the composition puts exactly one
 // slash between them, so carrying a second would produce `//api/revalidate`.

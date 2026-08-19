@@ -52,13 +52,16 @@ From 1.8.0 onward the ledger is authoritative again and a version gate is enough
 
 ### What the split keeps, and what it drops
 
-`wp_parse_url()` does the work, so a port and a subdirectory land on the domain
-side without being special-cased. The **path is preserved verbatim** — the whole
+`wp_parse_url()` does the work, so a port, a subdirectory and basic-auth
+credentials land on the domain side without being special-cased. The credentials
+are worth naming: a protected staging front-end is exactly the kind of site that
+carries them, and dropping them turns a working install into one that 401s with
+nothing on screen to explain it. The **path is preserved verbatim** — the whole
 point of the exercise — so `https://site.com/fr/api/purge` becomes domain
 `https://site.com` plus path `/fr/api/purge`, and never the default. Only scheme,
-host, port and path are carried over, so query args an operator pasted in with
-the URL (a trailing `?secret=`) are dropped **by construction** rather than
-stripped by a rule that could miss one.
+credentials, host, port and path are carried over, so query args an operator
+pasted in with the URL (a trailing `?secret=`) are dropped **by construction**
+rather than stripped by a rule that could miss one.
 
 A URL too broken for `wp_parse_url()` to find a host in is **left where it is**,
 neither split nor deleted. The site is unconfigured either way until somebody

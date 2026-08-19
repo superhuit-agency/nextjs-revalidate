@@ -78,7 +78,7 @@ $cases = [
 	// configured, and composes both endpoints from their defaults.
 	[
 		'a site holding no paths is still configured',
-		[ $domain => 'https://front-end.test', $secret => 's3cret', NextJsRevalidate\Settings::SETTINGS_PATH_NAME => '', NextJsRevalidate\Settings::SETTINGS_FSE_PATH_NAME => '' ],
+		[ $domain => 'https://front-end.test', $secret => 's3cret', NextJsRevalidate\Settings::SETTINGS_ENDPOINT_PATH_NAME => '', NextJsRevalidate\Settings::SETTINGS_FSE_ENDPOINT_PATH_NAME => '' ],
 		[],
 	],
 
@@ -214,7 +214,7 @@ $empty_checks = [
 	[ 'domain', false ],
 	[ 'secret', false ],
 	// A setting the site holds no row for really is empty.
-	[ 'path',   true  ],
+	[ 'endpoint_path', true ],
 ];
 
 foreach ( $empty_checks as [ $name, $expected_empty ] ) {

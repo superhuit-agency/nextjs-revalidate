@@ -55,7 +55,7 @@ use WP_UnitTestCase;
 abstract class QueueTestCase extends WP_UnitTestCase {
 
 	/**
-	 * The revalidate url a configured fixture site holds.
+	 * The revalidate domain a configured fixture site holds.
 	 */
 	const FIXTURE_DOMAIN = 'https://front-end.test';
 
