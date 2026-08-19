@@ -23,8 +23,8 @@ class PublicApiTest extends QueueTestCase {
 
 	/**
 	 * A date time far enough ahead that the scheduled purges cron will not have
-	 * come due while the suite runs. Fixed rather than computed: a relative one
-	 * would make the option key the assertions read change per run.
+	 * come due while the suite runs — a due scheduled purge would enqueue itself
+	 * and the assertions on an empty queue would stop meaning anything.
 	 */
 	const FIXTURE_DATETIME = '2099-01-01 09:00:00';
 
@@ -142,6 +142,46 @@ class PublicApiTest extends QueueTestCase {
 			[ $permalink ],
 			$this->scheduled_permalinks(),
 			'The schedule holds the permalink once.'
+		);
+	}
+
+	/**
+	 * The half of the contract that only exists because the return value stopped
+	 * being a constant: a write that does not happen is not a registration.
+	 *
+	 * The failure is forced through `pre_update_option`, which is where
+	 * `update_option()` decides it has nothing to do — the filter hands back the
+	 * stored value, so the write is skipped and `false` comes back exactly as a
+	 * failed one would. There is no way to make the real write fail from a test
+	 * that is not also a way to break the database for the rest of the suite.
+	 *
+	 * Without this test the function could return a constant `true` again and
+	 * every other test here would still pass: the duplicate case returns before
+	 * the write, so it never reads the write's answer.
+	 */
+	public function test_a_scheduled_purge_whose_write_fails_is_not_registered() {
+		$refuse_the_write = function( $value, $old_value ) {
+			return $old_value;
+		};
+
+		add_filter( 'pre_update_option_' . ScheduledPurges::OPTION_NAME, $refuse_the_write, 10, 2 );
+
+		$registered = \nextjs_revalidate_schedule_purge_url(
+			self::FIXTURE_DATETIME,
+			$this->permalink_of( '/the-write-fails/' )
+		);
+
+		remove_filter( 'pre_update_option_' . ScheduledPurges::OPTION_NAME, $refuse_the_write, 10 );
+
+		$this->assertFalse(
+			$registered,
+			'The write did not happen, so nothing was registered, and true would be the constant this contract exists to remove.'
+		);
+
+		$this->assertSame(
+			[],
+			$this->scheduled_permalinks(),
+			'A failed write leaves no scheduled purge behind.'
 		);
 	}
 

@@ -53,10 +53,11 @@ try.
 The return value of `nextjs_revalidate_purge_url()` can be `false`, where before
 #37 it was the constant `true`. This is a compatible change in the only direction
 that matters — a caller that ignored the value is unaffected, and a caller that
-tested it was testing a constant and now gets an answer. It is worth calling out
-in a release note anyway, because a caller that logs or reports on a `false`
-branch will start reaching that branch on an unconfigured site, and the cause is
-this plugin telling the truth rather than a new failure.
+tested it was testing a constant and now gets an answer. It is still worth saying
+out loud wherever a release is described, because a caller that logs or reports
+on a `false` branch will start reaching that branch on an unconfigured site, and
+the cause is this plugin telling the truth rather than a new failure. This repo
+keeps no changelog for that to go in, so until one exists this ADR is the record.
 
 **The sibling was checked and does not have the same defect, quite.**
 `nextjs_revalidate_schedule_purge_url()` returns `ScheduledPurges::schedule_purge()`'s
@@ -76,7 +77,10 @@ later, one step further from the front-end than the other function's.
 
 The two functions are pinned by `tests/integration/PublicApiTest.php`, which is
 the first thing in this repo to assert on the public API's *return value* rather
-than on the queue's contents. It belongs to the wp-env suite for the ordinary
+than on the queue's contents. That includes the failed write above, forced
+through `pre_update_option`: it is the only case the return of `$registered`
+changed, and without a test for it the constant could come back with the suite
+still green. It belongs to the wp-env suite for the ordinary
 reason (ADR 0008): the acceptance path runs through `NextJsRevalidate::init()`,
 the settings and `$wpdb`, none of which a standalone script can stub its way to.
 It therefore does not run in the AFK sandbox's gate (ADR 0006), and did not run
