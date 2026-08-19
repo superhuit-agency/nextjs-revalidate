@@ -83,3 +83,28 @@ without a WordPress runtime. Testing the seam is worth it anyway, because
 `missing_settings()` is what decides *which* of the two settings the notice names,
 and `is_configured()` — the precondition every revalidation is measured against —
 is now defined in terms of it.
+
+## Corrected once the drain read the outcome
+
+One consequence above is over-claimed. **The unconfigured branch in
+`Revalidate::purge()` is not unreachable from the drain.** "Nothing unconfigured
+reaches the queue" is true only of the moment an item is enqueued, and a queue
+entry outlives that moment: a site configured when an editor saved, and
+unconfigured by the time the drain cron runs — settings cleared, or a network
+subsite whose values were removed — drains items that were legitimately accepted
+and can no longer be delivered. `add_item()` refusing at the door narrows that
+window to the drain's own latency; it does not close it.
+
+So the branch is a live path, not a dead guard, and it now has a caller that
+reads it: `RevalidateQueue::log_purge_outcome()` (ADR 0004) branches on the
+`not_configured` code to write ⛔ *Refused* rather than ❌ *Failed*.
+
+This also widened **Refusal** in `CONTEXT.md`, which said a refused revalidation
+"never reaches the queue at all" — the same claim, made in the vocabulary. What
+separates a **refusal** from a **failure** is whether the front-end was asked
+anything, not how far down the queue the answer was given. Refusing at the door
+stays the preferred point, for every reason this ADR gives; it is simply not the
+only one.
+
+Nothing else here changes. The notice, the log line, `add_item()`'s return type
+and the options rejected above all stand.
