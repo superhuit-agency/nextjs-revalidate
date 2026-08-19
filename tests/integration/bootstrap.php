@@ -48,6 +48,21 @@ tests_add_filter(
 	}
 );
 
+// The Redirection plugin, which `.wp-env.json` installs alongside this one, so
+// the integration that listens to its redirects can be exercised. Loaded after
+// this plugin, as WordPress would load it, and only if it is there: an
+// integration is supported, never required, and this suite has to be able to
+// run without it.
+$njr_redirection = dirname( $njr_plugin_dir ) . '/redirection/redirection.php';
+if ( file_exists( $njr_redirection ) ) {
+	tests_add_filter(
+		'muplugins_loaded',
+		function () use ( $njr_redirection ) {
+			require_once $njr_redirection;
+		}
+	);
+}
+
 require $njr_tests_dir . '/includes/bootstrap.php';
 
 // Test cases and helpers autoload through composer's `autoload-dev`, so adding
@@ -57,3 +72,30 @@ require $njr_tests_dir . '/includes/bootstrap.php';
 // cannot create it, because the DDL would commit the transaction that isolates
 // that test. QueueTestCase empties the table between tests instead.
 NextJsRevalidate::init()->queue->create_table();
+
+// Redirection's tables, for the same reason and in the same place. The test
+// library activates no plugin, so nothing has run Redirection's installer.
+//
+// Its database classes are required by hand because Redirection does not load
+// them on its own: `redirection.php` requires its models at boot and nothing
+// else, autoloading only its `Redirection\ImportExport\` namespace, and the
+// database layer is pulled in later by the admin, api and CLI entry points —
+// none of which this suite loads. Asking `class_exists()` about the installer
+// therefore answers no on a site that is running Redirection, which is a
+// silent no rather than a failure: no tables, and every redirect test failing
+// on a `Red_Group::create()` that returns false.
+//
+// The installer itself is reached through `Red_Database::get_latest_database()`
+// rather than by naming `Red_Latest_Database`, because that method is what
+// includes the schema file the class lives in — and it is the name upstream
+// keeps stable while it moves its classes under a namespace.
+if ( isset( $njr_redirection ) && file_exists( $njr_redirection ) ) {
+	$njr_redirection_dir = dirname( $njr_redirection );
+
+	require_once $njr_redirection_dir . '/database/database-status.php';
+	require_once $njr_redirection_dir . '/database/database-upgrade.php';
+	require_once $njr_redirection_dir . '/database/database-upgrader.php';
+	require_once $njr_redirection_dir . '/database/database.php';
+
+	call_user_func( [ 'Red_Database', 'get_latest_database' ] )->install();
+}

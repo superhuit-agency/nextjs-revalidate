@@ -126,8 +126,19 @@ class RevalidateQueue extends Base {
 		$inserted = false;
 
 		$wpdb->query("START TRANSACTION");
-		$in_db = $wpdb->get_results("SELECT * FROM `$table_name` WHERE `permalink`='$permalink'");
-		if (count($in_db) === 0) {
+
+		// Prepared rather than interpolated: a permalink is not this plugin's own
+		// string. It arrives from the REST route, which sanitises with
+		// `sanitize_text_field()` — that leaves a quote intact — and from the
+		// Redirection integration, whose source paths are whatever an editor typed.
+		// A quote in either would break this statement and reach past it. The
+		// insert below was always escaped by `$wpdb->insert()`; this was the one
+		// raw statement in the queue that carried anything but a table name.
+		$already_queued = $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM `$table_name` WHERE `permalink` = %s", $permalink )
+		);
+
+		if (intval($already_queued) === 0) {
 			$inserted = $wpdb->insert(
 				$table_name,
 				[
