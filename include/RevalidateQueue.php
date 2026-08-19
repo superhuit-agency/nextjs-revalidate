@@ -118,10 +118,7 @@ class RevalidateQueue extends Base {
 				Logger::ERROR
 			);
 
-			return new WP_Error(
-				'not_configured',
-				__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
-			);
+			return $this->settings->not_configured_error();
 		}
 
 		$table_name = $this->get_table_name();

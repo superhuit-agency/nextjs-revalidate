@@ -51,7 +51,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property NextJsRevalidate\\Revalidate\:\:\$settings\.$#'
 			identifier: property.notFound
-			count: 6
+			count: 7
 			path: include/Revalidate.php
 
 		-
@@ -99,7 +99,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateQueue\:\:\$settings\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 3
 			path: include/RevalidateQueue.php
 
 		-

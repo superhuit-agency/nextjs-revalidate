@@ -166,15 +166,12 @@ class Revalidate extends Base {
 	 */
 	function purge( $permalink ) {
 
-		// A refusal rather than a failure: nothing was attempted. Unreachable
-		// from the drain, which refuses at enqueue time instead, and kept as a
-		// guard for any other caller.
-		if ( !$this->settings->is_configured() ) {
-			return new WP_Error(
-				'not_configured',
-				__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
-			);
-		}
+		// A refusal rather than a failure: the front-end is asked nothing at
+		// all. `add_item()` refuses at enqueue time, so the drain reaches this
+		// only for items enqueued while the site was still configured and
+		// drained after its settings were cleared — the same refusal, given
+		// later. It is also the guard for any other caller.
+		if ( !$this->settings->is_configured() ) return $this->settings->not_configured_error();
 
 		try {
 			$response = wp_remote_get(

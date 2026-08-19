@@ -98,6 +98,13 @@ class NextJsRevalidate_Test_Settings {
 		return empty( $this->missing_settings() );
 	}
 
+	public function not_configured_error() {
+		return new WP_Error(
+			'not_configured',
+			'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.'
+		);
+	}
+
 	public function __get( $name ) {
 		return $GLOBALS['njr_test_settings'][ $name ] ?? null;
 	}
