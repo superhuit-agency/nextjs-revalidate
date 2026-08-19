@@ -95,6 +95,14 @@ Ten and three are invented numbers. No data stands behind them, and the first
 site to hit a genuinely flaky front-end is the experiment that tests them. They
 are constants for exactly that reason.
 
+Recording is read-modify-write on an option, and up to four drains run at once,
+so two attempts finishing together can cost one outcome. Accepted rather than
+locked: the window is a sample of recent health and not a ledger, and a lost
+outcome moves the condition by one slot out of ten — inside the tolerance of
+numbers nobody has tuned yet. The cost is that a front-end which is fully down
+trips the notice an attempt or two later than it could have, never that it fails
+to trip.
+
 There is no aggregate view for a network administrator. Every piece of this
 plugin's state is per-site, so a network-admin notice would have no window to
 read, and computing a rollup means a sweep. Twenty sites means twenty dashboards

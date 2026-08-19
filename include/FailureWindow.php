@@ -121,7 +121,12 @@ class FailureWindow extends Base {
 	 * unconfigured site was never attempted against the front-end, so it is no
 	 * evidence about the front-end's health.
 	 *
-	 * @param true|WP_Error $outcome What `Revalidate::purge()` answered.
+	 * @param true|WP_Error $outcome What `Revalidate::purge()` answered. Only
+	 *                               `true` is a success: any other value —
+	 *                               including the `false` older code answered
+	 *                               with — is counted as a failure naming no
+	 *                               cause, deliberately, because a value this
+	 *                               does not recognise is still not a success.
 	 * @return void
 	 */
 	public static function record( $outcome ) {
@@ -135,6 +140,17 @@ class FailureWindow extends Base {
 			'code'   => $failed ? $code : '',
 		];
 
+		// Read-modify-write, and up to `RevalidateQueue::MAX_NB_RUNNING_CRON`
+		// drains run at once, so two attempts finishing together can cost one
+		// outcome. Left as it is: the window is a sample of recent health, not
+		// a ledger, and a lost outcome moves the condition by one slot out of
+		// ten — well inside the tolerance of numbers that were invented in the
+		// first place. Locking a per-site option to protect a threshold nobody
+		// has tuned yet would cost more than it buys. The one case worth
+		// naming is a front-end that is fully down, where the window fills
+		// slightly slower than the failures arrive and the notice appears an
+		// attempt or two later than it could have.
+		//
 		// Not autoloaded: the drain writes this once per attempt, and an
 		// autoloaded option would flush the whole alloptions cache each time.
 		update_option( self::OPTION_NAME, array_slice( $outcomes, -self::LENGTH ), false );
