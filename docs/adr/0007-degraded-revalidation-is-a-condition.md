@@ -106,11 +106,19 @@ issue's to make: the mechanism is now shared — a notice source localizes its o
 payload onto the editor script handle rather than being collected by `Assets` —
 and taking it is a couple of lines.
 
-The notice yields to #37's unconfigured notice when both would render. They are
-nearly exclusive already, since an unconfigured site refuses at enqueue and never
-accumulates attempts; the overlap is a site that was configured and failing and
-then lost a setting, where the window is evidence about a configuration that no
-longer exists.
+The notice yields to #37's unconfigured notice on the screens that render it.
+They are nearly exclusive already, since an unconfigured site refuses at enqueue
+and never accumulates attempts; the overlap is a site that was configured and
+failing and then lost a setting, where the window is evidence about a
+configuration that no longer exists.
+
+The yield stops at the block editor screen, and has to. Deferring there means
+deferring to a notice core hides, so a site that is unconfigured *and* degraded
+would be told nothing at all — on the one screen this ADR argues the reader is
+most likely to be on. Silence produced by two notices each assuming the other
+speaks is worse than either notice being slightly wrong, so on that screen this
+one speaks, and its link leads to the settings page the missing setting is on.
+The deference returns of its own accord once #37's notice reaches the editor.
 
 This depends on #49 twice over: for the definition of failure, and now for the
 `WP_Error` codes the notice names. A failure arriving without a code must still

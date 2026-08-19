@@ -432,6 +432,16 @@ read_as( ['manage_options'] );
 record_all( [ 'http_401', 'http_401', 'http_401' ] );
 assert_same( 'an unconfigured site says nothing, and yields to its own notice', null, ( new FailureWindow() )->get_degraded_notice() );
 
+// But not on a block editor screen, where the unconfigured notice is hidden:
+// yielding to a notice nobody can see leaves the reader told nothing at all.
+reset_site();
+read_as( ['manage_options'] );
+on_block_editor_screen();
+record_all( [ 'http_401', 'http_401', 'http_401' ] );
+$notice = ( new FailureWindow() )->get_degraded_notice();
+assert_same( 'an unconfigured site does not yield where the other notice is hidden', false, is_null( $notice ) );
+assert_contains( 'and points at the settings screen the missing setting is on', 'page=' . Settings::PAGE_NAME, $notice['action_url'] );
+
 // Whoever can do something about it is told what, and pointed at the settings.
 degraded_site();
 $notice = ( new FailureWindow() )->get_degraded_notice();

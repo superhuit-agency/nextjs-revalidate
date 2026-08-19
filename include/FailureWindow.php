@@ -216,13 +216,20 @@ class FailureWindow extends Base {
 	 */
 	public function get_degraded_notice() {
 
-		// Yields to the unconfigured notice. The two are nearly exclusive
-		// already, since an unconfigured site refuses at enqueue and never
-		// attempts anything; the overlap is a site that was configured and
-		// failing and then lost a setting, where the window is evidence about a
-		// configuration that no longer exists and the missing setting is the
-		// thing to fix.
-		if ( !$this->settings->is_configured() ) return null;
+		// Yields to the unconfigured notice, on the screens that actually
+		// render it. The two are nearly exclusive already, since an
+		// unconfigured site refuses at enqueue and never attempts anything; the
+		// overlap is a site that was configured and failing and then lost a
+		// setting, where the window is evidence about a configuration that no
+		// longer exists and the missing setting is the thing to fix.
+		//
+		// Yielding on a block editor screen would say nothing at all, because
+		// the unconfigured notice is still an `admin_notices` one and core
+		// hides those there. Deferring to a notice nobody can see is this
+		// class's own failure mode, on the one screen the operator is most
+		// likely to be reading — so on that screen this speaks instead, and its
+		// link leads to the settings page where the missing setting is.
+		if ( !$this->settings->is_configured() && !$this->is_block_editor_screen() ) return null;
 
 		if ( !self::is_degraded() ) return null;
 
