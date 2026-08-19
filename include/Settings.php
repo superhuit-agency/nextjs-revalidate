@@ -51,7 +51,7 @@ class Settings extends Base {
 	 * any of them stopped at. Ordered oldest first: a site left behind by
 	 * several releases holds several of these, and the oldest one wins.
 	 */
-	const DB_VERSION_FINGERPRINTS = [
+	private const DB_VERSION_FINGERPRINTS = [
 		// Options renamed by 1.5.0, when purge became revalidate.
 		'1.4.0' => [ 'nextjs_revalidate-allow_purge_all', 'nextjs-revalidate-purge_all' ],
 		// Options dropped by 1.6.0, when the queue moved to its own table.
@@ -516,6 +516,15 @@ class Settings extends Base {
 	 * A site holding none of them has data of the shape the running code
 	 * expects — either a fresh install, or one already carried past every
 	 * migration by the version comparison this replaces.
+	 *
+	 * That default is the limit of this inference, and it binds whoever adds
+	 * the next migration: a backfilled site is stamped with the release it is
+	 * running, so **a migration introduced by the same release that first runs
+	 * this code cannot be gated on the version alone** — every existing site
+	 * lands on that version before the gate is ever read, and skips it. Such a
+	 * migration needs a guard on the data's own state, as the settings split of
+	 * #29 has. From the release after, the ledger is authoritative and the
+	 * version gate is enough.
 	 *
 	 * @return string A version string, comparable with `version_compare()`.
 	 */

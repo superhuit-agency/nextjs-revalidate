@@ -53,7 +53,11 @@ define( 'NJR_URI', plugin_dir_url(__FILE__) );
 // `get_file_data()` rather than `get_plugin_data()`: the latter lives in an
 // admin-only include, and this constant is read on front-end requests too.
 $njr_plugin_header = get_file_data( __FILE__, [ 'Version' => 'Version' ] );
-define( 'NJR_VERSION', $njr_plugin_header['Version'] );
+// The fallback is the last release to ship without the migration ledger: a
+// header this cannot read would otherwise leave the constant empty, and an
+// empty version compares as older than every migration threshold — re-running
+// every migration body on every request, which is the bug this replaced.
+define( 'NJR_VERSION', $njr_plugin_header['Version'] ?: '1.6.9' );
 unset( $njr_plugin_header );
 
 // Load dependencies

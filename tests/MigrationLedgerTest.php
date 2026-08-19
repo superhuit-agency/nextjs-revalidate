@@ -251,7 +251,7 @@ check(
 	'the plugin header declares a version'
 );
 check(
-	preg_match( "/define\(\s*'NJR_VERSION'\s*,\s*['\"]/", $plugin_file ) !== 1,
+	preg_match( "/define\(\s*['\"]NJR_VERSION['\"]\s*,\s*['\"]/", $plugin_file ) === 0,
 	'NJR_VERSION is derived from the header, not written out beside it'
 );
 
