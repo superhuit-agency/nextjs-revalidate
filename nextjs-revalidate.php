@@ -16,7 +16,6 @@
  * @package NextJsRevalidate
  * @category Core
  * @author Superhuit, Kuuak
- * @version 1.3.0
  */
 /*
 Next.js revalidate is free software: you can redistribute it and/or modify
@@ -47,7 +46,19 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 define( 'NJR_PATH', __DIR__ );
 define( 'NJR_URI', plugin_dir_url(__FILE__) );
-define( 'NJR_VERSION', '1.6.0' );
+
+// The plugin version has exactly one source of truth: the header above.
+// Reading it back keeps the constant from drifting when a release bumps the
+// header — as it had, sitting at 1.6.0 while the plugin shipped 1.6.9.
+// `get_file_data()` rather than `get_plugin_data()`: the latter lives in an
+// admin-only include, and this constant is read on front-end requests too.
+$njr_plugin_header = get_file_data( __FILE__, [ 'Version' => 'Version' ] );
+// The fallback is the last release to ship without the migration ledger: a
+// header this cannot read would otherwise leave the constant empty, and an
+// empty version compares as older than every migration threshold — re-running
+// every migration body on every request, which is the bug this replaced.
+define( 'NJR_VERSION', $njr_plugin_header['Version'] ?: '1.6.9' );
+unset( $njr_plugin_header );
 
 // Load dependencies
 // ====
