@@ -4,10 +4,28 @@
 Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area.
 It also automatically purges & re-builds when a page/post/... is saved or updated.
 
-The revalidation request will be sent to the configured URL endpoint with two query arguments.
+The revalidation request is sent to an endpoint composed from the settings — the
+**revalidate domain** joined to the **revalidate path** — with two query arguments.
 
 1. The relative `path` to revalidate
 2. The `secret` to protect the revalidation endpoint.
+
+### Settings
+
+| Setting | Required | Default |
+| --- | --- | --- |
+| Revalidate domain | yes | — (e.g. `https://example.com`) |
+| Revalidate path | no | `/api/revalidate` |
+| FSE revalidate path | no | `/api/revalidate-fse` |
+| Revalidate secret | yes | — |
+
+A standard install fills in the domain and the secret. The paths exist for apps
+that route these endpoints somewhere else; each falls back to the default shown
+in its placeholder when left empty.
+
+Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
+split into a domain and a path automatically on the first admin request after the
+upgrade, custom paths and all — nothing to do by hand.
 
 ### Example
 ```
