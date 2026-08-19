@@ -417,6 +417,25 @@ class Settings extends Base {
 	}
 
 	/**
+	 * The refusal an unconfigured site answers every revalidation with.
+	 *
+	 * Declared once because it is raised from two places — `add_item()` refuses
+	 * at enqueue time, `purge()` guards the delivery it is unreachable from —
+	 * and a refusal that reads differently depending on which guard caught it
+	 * is a refusal an operator has to learn twice. The code is the contract:
+	 * `RestApi::process_items` reports it per item, and the drain branches on it
+	 * to write ⛔ rather than ❌.
+	 *
+	 * @return \WP_Error Always `not_configured`.
+	 */
+	public function not_configured_error() {
+		return new \WP_Error(
+			'not_configured',
+			__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+		);
+	}
+
+	/**
 	 * Tell whoever is looking at the admin that this site revalidates nothing.
 	 *
 	 * Not dismissible on purpose: an unconfigured site accepts edits and looks

@@ -118,10 +118,7 @@ class RevalidateQueue extends Base {
 				Logger::ERROR
 			);
 
-			return new WP_Error(
-				'not_configured',
-				__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
-			);
+			return $this->settings->not_configured_error();
 		}
 
 		$table_name = $this->get_table_name();
@@ -280,16 +277,62 @@ class RevalidateQueue extends Base {
 			$item = $this->get_next_item();
 
 			if ( $item ) {
-				$this->revalidate->purge( $item->permalink );
+				$outcome = $this->revalidate->purge( $item->permalink );
 
 				$t_to_revalidate = microtime(true) - $rev_start;
-				Logger::log("#$id: ✅ Revalidated in {$t_to_revalidate}s {$item->permalink} (priority: {$item->priority})", __FILE__);
+				$this->log_purge_outcome( $id, $item, $outcome, $t_to_revalidate );
 			}
 
 		} while ($item && $max_exec_time > (time() - $start_time) );
 
 		$this->remove_running_cron();
 		$this->schedule_next_cron();
+	}
+
+	/**
+	 * Write what became of one drained item.
+	 *
+	 * The item is already gone from the queue by the time this runs — delivery
+	 * is at most once, so a **failure** is recorded here and dropped, and this
+	 * line is the only surface it ever appears on. Which is why it names the
+	 * error code `purge()` came back with instead of a bare ❌: `unreachable`
+	 * and `http_401` send an operator to completely different places.
+	 * See `docs/adr/0004-at-most-once-revalidation.md`.
+	 *
+	 * @param string          $id        The id of the drain writing the line.
+	 * @param RevalidateItem  $item      The item that was drained.
+	 * @param true|WP_Error   $outcome   What `Revalidate::purge()` answered.
+	 * @param float           $duration  Seconds the attempt took.
+	 *
+	 * @return void
+	 */
+	private function log_purge_outcome( $id, $item, $outcome, $duration ) {
+
+		if ( ! is_wp_error($outcome) ) {
+			Logger::log( "#$id: ✅ Revalidated in {$duration}s {$item->permalink} (priority: {$item->priority})", __FILE__ );
+			return;
+		}
+
+		// A **refusal** is not a **failure**: an unconfigured site declined to
+		// deliver rather than tried and missed. Both end the revalidation's life
+		// here, and they send an operator to different places.
+		$is_refusal = ( 'not_configured' === $outcome->get_error_code() );
+
+		Logger::log(
+			sprintf(
+				'#%s: %s %s after %ss %s (priority: %s) — %s: %s',
+				$id,
+				$is_refusal ? '⛔' : '❌',
+				$is_refusal ? 'Refused' : 'Failed to revalidate',
+				$duration,
+				$item->permalink,
+				$item->priority,
+				$outcome->get_error_code(),
+				$outcome->get_error_message()
+			),
+			__FILE__,
+			Logger::ERROR
+		);
 	}
 
 	function admin_queue_notice() {
