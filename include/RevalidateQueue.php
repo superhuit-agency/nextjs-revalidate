@@ -280,6 +280,20 @@ class RevalidateQueue extends Base {
 				$outcome = $this->revalidate->purge( $item->permalink );
 
 				$t_to_revalidate = microtime(true) - $rev_start;
+
+				// `get_next_item()` has already deleted the row, and delivery is
+				// at most once, so this is the only moment the attempt is ever
+				// accounted for. The window is what an operator who has not
+				// switched logging on will see; the log line below is for one
+				// who has.
+				//
+				// A refusal is not evidence about the front-end — an
+				// unconfigured site was never attempted against it — so it is
+				// not an outcome the window records. The queue refuses at the
+				// door, so this only guards against ever being reached.
+				$refused = is_wp_error( $outcome ) && 'not_configured' === $outcome->get_error_code();
+				if ( !$refused ) FailureWindow::record( $outcome );
+
 				$this->log_purge_outcome( $id, $item, $outcome, $t_to_revalidate );
 			}
 

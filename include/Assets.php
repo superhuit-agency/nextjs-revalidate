@@ -8,6 +8,15 @@ class Assets {
 
 	const WEBPACK_PORT = 8000;
 
+	/**
+	 * The handle of the block editor script.
+	 *
+	 * Public because it is a rendezvous: core hides classic notices on an
+	 * editor screen, so anything this plugin has to say there is localized onto
+	 * this one script by whichever class owns the notice.
+	 */
+	const EDITOR_SCRIPT_HANDLE = 'njr-editor-script';
+
 	private $assets;
 
 	/**
@@ -71,18 +80,25 @@ class Assets {
 	}
 
 	/**
-	 * Enqueue the block editor script, which carries the purge notice core
-	 * would otherwise hide on an editor screen, and only when there is one.
+	 * Register the block editor script, and hand it the purge notice core
+	 * would otherwise hide on an editor screen.
+	 *
+	 * Registered whenever the asset exists, enqueued only by whoever has
+	 * something to say through it. Every notice this plugin renders on an
+	 * editor screen travels on this one script, and each of them localizes its
+	 * own payload onto the handle at a later priority — which is why the handle
+	 * is a constant, and why registration does not wait for a notice to exist.
 	 */
 	function enqueue_editor_assets() {
 		if ( empty($this->assets['editor']['js']) ) return;
 
+		wp_register_script( self::EDITOR_SCRIPT_HANDLE, $this->assets['editor']['js'], ['wp-data', 'wp-notices'], null, true );
+
 		$notice = NextJsRevalidate::init()->revalidate->get_block_editor_purged_notice();
 		if ( is_null($notice) ) return;
 
-		wp_register_script( 'njr-editor-script', $this->assets['editor']['js'], ['wp-data', 'wp-notices'], null, true );
-		wp_localize_script( 'njr-editor-script', 'nextjs_revalidate_notice', $notice );
-		wp_enqueue_script( 'njr-editor-script' );
+		wp_localize_script( self::EDITOR_SCRIPT_HANDLE, 'nextjs_revalidate_notice', $notice );
+		wp_enqueue_script( self::EDITOR_SCRIPT_HANDLE );
 	}
 
 	function enqueue_settings_assets( $hook ) {

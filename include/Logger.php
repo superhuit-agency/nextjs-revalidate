@@ -40,16 +40,16 @@ class Logger {
 		// name instead.
 		switch ($level) {
 			case self::ERROR:
-				$level='ERROR';
+				$label = 'ERROR';
 				break;
 
 			case self::DEBUG:
-				$level='DEBUG';
+				$label = 'DEBUG';
 				break;
 
 			case self::INFO:
 			default:
-				$level='INFO';
+				$label = 'INFO';
 				break;
 		}
 
@@ -64,7 +64,7 @@ class Logger {
 			sprintf(
 				"%s\t[%s]\t[%s]%s %s\n",
 				date("[Y-m-d H:i:s]"),
-				$level,
+				$label,
 				$filename,
 				$alignment,
 				$text

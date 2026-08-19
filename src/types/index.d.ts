@@ -10,6 +10,11 @@ declare global {
 			status: "success" | "error";
 			message: string;
 		};
+		nextjs_revalidate_degraded_notice?: {
+			status: "error";
+			message: string;
+			actions?: { label: string; url: string }[];
+		};
 		wp?: {
 			data?: {
 				dispatch: (store: string) => {

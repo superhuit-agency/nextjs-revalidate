@@ -4,6 +4,7 @@ namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Traits\AdminBarMenu;
+use NextJsRevalidate\Traits\BlockEditorScreen;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 use WP_Error;
@@ -14,6 +15,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 class Revalidate extends Base {
 	use AdminBarMenu;
+	use BlockEditorScreen;
 	use SendbackUrl;
 
 	/**
@@ -463,19 +465,6 @@ class Revalidate extends Base {
 	 */
 	public function get_block_editor_purged_notice() {
 		return $this->is_block_editor_screen() ? $this->get_purged_notice() : null;
-	}
-
-	/**
-	 * Whether the screen being rendered is a block editor one.
-	 *
-	 * @return bool
-	 */
-	private function is_block_editor_screen() {
-		if ( ! function_exists('get_current_screen') ) return false;
-
-		$screen = get_current_screen();
-
-		return ! is_null($screen) && method_exists($screen, 'is_block_editor') && $screen->is_block_editor();
 	}
 
 	function purged_notice() {
