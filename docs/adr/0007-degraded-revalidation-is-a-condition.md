@@ -66,6 +66,19 @@ and rejected for the reason the condition model exists: nothing per-failure is
 actionable. Delivery is at most once, so no listed failure can be retried or
 inspected to any purpose, and a list invites a reader to assume otherwise.
 
+**An `admin_notices` notice and nothing else.** The established pattern, and how
+the unconfigured notice reaches its reader. Kept, but not sufficient on its own:
+core hides every `admin_notices` output on a block editor screen — the selector
+`body.js.block-editor-page #wpbody-content > div:not(.block-editor)` in core's
+editor stylesheet — and the post edit screen is where the person this notice
+exists for actually is. An author saving a post is told the save succeeded, and
+the revalidation it produced is the one being dropped; a warning that reaches
+every admin screen except that one leaves the silence in place exactly where it
+costs the most. The notice is therefore dispatched to `core/notices` there
+instead, on the script the purge notice already travels on, and printed exactly
+once either way. It is not dismissible there either, for the reason it is not
+anywhere: it is a condition, and there is nothing to acknowledge.
+
 ## Consequences
 
 The failure window is the only piece of this plugin's state that is cleared on
@@ -82,16 +95,38 @@ Ten and three are invented numbers. No data stands behind them, and the first
 site to hit a genuinely flaky front-end is the experiment that tests them. They
 are constants for exactly that reason.
 
+Recording is read-modify-write on an option, and up to four drains run at once,
+so two attempts finishing together can cost one outcome. Accepted rather than
+locked: the window is a sample of recent health and not a ledger, and a lost
+outcome moves the condition by one slot out of ten — inside the tolerance of
+numbers nobody has tuned yet. The cost is that a front-end which is fully down
+trips the notice an attempt or two later than it could have, never that it fails
+to trip.
+
 There is no aggregate view for a network administrator. Every piece of this
 plugin's state is per-site, so a network-admin notice would have no window to
 read, and computing a rollup means a sweep. Twenty sites means twenty dashboards
 to check, and that is a known gap rather than an oversight.
 
-The notice yields to #37's unconfigured notice when both would render. They are
-nearly exclusive already, since an unconfigured site refuses at enqueue and never
-accumulates attempts; the overlap is a site that was configured and failing and
-then lost a setting, where the window is evidence about a configuration that no
-longer exists.
+The unconfigured notice (#37) is still an `admin_notices` one only, so it is
+hidden on a block editor screen the way this one was. Widening it is that
+issue's to make: the mechanism is now shared — a notice source localizes its own
+payload onto the editor script handle rather than being collected by `Assets` —
+and taking it is a couple of lines.
+
+The notice yields to #37's unconfigured notice on the screens that render it.
+They are nearly exclusive already, since an unconfigured site refuses at enqueue
+and never accumulates attempts; the overlap is a site that was configured and
+failing and then lost a setting, where the window is evidence about a
+configuration that no longer exists.
+
+The yield stops at the block editor screen, and has to. Deferring there means
+deferring to a notice core hides, so a site that is unconfigured *and* degraded
+would be told nothing at all — on the one screen this ADR argues the reader is
+most likely to be on. Silence produced by two notices each assuming the other
+speaks is worse than either notice being slightly wrong, so on that screen this
+one speaks, and its link leads to the settings page the missing setting is on.
+The deference returns of its own accord once #37's notice reaches the editor.
 
 This depends on #49 twice over: for the definition of failure, and now for the
 `WP_Error` codes the notice names. A failure arriving without a code must still

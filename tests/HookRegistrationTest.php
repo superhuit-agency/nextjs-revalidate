@@ -6,7 +6,7 @@
  * Two things are asserted, and they are the two halves of ADR-0003:
  *
  *  1. **Constructing a Hookable touches no global state.** Every one of the
- *     eight classes is constructed with the recorder watching, and the recorder
+ *     nine classes is constructed with the recorder watching, and the recorder
  *     stays empty. This is the property the whole convention exists for: an
  *     instance can be obtained for a single method call without paying for the
  *     hooks.
@@ -75,6 +75,13 @@ function register_deactivation_hook( $file, $callback ) {}
 function register_uninstall_hook( $file, $callback ) {}
 function plugin_dir_url( $file ) { return 'https://site.test/wp-content/plugins/nextjs-revalidate/'; }
 
+// The plugin file reads its own version out of its header, and the integration
+// asks whether the plugins have finished loading before it registers anything.
+function get_file_data( $file, $fields, $context = '' ) {
+	return array_map( function() { return ''; }, $fields );
+}
+function did_action( $name ) { return 0; }
+
 /**
  * Everything recorded since the last reset, and reset.
  *
@@ -95,9 +102,11 @@ require_once __DIR__ . '/../include/interfaces/Hookable.php';
 require_once __DIR__ . '/../include/abstracts/Base.php';
 require_once __DIR__ . '/../include/traits/AdminBarMenu.php';
 require_once __DIR__ . '/../include/traits/SendbackUrl.php';
+require_once __DIR__ . '/../include/traits/BlockEditorScreen.php';
 require_once __DIR__ . '/../include/I18n.php';
 require_once __DIR__ . '/../include/Assets.php';
 require_once __DIR__ . '/../include/Settings.php';
+require_once __DIR__ . '/../include/FailureWindow.php';
 require_once __DIR__ . '/../include/Revalidate.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
@@ -106,6 +115,7 @@ require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\Assets;
 use NextJsRevalidate\Cron\ScheduledPurges;
+use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\RestApi;
@@ -141,6 +151,11 @@ $expected_per_class = [
 		[ 'admin_init',    'register_fields',     10, 1 ],
 		[ 'admin_init',    'migrate_db',          10, 1 ],
 		[ 'admin_notices', 'unconfigured_notice', 10, 1 ],
+	],
+
+	FailureWindow::class => [
+		[ 'admin_notices',         'degraded_notice',        10, 1 ],
+		[ 'admin_enqueue_scripts', 'enqueue_editor_notice',  11, 1 ],
 	],
 
 	Revalidate::class => [
@@ -187,7 +202,11 @@ $expected_per_class = [
  * @var array
  */
 $expected_of_the_root = [
-	[ 'wp_initialize_site', 'NextJsRevalidate::setup_new_site', 100, 1 ],
+	// The integration registers after the Hookables, and defers the question of
+	// whether Redirection is installed to `plugins_loaded` — which, in this
+	// script, has not fired.
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Redirection::register_redirect_hooks', 10,  1 ],
+	[ 'wp_initialize_site', 'NextJsRevalidate::setup_new_site',                                      100, 1 ],
 ];
 
 /**

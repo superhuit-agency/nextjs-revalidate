@@ -1,6 +1,7 @@
 <?php
 /**
- * Configured site — Settings::missing_settings() and Settings::is_configured().
+ * Configured site — Settings::missing_settings(), Settings::is_configured() and
+ * Settings::not_configured_error().
  *
  * The plugin has no test framework and no WordPress to boot, so this is a
  * standalone script: it stubs the two option reads the pair is pure with
@@ -32,6 +33,21 @@ function get_option( $name, $default = false ) {
 	return array_key_exists( $name, $GLOBALS['njr_test_options'] )
 		? $GLOBALS['njr_test_options'][ $name ]
 		: $default;
+}
+
+function __( $text, $domain = null ) { return $text; }
+
+class WP_Error {
+	private $code;
+	private $message;
+
+	public function __construct( $code = '', $message = '' ) {
+		$this->code    = $code;
+		$this->message = $message;
+	}
+
+	public function get_error_code() { return $this->code; }
+	public function get_error_message() { return $this->message; }
 }
 
 // The subject
@@ -148,6 +164,31 @@ foreach ( $cases as [ $description, $options, $expected ] ) {
 			var_export( $expected_configured, true ),
 			var_export( $actual_configured, true )
 		);
+	}
+}
+
+// The refusal itself
+// ====
+//
+// Raised from two guards — `RevalidateQueue::add_item()` at enqueue time and
+// `Revalidate::purge()` at delivery time — and declared here so they cannot
+// drift apart. The *code* is the contract: `RestApi::process_items` reports it
+// per item, and the queue drain branches on it to write ⛔ rather than ❌.
+
+$refusal = $settings->not_configured_error();
+
+foreach ( [
+	[ $refusal instanceof WP_Error, 'an unconfigured site is refused with a WP_Error' ],
+	[ 'not_configured' === $refusal->get_error_code(), 'the refusal is coded `not_configured`, which is what callers branch on' ],
+	[ '' !== $refusal->get_error_message(), 'the refusal carries a message for whoever has to act on it' ],
+	[ false !== strpos( $refusal->get_error_message(), 'secret' ), 'the message names the secret as one of the two things missing' ],
+] as [ $condition, $description ] ) {
+	if ( $condition ) {
+		printf( "ok   — %s\n", $description );
+	}
+	else {
+		$failures++;
+		printf( "FAIL — %s\n", $description );
 	}
 }
 

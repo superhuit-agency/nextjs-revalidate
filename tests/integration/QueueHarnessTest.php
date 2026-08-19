@@ -156,6 +156,27 @@ class QueueHarnessTest extends QueueTestCase {
 	}
 
 	/**
+	 * A permalink holding a quote is stored whole, and still deduplicated.
+	 *
+	 * The queue's own lookup used to interpolate the permalink into its SQL, so
+	 * a quote broke the statement rather than being matched by it. Two callers
+	 * reach that lookup with a string this plugin did not write — the REST
+	 * route, whose `sanitize_text_field()` leaves a quote intact, and the
+	 * Redirection integration, whose source is whatever an editor typed — so
+	 * the character is asserted on directly here rather than assumed away.
+	 */
+	public function test_a_permalink_holding_a_quote_is_stored_and_deduplicated() {
+		$this->configure_site();
+
+		$permalink = home_url( "/o'brien's-page/" );
+
+		$this->assertNotFalse( $this->queue()->add_item( $permalink ), 'The first enqueue of a permalink holding a quote was refused.' );
+		$this->assertNotFalse( $this->queue()->add_item( $permalink ), 'The second enqueue was refused instead of recognising the permalink as already queued.' );
+
+		$this->assertQueueHolds( [ $permalink ] );
+	}
+
+	/**
 	 * Proving test 2 — the fixture path is reachable: a configured site
 	 * publishes a revalidatable post and the queue holds that post's permalink.
 	 *
