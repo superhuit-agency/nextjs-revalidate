@@ -118,11 +118,39 @@ would sensibly keep.
 > teardown alike: each enumerates the same declaration, so a setting cannot be
 > added to one of them and forgotten in another.
 
+**Revalidate domain**:
+The scheme, host and port of the Next.js app this site talks to — everything an
+endpoint URL has in common, stored once. One of the two settings a site cannot
+revalidate without.
+_Avoid_: Revalidate URL, front-end URL — the URL is composed, and naming the
+stored half after the composed whole is what made a second endpoint unaddressable.
+
+**Endpoint path**:
+The route one kind of revalidation is served at on that app — `/api/revalidate`
+for a single path, `/api/revalidate-fse` for the FSE snapshot. Stored per
+endpoint and optional: a path left empty composes from the **default path** for
+that endpoint, so a standard install supplies a domain and a secret and nothing
+else. Whatever the operator's app routes, kept verbatim — never derived from
+another path by string surgery.
+
+**Endpoint URL**:
+A **revalidate domain** and an **endpoint path** joined by exactly one slash, at
+the moment a revalidation is sent. Composed, never stored: the settings hold the
+two halves, and nothing in the options table is an endpoint URL.
+
+> **Default path** and **empty value** are different things and both apply to a
+> path setting. Its empty value is `''` — what a read yields on a site holding no
+> row, as for every other scalar setting. Its default path is what *composition*
+> substitutes for that `''`. The empty value still means absence; it is only the
+> composition that has an opinion about what absence should resolve to.
+
 **Configured site**:
 A site holding both of the settings a revalidation cannot be delivered without —
-the revalidate URL and the secret. The precondition for every revalidation, and a
-per-site property: on a network each site is configured or not on its own, and a
-newly created site starts unconfigured by design. Half-configured is unconfigured.
+the revalidate domain and the secret. The **endpoint paths** are deliberately not
+among them, because each falls back to a default. The precondition for every
+revalidation, and a per-site property: on a network each site is configured or
+not on its own, and a newly created site starts unconfigured by design.
+Half-configured is unconfigured.
 _Avoid_: Set up, installed — site setup is the plugin preparing a site, which
 says nothing about whether an operator has since supplied these two values.
 

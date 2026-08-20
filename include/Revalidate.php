@@ -215,7 +215,7 @@ class Revalidate extends Base implements Hookable {
 				'path'   => wp_make_link_relative( $permalink ),
 				'secret' => $this->settings->secret
 			],
-			$this->settings->url
+			$this->settings->revalidate_endpoint_url()
 		);
 	}
 

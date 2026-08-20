@@ -217,7 +217,7 @@ function register_editor_script() {
  * without. The notice yields to the unconfigured one on a site without them.
  */
 function configure_site() {
-	$GLOBALS['njr_test_options'][ Settings::SETTINGS_URL_NAME ]    = 'https://front-end.test/api/revalidate';
+	$GLOBALS['njr_test_options'][ Settings::SETTINGS_DOMAIN_NAME ] = 'https://front-end.test';
 	$GLOBALS['njr_test_options'][ Settings::SETTINGS_SECRET_NAME ] = 's3cret';
 }
 

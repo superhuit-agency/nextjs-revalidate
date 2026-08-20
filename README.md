@@ -4,10 +4,28 @@
 Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area.
 It also automatically purges & re-builds when a page/post/... is saved or updated.
 
-The revalidation request will be sent to the configured URL endpoint with two query arguments.
+The revalidation request is sent to an endpoint composed from the settings — the
+**revalidate domain** joined to the **revalidate path** — with two query arguments.
 
 1. The relative `path` to revalidate
 2. The `secret` to protect the revalidation endpoint.
+
+### Settings
+
+| Setting | Required | Default |
+| --- | --- | --- |
+| Revalidate domain | yes | — (e.g. `https://example.com`) |
+| Revalidate path | no | `/api/revalidate` |
+| FSE revalidate path | no | `/api/revalidate-fse` |
+| Revalidate secret | yes | — |
+
+A standard install fills in the domain and the secret. The paths exist for apps
+that route these endpoints somewhere else; each falls back to the default shown
+in its placeholder when left empty.
+
+Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
+split into a domain and a path automatically on the first admin request after the
+upgrade, custom paths and all — nothing to do by hand.
 
 ### Example
 ```
@@ -54,8 +72,8 @@ nextjs_revalidate_purge_url( $url );
 #### Returns
 
 `bool` — whether the revalidation was accepted into the queue. It is `false`
-when the site is unconfigured, which is a **refusal**: the revalidate URL or the
-secret is missing, nothing has been queued, and nothing will be. It is also
+when the site is unconfigured, which is a **refusal**: the revalidate domain or
+the secret is missing, nothing has been queued, and nothing will be. It is also
 `false` if the queue insert failed. A URL already waiting in the queue is
 accepted (`true`) without being queued twice.
 

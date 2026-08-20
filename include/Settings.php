@@ -5,13 +5,29 @@ namespace NextJsRevalidate;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Interfaces\Hookable;
 
+/**
+ * Every setting is read as a property off this class, through `__get()`.
+ * Declared here so static analysis can see the surface the options table below
+ * defines at runtime, and so the pair cannot drift apart unnoticed: a setting
+ * added to `OPTIONS` and forgotten here reads fine and analyses as undefined.
+ *
+ * @property string $domain                  The scheme, host and port of the front-end.
+ * @property string $endpoint_path           The revalidate route, or '' for the default.
+ * @property string $fse_endpoint_path       The FSE revalidate route, or '' for the default.
+ * @property string $secret                  The shared secret every request carries.
+ * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
+ * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
+ * @property array  $debug                   Debug switches, keyed by name.
+ */
 class Settings extends Base implements Hookable {
 
 	const PAGE_NAME = 'nextjs-revalidate-settings';
 
 	const SETTINGS_GROUP = 'nextjs-revalidate-settings';
 
-	const SETTINGS_URL_NAME = 'nextjs_revalidate-url';
+	const SETTINGS_DOMAIN_NAME = 'nextjs_revalidate-domain';
+	const SETTINGS_ENDPOINT_PATH_NAME = 'nextjs_revalidate-endpoint_path';
+	const SETTINGS_FSE_ENDPOINT_PATH_NAME = 'nextjs_revalidate-fse_endpoint_path';
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
 	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
@@ -29,12 +45,33 @@ class Settings extends Base implements Hookable {
 	 * setting cannot be added to one of them and forgotten in another.
 	 */
 	private const OPTIONS = [
-		'url'                     => [ 'name' => self::SETTINGS_URL_NAME,                  'empty' => ''  ],
-		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => ''  ],
-		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => []  ],
-		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => []  ],
-		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => []  ],
+		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,                   'empty' => ''  ],
+		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,            'empty' => ''  ],
+		'fse_endpoint_path'       => [ 'name' => self::SETTINGS_FSE_ENDPOINT_PATH_NAME,        'empty' => ''  ],
+		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,                   'empty' => ''  ],
+		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,     'empty' => []  ],
+		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,       'empty' => []  ],
+		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                         'empty' => []  ],
 	];
+
+	/**
+	 * The path each endpoint is reached at on a Next.js app that has not been
+	 * told otherwise.
+	 *
+	 * A default rather than a seeded value: an empty path field means "whatever
+	 * this release ships", so an app that renames its route later is a one-field
+	 * edit, and a standard install never has to look at these at all.
+	 */
+	const DEFAULT_ENDPOINT_PATH = '/api/revalidate';
+	const DEFAULT_FSE_ENDPOINT_PATH = '/api/revalidate-fse';
+
+	/**
+	 * The single, fully-qualified revalidate URL this plugin stored until 1.7.0.
+	 *
+	 * Kept only so the migration that splits it into a domain and a path can
+	 * name it, and so an uninstall takes it with the rest. Nothing reads it.
+	 */
+	const LEGACY_URL_OPTION_NAME = 'nextjs_revalidate-url';
 
 	/**
 	 * The migration ledger: the per-site record of the DB version, i.e. the
@@ -82,6 +119,34 @@ class Settings extends Base implements Hookable {
 		if ( is_array($empty) ) return is_array($value) ? $value : $empty;
 
 		return $value === false ? $empty : $value;
+	}
+
+	/**
+	 * Whether a setting reads as set, for `isset()` and `empty()`.
+	 *
+	 * PHP routes both of those to `__isset()` rather than `__get()`, so without
+	 * this every `empty( $this->some_setting )` answers *true* on a configured
+	 * site — silently, and only for code written in the obvious way. The trap
+	 * is what `missing_settings()` is dodging by reading each setting into a
+	 * local first, and it has already cost one debugging session.
+	 *
+	 * A setting reads as set exactly when its value is not the empty value the
+	 * setting's type falls back to, so `empty()` here agrees with `empty()` on
+	 * the value `__get()` would have answered.
+	 *
+	 * @param string $name
+	 * @return bool
+	 */
+	public function __isset( $name ) {
+
+		if ( !isset(self::OPTIONS[$name]) ) return false;
+
+		// `__get()` by name, not `$this->$name`: PHP routes that back here,
+		// and its guard against re-entering a magic method already in progress
+		// would answer for an undefined property instead of reading the option.
+		$value = $this->__get( $name );
+
+		return !empty( $value );
 	}
 
 	/**
@@ -192,15 +257,57 @@ class Settings extends Base implements Hookable {
 		);
 
 		add_settings_field(
-			'nextjs_url',
-			__('Revalidate url', 'nextjs-revalidate'),
+			'nextjs_domain',
+			__('Revalidate domain', 'nextjs-revalidate'),
 			function ($args) {
 				printf(
 					'<input type="url" id="%1$s" name="%1$s" value="%2$s" placeholder="%3$s" class="regular-text code" />',
-					self::SETTINGS_URL_NAME,
-					$this->url,
-					'https://example.com/api/revalidate'
+					self::SETTINGS_DOMAIN_NAME,
+					esc_attr( $this->domain ),
+					'https://example.com'
+				);
+			},
+			self::PAGE_NAME,
+			'nextjs-revalidate-section'
+		);
+
+		// The paths are optional, and the placeholder is how an operator knows
+		// it: a field left empty is the default shown in it, not a blank.
+		$path_field = function ( $option_name, $value, $default, $help ) {
+			printf(
+				'<input type="text" id="%1$s" name="%1$s" value="%2$s" placeholder="%3$s" class="regular-text code" /><p class="description">%4$s</p>',
+				$option_name,
+				esc_attr( $value ),
+				esc_attr( $default ),
+				esc_html( $help )
 			);
+		};
+
+		add_settings_field(
+			'nextjs_path',
+			__('Revalidate path', 'nextjs-revalidate'),
+			function ($args) use ( $path_field ) {
+				$path_field(
+					self::SETTINGS_ENDPOINT_PATH_NAME,
+					$this->endpoint_path,
+					self::DEFAULT_ENDPOINT_PATH,
+					__('Optional. The route that revalidates a single path on the front-end. Leave empty for the default.', 'nextjs-revalidate')
+				);
+			},
+			self::PAGE_NAME,
+			'nextjs-revalidate-section'
+		);
+
+		add_settings_field(
+			'nextjs_fse_path',
+			__('FSE revalidate path', 'nextjs-revalidate'),
+			function ($args) use ( $path_field ) {
+				$path_field(
+					self::SETTINGS_FSE_ENDPOINT_PATH_NAME,
+					$this->fse_endpoint_path,
+					self::DEFAULT_FSE_ENDPOINT_PATH,
+					__('Optional. The route that invalidates the front-end’s FSE template snapshot. Leave empty for the default.', 'nextjs-revalidate')
+				);
 			},
 			self::PAGE_NAME,
 			'nextjs-revalidate-section'
@@ -213,7 +320,7 @@ class Settings extends Base implements Hookable {
 				printf(
 					'<input type="password" id="%1$s" name="%1$s" value="%2$s" class="regular-text code" />',
 					self::SETTINGS_SECRET_NAME,
-					$this->secret
+					esc_attr( $this->secret )
 				);
 			},
 			self::PAGE_NAME,
@@ -368,6 +475,11 @@ class Settings extends Base implements Hookable {
 			delete_option( $setting['name'] );
 		}
 
+		// The URL the settings above were split out of, on a site upgraded
+		// before it was ever visited in the admin: the migration that consumes
+		// it may not have run, and it is this site's data either way.
+		delete_option( self::LEGACY_URL_OPTION_NAME );
+
 		// The migration ledger goes with the data it describes: left behind, a
 		// later reinstall would read it, believe this site's options already
 		// have the running code's shape, and skip migrations that must run.
@@ -387,18 +499,80 @@ class Settings extends Base implements Hookable {
 	}
 
 	/**
+	 * The URL a revalidation is sent to.
+	 *
+	 * @return string Empty on a site holding no domain.
+	 */
+	public function revalidate_endpoint_url() {
+		return $this->endpoint_url( $this->endpoint_path, self::DEFAULT_ENDPOINT_PATH );
+	}
+
+	/**
+	 * The URL an FSE snapshot invalidation is sent to.
+	 *
+	 * @return string Empty on a site holding no domain.
+	 */
+	public function fse_endpoint_url() {
+		return $this->endpoint_url( $this->fse_endpoint_path, self::DEFAULT_FSE_ENDPOINT_PATH );
+	}
+
+	/**
+	 * Compose one endpoint from the site's domain and a path.
+	 *
+	 * The two halves are stored separately because the front-end serves several
+	 * endpoints on one app, and deriving the second by string surgery on the
+	 * first breaks the moment a route is named anything but the default.
+	 *
+	 * Exactly one slash joins them, whichever way the operator typed each half.
+	 * A path holding nothing but slashes is a field left empty rather than a
+	 * request to revalidate against the domain root, which no app serves.
+	 *
+	 * Answers the empty string on a site with no domain, rather than a bare
+	 * path: nothing composes an endpoint without an `is_configured()` guard
+	 * first, and this is what keeps a mistake there from becoming a request to
+	 * a relative URL.
+	 *
+	 * Both halves are trimmed first. Neither field is sanitised on save, and a
+	 * domain pasted in with a trailing space composes a URL `wp_remote_get()`
+	 * rejects — a revalidation that fails for a reason nothing on screen names.
+	 * Trimming here rather than on save also covers the rows already stored.
+	 *
+	 * @param string $path    The path the operator supplied, possibly empty.
+	 * @param string $default The path to use when they supplied none.
+	 *
+	 * @return string
+	 */
+	private function endpoint_url( $path, $default ) {
+		$domain = untrailingslashit( trim( (string) $this->domain ) );
+		if ( empty($domain) ) return '';
+
+		$path = untrailingslashit( trim( (string) $path ) );
+		if ( empty($path) ) $path = $default;
+
+		return $domain . '/' . ltrim( $path, '/' );
+	}
+
+	/**
 	 * The settings a revalidation cannot be delivered without,
 	 * which the site has no value for.
 	 *
-	 * @return string[] Any of 'url' and 'secret'. Empty on a configured site.
+	 * The paths are deliberately not among them: each falls back to a default,
+	 * so a standard install configures a domain and a secret and nothing else.
+	 *
+	 * A field holding nothing but whitespace is a field nobody filled in. It has
+	 * to read as missing here, because `endpoint_url()` trims before composing
+	 * and would answer nothing for it — a site reported as configured which
+	 * cannot address its front-end is exactly the silence the notice exists for.
+	 *
+	 * @return string[] Any of 'domain' and 'secret'. Empty on a configured site.
 	 */
 	public function missing_settings() {
 		$missing = [];
 
-		$url = $this->url;
-		if ( empty($url) ) $missing[] = 'url';
+		$domain = trim( (string) $this->domain );
+		if ( empty($domain) ) $missing[] = 'domain';
 
-		$secret = $this->secret;
+		$secret = trim( (string) $this->secret );
 		if ( empty($secret) ) $missing[] = 'secret';
 
 		return $missing;
@@ -429,7 +603,7 @@ class Settings extends Base implements Hookable {
 	public function not_configured_error() {
 		return new \WP_Error(
 			'not_configured',
-			__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+			__( 'Next.js revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
 		);
 	}
 
@@ -450,8 +624,8 @@ class Settings extends Base implements Hookable {
 		if ( !$can_configure && !current_user_can( 'edit_posts' ) ) return;
 
 		$missing = $this->missing_settings();
-		if ( count($missing) > 1 )                     $what = __( 'its revalidate URL and secret are missing', 'nextjs-revalidate' );
-		else if ( in_array('url', $missing, true) )    $what = __( 'its revalidate URL is missing', 'nextjs-revalidate' );
+		if ( count($missing) > 1 )                     $what = __( 'its revalidate domain and secret are missing', 'nextjs-revalidate' );
+		else if ( in_array('domain', $missing, true) ) $what = __( 'its revalidate domain is missing', 'nextjs-revalidate' );
 		else                                           $what = __( 'its secret is missing', 'nextjs-revalidate' );
 
 		$message = esc_html(
@@ -518,12 +692,80 @@ class Settings extends Base implements Hookable {
 			delete_option('nextjs-revalidate-revalidate_all');
 		}
 
+		// 1.7.0 — the single revalidate URL split into a domain and a path per
+		// endpoint. Guarded on the data rather than on the version, and not by
+		// preference: every site predating the ledger is backfilled to the
+		// release that introduces it, so a version gate on that same release
+		// would be read after the site had already been stamped past it, and
+		// would never fire for anybody. See `backfill_db_version()`.
+		$this->split_legacy_url();
+
 		// Stamp the ledger, so none of the above is eligible to run again.
 		// A site whose data was migrated by newer code than is running now
 		// keeps its higher version: a downgrade must not make migrations it
 		// has already been through eligible again.
 		$stamp = version_compare( $db_version, NJR_VERSION, '>' ) ? $db_version : NJR_VERSION;
 		if ( $stamp !== $stored ) update_option( self::DB_VERSION_OPTION_NAME, $stamp );
+	}
+
+	/**
+	 * Split the legacy revalidate URL into the domain and path it was always
+	 * two halves of.
+	 *
+	 * Runs iff this site holds no domain and a non-empty legacy URL — a
+	 * condition on the data itself, which makes it idempotent by construction:
+	 * it runs exactly once per site, in whatever order it is reached, and it
+	 * cannot be re-entered afterwards. That matters more here than it looks:
+	 * `migrate_db()` runs on every `admin_init`, and an unguarded re-split
+	 * would overwrite an operator's edits to either field on every page load.
+	 *
+	 * The path is preserved verbatim rather than assumed to be the default —
+	 * it is whatever the operator's Next.js app routes, and nothing else in the
+	 * system knows it. Only the scheme, credentials, host, port and path are
+	 * carried over, so query args an operator pasted in with the URL are
+	 * dropped by construction rather than stripped.
+	 *
+	 * @return void
+	 */
+	private function split_legacy_url() {
+
+		if ( ! empty( $this->domain ) ) return;
+
+		$legacy = get_option( self::LEGACY_URL_OPTION_NAME );
+		if ( ! is_string($legacy) || $legacy === '' ) return;
+
+		$parts = wp_parse_url( $legacy );
+
+		// Too broken to parse. Left where it is on purpose: discarding an
+		// operator's only record of their endpoint is the one outcome worse
+		// than the unconfigured site they have until they retype it.
+		if ( ! is_array($parts) || empty($parts['host']) ) return;
+
+		$domain = ( empty($parts['scheme']) ? 'https' : $parts['scheme'] ) . '://';
+
+		// Basic-auth credentials belong to the domain. A protected staging
+		// front-end is exactly the kind of site that carries them, and dropping
+		// them turns a working install into one that 401s silently.
+		if ( ! empty($parts['user']) ) {
+			$domain .= $parts['user'];
+			if ( ! empty($parts['pass']) ) $domain .= ':' . $parts['pass'];
+			$domain .= '@';
+		}
+
+		$domain .= $parts['host'];
+		if ( ! empty($parts['port']) ) $domain .= ':' . $parts['port'];
+
+		// A trailing slash belongs to neither half — the composition puts
+		// exactly one slash between them.
+		$path = untrailingslashit( isset($parts['path']) ? $parts['path'] : '' );
+
+		update_option( self::SETTINGS_DOMAIN_NAME, $domain );
+
+		// A legacy URL that was a bare domain carries no path to preserve, and
+		// writing an empty one would say the operator had cleared the field.
+		if ( $path !== '' ) update_option( self::SETTINGS_ENDPOINT_PATH_NAME, $path );
+
+		delete_option( self::LEGACY_URL_OPTION_NAME );
 	}
 
 	/**

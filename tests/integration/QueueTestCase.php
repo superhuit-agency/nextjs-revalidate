@@ -55,9 +55,9 @@ use WP_UnitTestCase;
 abstract class QueueTestCase extends WP_UnitTestCase {
 
 	/**
-	 * The revalidate url a configured fixture site holds.
+	 * The revalidate domain a configured fixture site holds.
 	 */
-	const FIXTURE_URL = 'https://front-end.test/api/revalidate';
+	const FIXTURE_DOMAIN = 'https://front-end.test';
 
 	/**
 	 * The secret a configured fixture site holds.
@@ -142,7 +142,7 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 * @return void
 	 */
 	protected function configure_site() {
-		update_option( Settings::SETTINGS_URL_NAME, self::FIXTURE_URL );
+		update_option( Settings::SETTINGS_DOMAIN_NAME, self::FIXTURE_DOMAIN );
 		update_option( Settings::SETTINGS_SECRET_NAME, self::FIXTURE_SECRET );
 	}
 
@@ -156,7 +156,7 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 * @return void
 	 */
 	protected function unconfigure_site() {
-		delete_option( Settings::SETTINGS_URL_NAME );
+		delete_option( Settings::SETTINGS_DOMAIN_NAME );
 		delete_option( Settings::SETTINGS_SECRET_NAME );
 	}
 

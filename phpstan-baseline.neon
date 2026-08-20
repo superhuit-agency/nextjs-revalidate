@@ -19,12 +19,6 @@ parameters:
 			path: include/Cron/ScheduledPurges.php
 
 		-
-			message: '#^Access to an undefined property NextJsRevalidate\\Settings\:\:\$debug\.$#'
-			identifier: property.notFound
-			count: 1
-			path: include/Logger.php
-
-		-
 			message: '#^Access to private property NextJsRevalidate\:\:\$settings\.$#'
 			identifier: property.private
 			count: 1
@@ -112,18 +106,6 @@ parameters:
 			message: '#^Access to an undefined property NextJsRevalidate\\Settings\:\:\$queue\.$#'
 			identifier: property.notFound
 			count: 1
-			path: include/Settings.php
-
-		-
-			message: '#^Access to an undefined property NextJsRevalidate\\Settings\:\:\$secret\.$#'
-			identifier: property.notFound
-			count: 2
-			path: include/Settings.php
-
-		-
-			message: '#^Access to an undefined property NextJsRevalidate\\Settings\:\:\$url\.$#'
-			identifier: property.notFound
-			count: 2
 			path: include/Settings.php
 
 		-

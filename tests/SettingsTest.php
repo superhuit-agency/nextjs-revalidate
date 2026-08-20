@@ -59,7 +59,7 @@ require_once __DIR__ . '/../include/Settings.php';
 
 $settings = new NextJsRevalidate\Settings();
 
-$url    = NextJsRevalidate\Settings::SETTINGS_URL_NAME;
+$domain = NextJsRevalidate\Settings::SETTINGS_DOMAIN_NAME;
 $secret = NextJsRevalidate\Settings::SETTINGS_SECRET_NAME;
 
 // The expectations
@@ -70,66 +70,88 @@ $cases = [
 
 	[
 		'a site holding both settings is configured',
-		[ $url => 'https://front-end.test/api/revalidate', $secret => 's3cret' ],
+		[ $domain => 'https://front-end.test', $secret => 's3cret' ],
+		[],
+	],
+
+	// #29 — the paths are optional by design: a site that supplies neither is
+	// configured, and composes both endpoints from their defaults.
+	[
+		'a site holding no paths is still configured',
+		[ $domain => 'https://front-end.test', $secret => 's3cret', NextJsRevalidate\Settings::SETTINGS_ENDPOINT_PATH_NAME => '', NextJsRevalidate\Settings::SETTINGS_FSE_ENDPOINT_PATH_NAME => '' ],
 		[],
 	],
 
 	// Half-configured is unconfigured, and the pair names which half.
 	[
 		'a site holding no secret is missing the secret',
-		[ $url => 'https://front-end.test/api/revalidate' ],
+		[ $domain => 'https://front-end.test' ],
 		[ 'secret' ],
 	],
 	[
-		'a site holding no url is missing the url',
+		'a site holding no domain is missing the domain',
 		[ $secret => 's3cret' ],
-		[ 'url' ],
+		[ 'domain' ],
 	],
 	[
 		'a site holding neither is missing both',
 		[],
-		[ 'url', 'secret' ],
+		[ 'domain', 'secret' ],
 	],
 
 	// A row that exists but holds nothing means what an absent row means:
 	// an operator who cleared the field has not configured the site.
 	[
-		'a site holding an empty url is missing the url',
-		[ $url => '', $secret => 's3cret' ],
-		[ 'url' ],
+		'a site holding an empty domain is missing the domain',
+		[ $domain => '', $secret => 's3cret' ],
+		[ 'domain' ],
 	],
 	[
 		'a site holding an empty secret is missing the secret',
-		[ $url => 'https://front-end.test/api/revalidate', $secret => '' ],
+		[ $domain => 'https://front-end.test', $secret => '' ],
 		[ 'secret' ],
 	],
 
 	// #65: a site can hold a row stored as false. A read yields the setting's
 	// own type, so the pair sees `''` rather than a boolean.
 	[
-		'a site holding a false url is missing the url',
-		[ $url => false, $secret => 's3cret' ],
-		[ 'url' ],
+		'a site holding a false domain is missing the domain',
+		[ $domain => false, $secret => 's3cret' ],
+		[ 'domain' ],
 	],
 	[
 		'a site holding a false secret is missing the secret',
-		[ $url => 'https://front-end.test/api/revalidate', $secret => false ],
+		[ $domain => 'https://front-end.test', $secret => false ],
+		[ 'secret' ],
+	],
+
+	// A field holding nothing but whitespace is a field nobody filled in, and
+	// `endpoint_url()` trims before composing — so reporting such a site as
+	// configured would leave it unable to address its front-end, silently.
+	[
+		'a site holding a whitespace-only domain is missing the domain',
+		[ $domain => '   ', $secret => 's3cret' ],
+		[ 'domain' ],
+	],
+	[
+		'a site holding a whitespace-only secret is missing the secret',
+		[ $domain => 'https://front-end.test', $secret => "\t\n" ],
 		[ 'secret' ],
 	],
 
 	// The order the two are named in does not depend on which is present.
 	[
-		'the missing settings are named url first, secret second',
-		[ $url => '', $secret => '' ],
-		[ 'url', 'secret' ],
+		'the missing settings are named domain first, secret second',
+		[ $domain => '', $secret => '' ],
+		[ 'domain', 'secret' ],
 	],
 
 	// A consequence of testing the values with `empty()`, recorded rather than
-	// worked around: neither a revalidate URL nor a secret can meaningfully be
+	// worked around: neither a revalidate domain nor a secret can meaningfully be
 	// the string "0", so reading one as absent costs nothing.
 	[
 		'a secret of "0" reads as missing',
-		[ $url => 'https://front-end.test/api/revalidate', $secret => '0' ],
+		[ $domain => 'https://front-end.test', $secret => '0' ],
 		[ 'secret' ],
 	],
 ];
@@ -190,6 +212,44 @@ foreach ( [
 		$failures++;
 		printf( "FAIL — %s\n", $description );
 	}
+}
+
+// A setting read through `empty()` or `isset()` means what a read of it means.
+// ====
+//
+// PHP routes both to `__isset()` rather than `__get()`, so a Settings without
+// one answers "empty" for every setting on a fully configured site — silently,
+// and only for code written the obvious way. It cost a debugging session on
+// #29's own migration guard, which is why it is pinned here rather than merely
+// worked around by reading into a local, as the cases above still do.
+$GLOBALS['njr_test_options'] = [ $domain => 'https://front-end.test', $secret => 's3cret' ];
+
+$empty_checks = [
+	[ 'domain', false ],
+	[ 'secret', false ],
+	// A setting the site holds no row for really is empty.
+	[ 'endpoint_path', true ],
+];
+
+foreach ( $empty_checks as [ $name, $expected_empty ] ) {
+	$actual_empty = empty( $settings->$name );
+
+	if ( $actual_empty === $expected_empty ) {
+		printf( "ok   — empty(\$settings->%s) is %s, as a read of it is\n", $name, var_export( $expected_empty, true ) );
+	}
+	else {
+		$failures++;
+		printf( "FAIL — empty(\$settings->%s) is %s, but a read of it answers %s\n", $name, var_export( $actual_empty, true ), json_encode( $settings->$name ) );
+	}
+}
+
+// Nothing outside the settings declaration is a setting, however it is asked.
+if ( ! isset( $settings->not_a_setting ) ) {
+	printf( "ok   — a name that is not a setting is not set\n" );
+}
+else {
+	$failures++;
+	printf( "FAIL — a name that is not a setting reads as set\n" );
 }
 
 printf( "\n%d failure(s)\n", $failures );

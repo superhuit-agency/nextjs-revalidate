@@ -38,7 +38,7 @@ $GLOBALS['njr_test_requested_url'] = null;
  * unconfigured one.
  * @var array
  */
-$GLOBALS['njr_test_settings'] = [ 'url' => '', 'secret' => '' ];
+$GLOBALS['njr_test_settings'] = [ 'domain' => '', 'secret' => '' ];
 
 // WordPress stubs
 // ====
@@ -88,7 +88,7 @@ class WP_Error {
 class NextJsRevalidate_Test_Settings {
 	public function missing_settings() {
 		$missing = [];
-		if ( empty( $GLOBALS['njr_test_settings']['url'] ) )    $missing[] = 'url';
+		if ( empty( $GLOBALS['njr_test_settings']['domain'] ) ) $missing[] = 'domain';
 		if ( empty( $GLOBALS['njr_test_settings']['secret'] ) ) $missing[] = 'secret';
 
 		return $missing;
@@ -101,8 +101,18 @@ class NextJsRevalidate_Test_Settings {
 	public function not_configured_error() {
 		return new WP_Error(
 			'not_configured',
-			'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.'
+			'Next.js revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated.'
 		);
+	}
+
+	/**
+	 * Compose the endpoint the way `Settings` does — the domain plus the path,
+	 * which a fixture site never overrides.
+	 */
+	public function revalidate_endpoint_url() {
+		$domain = rtrim( (string) $this->domain, '/' );
+
+		return '' === $domain ? '' : $domain . '/api/revalidate';
 	}
 
 	public function __get( $name ) {
@@ -179,8 +189,8 @@ function njr_test_code( $outcome ) {
 	return is_wp_error( $outcome ) ? $outcome->get_error_code() : $outcome;
 }
 
-$configured   = [ 'url' => 'https://front-end.test/api/revalidate', 'secret' => 's3cret' ];
-$unconfigured = [ 'url' => '', 'secret' => '' ];
+$configured   = [ 'domain' => 'https://front-end.test', 'secret' => 's3cret' ];
+$unconfigured = [ 'domain' => '', 'secret' => '' ];
 
 function njr_test_response( $code ) {
 	return [ 'response' => [ 'code' => $code ] ];
@@ -195,7 +205,7 @@ $outcome = njr_test_purge( $unconfigured, njr_test_response( 200 ) );
 njr_test_assert( 'not_configured' === njr_test_code( $outcome ), 'an unconfigured site refuses with `not_configured`' );
 njr_test_assert( null === $GLOBALS['njr_test_requested_url'], 'an unconfigured site asks the front-end nothing at all' );
 
-$outcome = njr_test_purge( [ 'url' => 'https://front-end.test/api/revalidate', 'secret' => '' ], njr_test_response( 200 ) );
+$outcome = njr_test_purge( [ 'domain' => 'https://front-end.test', 'secret' => '' ], njr_test_response( 200 ) );
 njr_test_assert( 'not_configured' === njr_test_code( $outcome ), 'half configured is unconfigured' );
 
 // The one way a revalidation succeeds.

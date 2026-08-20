@@ -93,7 +93,7 @@ class QueueHarnessTest extends QueueTestCase {
 	 */
 	public function test_isolation_second_test_sees_neither_the_settings_nor_the_cron() {
 		$this->assertFalse(
-			get_option( \NextJsRevalidate\Settings::SETTINGS_URL_NAME ),
+			get_option( \NextJsRevalidate\Settings::SETTINGS_DOMAIN_NAME ),
 			'The previous test\'s settings survived into this one: tear_down is not undoing them.'
 		);
 
