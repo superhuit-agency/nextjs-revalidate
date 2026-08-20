@@ -162,8 +162,26 @@ function njr_psr4_paths( string $fqcn, array $prefixes ): array {
 // The subject
 // ====
 
-$composer = json_decode( (string) file_get_contents( "$root/composer.json" ), true );
+$json = @file_get_contents( "$root/composer.json" );
+
+if ( false === $json ) {
+	fwrite( STDERR, "FAIL — $root/composer.json cannot be read; there is no autoload map to check\n" );
+	exit( 1 );
+}
+
+$composer = json_decode( $json, true );
+
+if ( ! is_array( $composer ) ) {
+	fwrite( STDERR, sprintf( "FAIL — %s/composer.json is not valid JSON (%s)\n", $root, json_last_error_msg() ) );
+	exit( 1 );
+}
+
 $prefixes = $composer['autoload']['psr-4'] ?? [];
+
+if ( ! is_array( $prefixes ) || ! $prefixes ) {
+	fwrite( STDERR, "FAIL — composer.json declares no autoload.psr-4 map; every class below would fail to resolve\n" );
+	exit( 1 );
+}
 
 // The expectations
 // ====
