@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Regenerate languages/nextjs-revalidate.pot from source, then carry every
-# translation forward against it.
+# translation forward against it, rewriting each .mo and .l10n.php to match.
 #
 # The POT is a build artefact of the source tree, and nothing regenerated it —
 # which is how it came to sit 20 strings and two years behind the code, with
@@ -40,6 +40,14 @@ for po in languages/*.po; do
 	[ -f "$po" ] || continue
 	msgmerge --update --backup=none "$po" "$POT"
 	msgfmt -o "${po%.po}.mo" "$po"
+
+	# The .mo is what WordPress below 6.5 reads, and the plugin supports 5.0.
+	# From 6.5 the PHP file is preferred over it — `load_textdomain()` defaults
+	# `translation_file_format` to 'php' and puts the .l10n.php ahead of the .mo
+	# — so the two must be written together. A .l10n.php left behind by a
+	# rebuild would quietly outrank the fresh .mo and serve the old strings.
+	wp i18n make-php "$po" languages >/dev/null
+
 	printf '%s: ' "$po"
 	msgfmt --statistics -o /dev/null "$po" 2>&1
 done

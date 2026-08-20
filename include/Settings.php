@@ -458,7 +458,7 @@ class Settings extends Base implements Hookable {
 				'name'      => self::SETTINGS_DEBUG.'[enable-logs]',
 				'checked'   => $this->debug['enable-logs'] ?? false,
 				'help'      => sprintf(
-					__('Logs will be saved to file lacated in <code>%s</code>', 'nextjs-revalidate'),
+					__('Logs will be saved to file located in <code>%s</code>', 'nextjs-revalidate'),
 					trailingslashit($upload_dir['basedir']) . Logger::FILENAME
 				),
 			]
