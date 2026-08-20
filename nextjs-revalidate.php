@@ -155,9 +155,11 @@ class NextJsRevalidate {
 	 * A class that is constructed and never registered is a silent failure —
 	 * for `Revalidate` it would be eight lost hooks and content that stops
 	 * revalidating on save, with nothing anywhere saying so. Returning the
-	 * object is what keeps that from being a mistake the shape permits: there
-	 * is no way to assign one of the properties above without going through
-	 * here.
+	 * object is what makes that unlikely rather than impossible: enrolling
+	 * costs nothing over not enrolling, because the assignment reads the same
+	 * either way. Nothing stops a property above being assigned directly, so
+	 * what catches a class that skipped this is `tests/HookRegistrationTest.php`,
+	 * which asserts the whole registration sequence the root produces.
 	 *
 	 * @template T of Hookable
 	 * @param T $hookable The object to register hooks for, once everything is built.

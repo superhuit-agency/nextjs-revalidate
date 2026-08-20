@@ -243,6 +243,8 @@ A class that registers WordPress hooks, declaring so by implementing the
 interface of that name. Constructing one has no effect on global state;
 `register_hooks()` is the only thing that does. Every class the composition root
 constructs is Hookable, and a Hookable is always safe to construct for a single
-method call.
+method call. The root registers all of them but the Redirection integration in
+one loop, in construction order; that one registers last, because it alone is
+conditional on another plugin being installed.
 _Avoid_: Listener, subscriber, observer — all imply a dispatcher this plugin does
 not have.
