@@ -42,7 +42,8 @@ function untrailingslashit( $string ) {
 // The subject
 // ====
 
-require_once __DIR__ . '/../include/abstracts/Base.php';
+require_once __DIR__ . '/../include/Interfaces/Hookable.php';
+require_once __DIR__ . '/../include/Abstracts/Base.php';
 require_once __DIR__ . '/../include/Settings.php';
 
 use NextJsRevalidate\Settings;

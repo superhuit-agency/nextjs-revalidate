@@ -593,7 +593,7 @@ class Settings extends Base implements Hookable {
 	public function not_configured_error() {
 		return new \WP_Error(
 			'not_configured',
-			__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+			__( 'Next.js revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
 		);
 	}
 
