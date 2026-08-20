@@ -1,240 +1,343 @@
-#, fuzzy
+# Copyright (C) 2026 superhuit
+# This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: Next.js revalidate\n"
-"POT-Creation-Date: 2024-07-05 11:36+0200\n"
-"PO-Revision-Date: 2022-12-26 11:44+0100\n"
-"Last-Translator: \n"
-"Language-Team: \n"
+"Project-Id-Version: Next.js revalidate 1.6.9\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/nextjs-revalidate\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
-"X-Generator: Poedit 3.4.4\n"
+"POT-Creation-Date: 2026-08-20T12:16:04+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
 "X-Poedit-Basepath: ..\n"
 "X-Poedit-Flags-xgettext: --add-comments=translators:\n"
 "X-Poedit-WPHeader: nextjs-revalidate.php\n"
 "X-Poedit-SourceCharset: UTF-8\n"
-"X-Poedit-KeywordsList: __;_e;_n:1,2;_x:1,2c;_ex:1,2c;_nx:4c,1,2;esc_attr__;"
-"esc_attr_e;esc_attr_x:1,2c;esc_html__;esc_html_e;esc_html_x:1,2c;"
-"_n_noop:1,2;_nx_noop:3c,1,2;__ngettext_noop:1,2\n"
+"X-Poedit-KeywordsList: __;_e;_n:1,2;_x:1,2c;_ex:1,2c;_nx:4c,1,2;esc_attr__;esc_attr_e;esc_attr_x:1,2c;esc_html__;esc_html_e;esc_html_x:1,2c;_n_noop:1,2;_nx_noop:3c,1,2;__ngettext_noop:1,2\n"
 "X-Poedit-SearchPath-0: .\n"
 "X-Poedit-SearchPathExcluded-0: *.min.js\n"
 "X-Poedit-SearchPathExcluded-1: vendor\n"
 "X-Poedit-SearchPathExcluded-2: dist\n"
 "X-Poedit-SearchPathExcluded-3: node_modules\n"
+"X-Domain: nextjs-revalidate\n"
 
-#: include/Revalidate.php:169
+#. Plugin Name of the plugin
+#: nextjs-revalidate.php
+#: include/Settings.php:158
+msgid "Next.js revalidate"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: nextjs-revalidate.php
+msgid "https://github.com/superhuit-agency/nextjs-revalidate.git"
+msgstr ""
+
+#. Description of the plugin
+#: nextjs-revalidate.php
+msgid "Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area. It also automatically purges & re-builds when a page/post/... is save or updated."
+msgstr ""
+
+#. Author of the plugin
+#: nextjs-revalidate.php
+msgid "superhuit"
+msgstr ""
+
+#. Author URI of the plugin
+#: nextjs-revalidate.php
+msgid "https://www.superhuit.ch"
+msgstr ""
+
+#. translators: 1: number of failed revalidations. 2: number of attempts on record.
+#: include/FailureWindow.php:264
+#, php-format
+msgid "Next.js revalidate is not keeping this site up to date — %1$d of the last %2$d revalidations failed. Content is still saved, but the front-end is serving pages which are quietly out of date."
+msgstr ""
+
+#. translators: %s: the cause of the most recent failure.
+#: include/FailureWindow.php:273
+#, php-format
+msgid "Most recent error: %s."
+msgstr ""
+
+#: include/FailureWindow.php:279
+msgid "Other errors occurred as well."
+msgstr ""
+
+#: include/FailureWindow.php:284
+#: include/Settings.php:649
+msgid "Please contact a site administrator."
+msgstr ""
+
+#: include/FailureWindow.php:295
+msgid "Check the Next.js revalidate settings"
+msgstr ""
+
+#: include/FailureWindow.php:404
+msgid "the front-end could not be reached"
+msgstr ""
+
+#: include/FailureWindow.php:407
+msgid "the front-end rejected the secret"
+msgstr ""
+
+#. translators: %s: an HTTP status code, e.g. 500.
+#: include/FailureWindow.php:412
+#, php-format
+msgid "the front-end answered %s"
+msgstr ""
+
+#: include/Revalidate.php:193
+msgid "The front-end answered without a status code."
+msgstr ""
+
+#. translators: %d: the HTTP status code the front-end answered with.
+#: include/Revalidate.php:199
+#, php-format
+msgid "The front-end answered %d."
+msgstr ""
+
+#: include/Revalidate.php:237
 #, php-format
 msgid "Purge cache of post “%s”"
 msgstr ""
 
-#: include/Revalidate.php:170
+#: include/Revalidate.php:238
 msgid "Purge cache"
 msgstr ""
 
-#: include/Revalidate.php:233
+#: include/Revalidate.php:306
 msgid "Sorry, you are not allowed to purge the cache of this post."
 msgstr ""
 
-#: include/Revalidate.php:261
+#: include/Revalidate.php:334
 msgctxt "Admin top bar menu"
 msgid "Purge this page"
 msgstr ""
 
-#: include/Revalidate.php:269
+#: include/Revalidate.php:342
 msgctxt "Admin top bar menu"
 msgid "Purge the cache of the page currently being edited."
 msgstr ""
 
-#: include/Revalidate.php:339
+#: include/Revalidate.php:412
 msgid "Purge caches"
 msgstr ""
 
-#: include/Revalidate.php:374
+#: include/Revalidate.php:447
 #, php-format
 msgid "“%s” cache will be purged shortly."
 msgstr ""
 
-#: include/Revalidate.php:375 include/Revalidate.php:428
+#: include/Revalidate.php:448
+#: include/Revalidate.php:488
 msgid "Unable to purge cache. Please try again or contact an administrator."
 msgstr ""
 
-#: include/Revalidate.php:427
+#: include/Revalidate.php:487
 #, php-format
 msgid "%d cache will be purged shortly."
 msgid_plural "%d caches will be purged shortly."
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/Traits/AdminBarMenu.php:24
-msgctxt "Admin top bar menu"
-msgid "Purge caches"
-msgstr ""
-
-#: include/RevalidateAll.php:43
+#: include/RevalidateAll.php:45
 msgctxt "Admin top bar menu"
 msgid "All"
 msgstr ""
 
-#: include/RevalidateAll.php:64
+#: include/RevalidateAll.php:70
 msgctxt "Admin top bar menu"
-msgid ""
-"Purging all cache may take some time according to the number of pages to "
-"purge."
+msgid "Purging all cache may take some time according to the number of pages to purge."
 msgstr ""
 
-#: include/RevalidateAll.php:79
+#: include/RevalidateAll.php:87
+msgid "Revalidate all: nothing was queued, this site is not configured."
+msgstr ""
+
+#: include/RevalidateAll.php:97
 #, php-format
-msgid ""
-"Purge all: %d pages added to purge. Please wait until all pages are purged."
+msgid "Purge all: %d pages added to purge. Please wait until all pages are purged."
 msgstr ""
 
-#: include/RevalidateQueue.php:258
+#: include/RevalidateQueue.php:372
 #, php-format
 msgid "Purging caches. Please wait… %s%s"
 msgstr ""
 
-#: include/RevalidateQueue.php:264
+#: include/RevalidateQueue.php:378
 msgid "View purge caches queue"
 msgstr ""
 
-#: include/RevalidateQueue.php:273
+#: include/RevalidateQueue.php:387
 msgid "Queue correctly resetted."
 msgstr ""
 
-#: include/Settings.php:50
+#: include/Settings.php:157
 msgid "Next.js revalidate settings"
 msgstr ""
 
-#. Plugin Name of the plugin/theme
-#: include/Settings.php:51
-msgid "Next.js revalidate"
-msgstr ""
-
-#: include/Settings.php:67
+#: include/Settings.php:174
 msgid "Next.js API"
 msgstr ""
 
-#: include/Settings.php:68
+#: include/Settings.php:175
 msgid "Allow purge all"
 msgstr ""
 
-#: include/Settings.php:69
+#: include/Settings.php:176
 msgid "On menu update"
 msgstr ""
 
-#: include/Settings.php:70
+#: include/Settings.php:177
 msgid "Debug"
 msgstr ""
 
-#: include/Settings.php:71
+#: include/Settings.php:178
 msgid "Queue"
 msgstr ""
 
-#: include/Settings.php:76
+#: include/Settings.php:183
 msgid "NextJS-Revalidate settings tabs"
 msgstr ""
 
-#: include/Settings.php:101
+#: include/Settings.php:208
 msgid "Purge queue"
 msgstr ""
 
-#: include/Settings.php:103
+#: include/Settings.php:210
 #, php-format
 msgid "%d URL waiting to be purged"
 msgid_plural "%d URLs waiting to be purged"
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/Settings.php:108
+#: include/Settings.php:215
 msgid "Id"
 msgstr ""
 
-#: include/Settings.php:109
+#: include/Settings.php:216
 msgid "Priority"
 msgstr ""
 
-#: include/Settings.php:110
+#: include/Settings.php:217
 msgid "URL"
 msgstr ""
 
-#: include/Settings.php:141
+#: include/Settings.php:250
 msgid "Next.js API config"
 msgstr ""
 
-#: include/Settings.php:152
-msgid "Revalidate url"
-msgstr ""
-
-#: include/Settings.php:168
-msgid "Revalidate Secret"
-msgstr ""
-
-#: include/Settings.php:184
-msgid "Allow purge all options"
-msgstr ""
-
-#: include/Settings.php:186
-msgid ""
-"Define which post type has the option to have all posts purged in the "
-"admin bar."
-msgstr ""
-
-#: include/Settings.php:220 include/Settings.php:271
-msgid "All post types"
-msgstr ""
-
-#: include/Settings.php:229 include/Settings.php:280
-msgid ""
-"Warning: according to the number of post types & posts for each post type "
-"this action can be very slow."
-msgstr ""
-
-#: include/Settings.php:237
-msgid "On menu update options"
-msgstr ""
-
-#: include/Settings.php:239
-msgid "Define which post type will be revalidated when updating a menu."
+#: include/Settings.php:261
+msgid "Revalidate domain"
 msgstr ""
 
 #: include/Settings.php:288
+msgid "Revalidate path"
+msgstr ""
+
+#: include/Settings.php:294
+msgid "Optional. The route that revalidates a single path on the front-end. Leave empty for the default."
+msgstr ""
+
+#: include/Settings.php:303
+msgid "FSE revalidate path"
+msgstr ""
+
+#: include/Settings.php:309
+msgid "Optional. The route that invalidates the front-end’s FSE template snapshot. Leave empty for the default."
+msgstr ""
+
+#: include/Settings.php:318
+msgid "Revalidate Secret"
+msgstr ""
+
+#: include/Settings.php:334
+msgid "Allow purge all options"
+msgstr ""
+
+#: include/Settings.php:336
+msgid "Define which post type has the option to have all posts purged in the admin bar."
+msgstr ""
+
+#: include/Settings.php:369
+#: include/Settings.php:419
+msgid "All post types"
+msgstr ""
+
+#: include/Settings.php:378
+#: include/Settings.php:428
+msgid "Warning: according to the number of post types & posts for each post type this action can be very slow."
+msgstr ""
+
+#: include/Settings.php:386
+msgid "On menu update options"
+msgstr ""
+
+#: include/Settings.php:388
+msgid "Define which post type will be revalidated when updating a menu."
+msgstr ""
+
+#: include/Settings.php:436
 msgid "Debug options"
 msgstr ""
 
-#: include/Settings.php:290
+#: include/Settings.php:438
 msgid "Some configuration for easier debug."
 msgstr ""
 
-#: include/Settings.php:304
+#: include/Settings.php:451
 msgid "Enable logs"
 msgstr ""
 
-#: include/Settings.php:314
+#: include/Settings.php:461
 #, php-format
 msgid "Logs will be saved to file lacated in <code>%s</code>"
 msgstr ""
 
-#: nextjs-revalidate.php:57
+#: include/Settings.php:606
+msgid "Next.js revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated."
+msgstr ""
+
+#: include/Settings.php:627
+msgid "its revalidate domain and secret are missing"
+msgstr ""
+
+#: include/Settings.php:628
+msgid "its revalidate domain is missing"
+msgstr ""
+
+#: include/Settings.php:629
+msgid "its secret is missing"
+msgstr ""
+
+#. translators: %s: which of the two required settings are missing.
+#: include/Settings.php:634
+#, php-format
+msgid "Next.js revalidate is not configured for this site — %s. Content is still saved, but every revalidation is refused: the front-end is never asked to rebuild its pages."
+msgstr ""
+
+#: include/Settings.php:645
+msgid "Configure Next.js revalidate"
+msgstr ""
+
+#: include/Traits/AdminBarMenu.php:24
+msgctxt "Admin top bar menu"
+msgid "Purge caches"
+msgstr ""
+
+#: nextjs-revalidate.php:72
 msgid "Please install composer dependencies for Next.js Revalidate to work"
 msgstr ""
 
-#. Plugin URI of the plugin/theme
-msgid "https://github.com/com:superhuit-agency/nextjs-revalidate.git"
+#. translators: %s: number of sites on the network.
+#: nextjs-revalidate.php:319
+#, php-format
+msgid "Next.js revalidate cannot set up the %s sites of this network in a single request, and it does not set up some of them and leave the rest without a queue table. Activate the plugin on each site individually instead."
 msgstr ""
 
-#. Description of the plugin/theme
-msgid ""
-"Next.js plugin allows you to purge & re-build the cached pages from the "
-"WordPress admin area. It also automatically purges & re-builds when a page/"
-"post/... is save or updated."
-msgstr ""
-
-#. Author of the plugin/theme
-msgid "superhuit"
-msgstr ""
-
-#. Author URI of the plugin/theme
-msgid "https://www.superhuit.ch"
+#: nextjs-revalidate.php:322
+msgid "Plugin could not be activated"
 msgstr ""
