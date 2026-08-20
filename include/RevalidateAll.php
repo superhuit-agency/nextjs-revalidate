@@ -3,15 +3,16 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
-class RevalidateAll extends Base {
+class RevalidateAll extends Base implements Hookable {
 	use AdminBarMenu;
 	use SendbackUrl;
 
-	public function __construct() {
+	public function register_hooks(): void {
 		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
 		add_action( 'admin_notices', [$this, 'revalidated_notice'] );
 

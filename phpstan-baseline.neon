@@ -31,12 +31,6 @@ parameters:
 			path: include/Logger.php
 
 		-
-			message: '#^Default value of the parameter \#3 \$level \(int\) of method NextJsRevalidate\\Logger\:\:log\(\) is incompatible with type string\.$#'
-			identifier: parameter.defaultValue
-			count: 1
-			path: include/Logger.php
-
-		-
 			message: '#^Access to an undefined property NextJsRevalidate\\RestApi\:\:\$queue\.$#'
 			identifier: property.notFound
 			count: 1
@@ -57,7 +51,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property NextJsRevalidate\\Revalidate\:\:\$settings\.$#'
 			identifier: property.notFound
-			count: 6
+			count: 7
 			path: include/Revalidate.php
 
 		-
@@ -91,12 +85,6 @@ parameters:
 			path: include/RevalidateAll.php
 
 		-
-			message: '#^Parameter \#3 \$level of static method NextJsRevalidate\\Logger\:\:log\(\) expects string, int given\.$#'
-			identifier: argument.type
-			count: 1
-			path: include/RevalidateAll.php
-
-		-
 			message: '#^Strict comparison using \=\=\= between false and int will always evaluate to false\.$#'
 			identifier: identical.alwaysFalse
 			count: 1
@@ -111,13 +99,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateQueue\:\:\$settings\.$#'
 			identifier: property.notFound
-			count: 2
-			path: include/RevalidateQueue.php
-
-		-
-			message: '#^Parameter \#3 \$level of static method NextJsRevalidate\\Logger\:\:log\(\) expects string, int given\.$#'
-			identifier: argument.type
-			count: 1
+			count: 3
 			path: include/RevalidateQueue.php
 
 		-

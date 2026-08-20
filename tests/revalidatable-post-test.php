@@ -97,8 +97,10 @@ class WP_Post {
 // The subject
 // ====
 
+require_once __DIR__ . '/../include/Interfaces/Hookable.php';
 require_once __DIR__ . '/../include/Abstracts/Base.php';
 require_once __DIR__ . '/../include/Traits/AdminBarMenu.php';
+require_once __DIR__ . '/../include/Traits/BlockEditorScreen.php';
 require_once __DIR__ . '/../include/Traits/SendbackUrl.php';
 require_once __DIR__ . '/../include/Revalidate.php';
 

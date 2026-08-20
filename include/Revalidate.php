@@ -3,22 +3,23 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\AdminBarMenu;
+use NextJsRevalidate\Traits\BlockEditorScreen;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
+use WP_Error;
 use WP_Post;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
-class Revalidate extends Base {
+class Revalidate extends Base implements Hookable {
 	use AdminBarMenu;
+	use BlockEditorScreen;
 	use SendbackUrl;
 
-	/**
-	 * Constructor.
-	 */
-	function __construct() {
+	public function register_hooks(): void {
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99, 4 );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -142,9 +143,35 @@ class Revalidate extends Base {
 		);
 	}
 
+	/**
+	 * Ask the front-end to rebuild the page held for the given permalink.
+	 *
+	 * Delivery is at most once: the drain deletes the queue entry before it gets
+	 * here, so what this returns is the only trace a revalidation which did not
+	 * succeed will ever leave. It therefore names *which* failure happened
+	 * rather than collapsing every one of them into a bare false — `unreachable`
+	 * and `http_401` send an operator to completely different places.
+	 * See `docs/adr/0004-at-most-once-revalidation.md`.
+	 *
+	 * @param string $permalink The permalink to revalidate.
+	 *
+	 * @return true|WP_Error True when the front-end rebuilt the page. Otherwise
+	 *                       a WP_Error whose code names the outcome:
+	 *                       `not_configured` when the site could not deliver at
+	 *                       all, `unreachable` when the front-end was not
+	 *                       reached, `no_response` when it answered without a
+	 *                       status, `http_{status}` when it answered with one
+	 *                       other than 200, and `exception` when the attempt
+	 *                       threw.
+	 */
 	function purge( $permalink ) {
 
-		if ( !$this->settings->is_configured() ) return false;
+		// A refusal rather than a failure: the front-end is asked nothing at
+		// all. `add_item()` refuses at enqueue time, so the drain reaches this
+		// only for items enqueued while the site was still configured and
+		// drained after its settings were cleared — the same refusal, given
+		// later. It is also the guard for any other caller.
+		if ( !$this->settings->is_configured() ) return $this->settings->not_configured_error();
 
 		try {
 			$response = wp_remote_get(
@@ -152,10 +179,33 @@ class Revalidate extends Base {
 				[ 'timeout' => 60 ]
 			);
 
-			if ( is_wp_error($response) ) throw new \Exception("Unable to revalidate $permalink", 1);
-			return $response['response']['code'] === 200;
+			// The request never got an answer — DNS, TLS, a timeout. What the
+			// transport has to say about it is the diagnostic, so it is carried
+			// over rather than thrown away.
+			if ( is_wp_error($response) ) return new WP_Error( 'unreachable', $response->get_error_message() );
+
+			$status = intval( wp_remote_retrieve_response_code( $response ) );
+
+			if ( 200 === $status ) return true;
+
+			// An answer with no status line at all is not an HTTP outcome to
+			// report back, and `http_0` would name nothing an operator can act on.
+			if ( 0 === $status ) return new WP_Error( 'no_response', __( 'The front-end answered without a status code.', 'nextjs-revalidate' ) );
+
+			return new WP_Error(
+				"http_$status",
+				sprintf(
+					/* translators: %d: the HTTP status code the front-end answered with. */
+					__( 'The front-end answered %d.', 'nextjs-revalidate' ),
+					$status
+				)
+			);
 		} catch (\Throwable $th) {
-			return false;
+			// The drain runs this in a loop and keeps a running-cron count while
+			// it does, so a throw escaping here would cost more than the one
+			// revalidation. Caught, named, and handed back as a failure like any
+			// other.
+			return new WP_Error( 'exception', $th->getMessage() );
 		}
 	}
 
@@ -413,19 +463,6 @@ class Revalidate extends Base {
 	 */
 	public function get_block_editor_purged_notice() {
 		return $this->is_block_editor_screen() ? $this->get_purged_notice() : null;
-	}
-
-	/**
-	 * Whether the screen being rendered is a block editor one.
-	 *
-	 * @return bool
-	 */
-	private function is_block_editor_screen() {
-		if ( ! function_exists('get_current_screen') ) return false;
-
-		$screen = get_current_screen();
-
-		return ! is_null($screen) && method_exists($screen, 'is_block_editor') && $screen->is_block_editor();
 	}
 
 	function purged_notice() {

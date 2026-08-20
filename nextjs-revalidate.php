@@ -16,7 +16,6 @@
  * @package NextJsRevalidate
  * @category Core
  * @author Superhuit, Kuuak
- * @version 1.3.0
  */
 /*
 Next.js revalidate is free software: you can redistribute it and/or modify
@@ -34,11 +33,14 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 */
 
 use NextJsRevalidate\Assets;
+use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\I18n;
+use NextJsRevalidate\Integrations\Redirection;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\Cron\ScheduledPurges;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\RevalidateQueue;
 
@@ -47,7 +49,19 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 define( 'NJR_PATH', __DIR__ );
 define( 'NJR_URI', plugin_dir_url(__FILE__) );
-define( 'NJR_VERSION', '1.6.0' );
+
+// The plugin version has exactly one source of truth: the header above.
+// Reading it back keeps the constant from drifting when a release bumps the
+// header — as it had, sitting at 1.6.0 while the plugin shipped 1.6.9.
+// `get_file_data()` rather than `get_plugin_data()`: the latter lives in an
+// admin-only include, and this constant is read on front-end requests too.
+$njr_plugin_header = get_file_data( __FILE__, [ 'Version' => 'Version' ] );
+// The fallback is the last release to ship without the migration ledger: a
+// header this cannot read would otherwise leave the constant empty, and an
+// empty version compares as older than every migration threshold — re-running
+// every migration body on every request, which is the bug this replaced.
+define( 'NJR_VERSION', $njr_plugin_header['Version'] ?: '1.6.9' );
+unset( $njr_plugin_header );
 
 // Load dependencies
 // ====
@@ -69,11 +83,20 @@ class NextJsRevalidate {
 	private Assets $assets;
 	private Revalidate $revalidate;
 	private Settings $settings;
+	private FailureWindow $failureWindow;
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
 	private RevalidateQueue $queue;
 	private RestApi $restApi;
+	private Redirection $redirection;
 	private static NextJsRevalidate $instance;
+
+	/**
+	 * Every object this root has constructed, in construction order.
+	 *
+	 * @var Hookable[]
+	 */
+	private array $hookables = [];
 
 	public static function init(): NextJsRevalidate {
 
@@ -84,17 +107,38 @@ class NextJsRevalidate {
 	return self::$instance;
 	}
 
+	/**
+	 * The composition root: which of this plugin's objects exist, in what
+	 * order, and when they register their hooks.
+	 *
+	 * Constructing a Hookable touches no global state, so the two are separate
+	 * acts here: everything is built first, then every one of them is asked to
+	 * register, in construction order. That order is load-bearing — WordPress
+	 * runs same-hook, same-priority callbacks in registration order, and eight
+	 * of this plugin's callbacks sit on `admin_init` at priority 10.
+	 *
+	 * See `docs/adr/0003-explicit-hook-registration.md`.
+	 */
 	protected function __construct() {
 
-		new I18n();
+		$this->hookable( new I18n() );
 
-		$this->assets              = new Assets();
-		$this->settings            = new Settings();
-		$this->revalidate          = new Revalidate();
-		$this->cronScheduledPurges = new ScheduledPurges();
-		$this->revalidateAll       = new RevalidateAll();
-		$this->queue               = new RevalidateQueue();
-		$this->restApi             = new RestApi();
+		$this->assets              = $this->hookable( new Assets() );
+		$this->settings            = $this->hookable( new Settings() );
+		$this->failureWindow       = $this->hookable( new FailureWindow() );
+		$this->revalidate          = $this->hookable( new Revalidate() );
+		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
+		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
+		$this->queue               = $this->hookable( new RevalidateQueue() );
+		$this->restApi             = $this->hookable( new RestApi() );
+
+		foreach ( $this->hookables as $hookable ) $hookable->register_hooks();
+
+		// An integration registers its hooks explicitly, and only once it can
+		// see whether the plugin it integrates with is there — constructing it
+		// touches nothing. See docs/adr/0003-explicit-hook-registration.md.
+		$this->redirection         = new Redirection();
+		$this->redirection->register_hooks();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -102,6 +146,29 @@ class NextJsRevalidate {
 
 		// Sites created after the plugin was activated are set up as they are created.
 		add_action( 'wp_initialize_site', [$this, 'setup_new_site'], 100 );
+	}
+
+	/**
+	 * Enrol a freshly constructed object into the registration above, and hand
+	 * it back so that constructing and enrolling stay a single expression.
+	 *
+	 * A class that is constructed and never registered is a silent failure —
+	 * for `Revalidate` it would be eight lost hooks and content that stops
+	 * revalidating on save, with nothing anywhere saying so. Returning the
+	 * object is what makes that unlikely rather than impossible: enrolling
+	 * costs nothing over not enrolling, because the assignment reads the same
+	 * either way. Nothing stops a property above being assigned directly, so
+	 * what catches a class that skipped this is `tests/HookRegistrationTest.php`,
+	 * which asserts the whole registration sequence the root produces.
+	 *
+	 * @template T of Hookable
+	 * @param T $hookable The object to register hooks for, once everything is built.
+	 * @return T The same object.
+	 */
+	private function hookable( Hookable $hookable ): Hookable {
+		$this->hookables[] = $hookable;
+
+		return $hookable;
 	}
 
 	function __get($name) {
@@ -161,11 +228,22 @@ class NextJsRevalidate {
 
 	/**
 	 * Tear one site down as far as a deactivation goes: its crons stop, its
-	 * queue table and its settings stay where they are.
+	 * failure window is forgotten, its queue table and its settings stay where
+	 * they are.
+	 *
+	 * The failure window is the one exception to the two teardown depths, and
+	 * the reason is semantic rather than tidiness: while deactivated, content
+	 * changes and nothing is attempted, so on reactivation the front-end's
+	 * health is not bad but *unknown*, and carrying the old warning across that
+	 * gap asserts evidence the plugin no longer has. The exception covers state
+	 * that is evidence about a *running* plugin and stops there — clearing
+	 * settings or pending scheduled purges here would be destructive.
 	 */
 	public function teardown_site() {
 		ScheduledPurges::unschedule_cron();
 		$this->queue->unschedule_cron();
+
+		FailureWindow::clear();
 	}
 
 	/**
@@ -175,6 +253,7 @@ class NextJsRevalidate {
 	public function uninstall_site() {
 		Settings::delete_settings();
 		ScheduledPurges::delete_scheduled_purges();
+		FailureWindow::clear();
 
 		$this->queue->delete_table();
 	}
@@ -284,28 +363,50 @@ NextJsRevalidate::init();
  * Purge an URL from Next.js cache
  * Triggers a revalidation of the given URL
  *
+ * The revalidation is *accepted*, not performed: this enqueues the permalink and
+ * returns, and the queue is drained by cron afterwards. So the answer here can
+ * only ever be whether the queue took the revalidation on, never whether the
+ * front-end has rebuilt the page — that outcome happens after this call has
+ * returned, and delivery is at most once, a failure being recorded in the log
+ * and dropped (docs/adr/0004-at-most-once-revalidation.md).
+ *
  * @param  string $url       The URL to purge
  * @param  int    $priority  Optional. Used to specify the order in which the url are purged.
  *                           Lower numbers correspond with earlier purge,
  *                           and urls with the same priority are executed in the order in which they were added.
  *                           Default 10.
  *
- * @return bool        Whether the URL was queued. False when the site is
- *                     unconfigured and the revalidation is refused.
+ * @return bool        Whether the revalidation was accepted into the queue.
+ *                     False on a refusal — the site is unconfigured, and nothing
+ *                     it accepted could be delivered — and false when the insert
+ *                     itself failed.
  */
 function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
 	$njr = NextJsRevalidate::init();
-	$added = $njr->queue->add_item( $url, $priority );
-	return ( $added && !is_wp_error($added) );
+
+	$accepted = $njr->queue->add_item( $url, $priority );
+
+	// A refusal arrives as a WP_Error, which is truthy; it is a false here.
+	// Callers needing the reason read it from the queue directly, as the REST
+	// routes do — this function's documented answer is a bool.
+	return ( $accepted && !is_wp_error($accepted) );
 }
 
 /**
  * Schedule an URL purge from Next.js cache
  * Triggers a revalidation of the given URL at the given date time
  *
+ * Registering a scheduled purge is not enqueuing a revalidation: the permalink
+ * reaches the queue when the date time passes, and is refused there like any
+ * other revalidation if the site is unconfigured by then.
+ *
  * @param  String $datetime The date time when to purge
  * @param  String $url      The URL to purge
- * @return Bool             Whether the schedule is registered
+ *
+ * @return Bool             Whether this call registered the scheduled purge.
+ *                          False when the URL is already registered for that
+ *                          date time — the schedule stands, this call added
+ *                          nothing to it — and false when the write failed.
  */
 function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
 	$njr = NextJsRevalidate::init();

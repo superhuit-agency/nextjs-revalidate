@@ -5,10 +5,11 @@ namespace NextJsRevalidate;
 use DateTime;
 use DateTimeZone;
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Error;
 
-class RevalidateQueue extends Base {
+class RevalidateQueue extends Base implements Hookable {
 	use SendbackUrl;
 
 	const CRON_HOOK_NAME = 'nextjs_revalidate-queue';
@@ -16,7 +17,7 @@ class RevalidateQueue extends Base {
 
 	const MAX_NB_RUNNING_CRON = 4;
 
-	public function __construct() {
+	public function register_hooks(): void {
 		add_action( 'admin_init', [$this, 'action_reset_queue'] );
 		add_action( 'admin_init', [$this, 'ajax_queue_progress'] );
 		add_action( 'admin_notices', [$this, 'admin_queue_notice'] );
@@ -118,10 +119,7 @@ class RevalidateQueue extends Base {
 				Logger::ERROR
 			);
 
-			return new WP_Error(
-				'not_configured',
-				__( 'Next.js revalidate is not configured for this site: the revalidate URL and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
-			);
+			return $this->settings->not_configured_error();
 		}
 
 		$table_name = $this->get_table_name();
@@ -129,8 +127,19 @@ class RevalidateQueue extends Base {
 		$inserted = false;
 
 		$wpdb->query("START TRANSACTION");
-		$in_db = $wpdb->get_results("SELECT * FROM `$table_name` WHERE `permalink`='$permalink'");
-		if (count($in_db) === 0) {
+
+		// Prepared rather than interpolated: a permalink is not this plugin's own
+		// string. It arrives from the REST route, which sanitises with
+		// `sanitize_text_field()` — that leaves a quote intact — and from the
+		// Redirection integration, whose source paths are whatever an editor typed.
+		// A quote in either would break this statement and reach past it. The
+		// insert below was always escaped by `$wpdb->insert()`; this was the one
+		// raw statement in the queue that carried anything but a table name.
+		$already_queued = $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM `$table_name` WHERE `permalink` = %s", $permalink )
+		);
+
+		if (intval($already_queued) === 0) {
 			$inserted = $wpdb->insert(
 				$table_name,
 				[
@@ -280,16 +289,76 @@ class RevalidateQueue extends Base {
 			$item = $this->get_next_item();
 
 			if ( $item ) {
-				$this->revalidate->purge( $item->permalink );
+				$outcome = $this->revalidate->purge( $item->permalink );
 
 				$t_to_revalidate = microtime(true) - $rev_start;
-				Logger::log("#$id: ✅ Revalidated in {$t_to_revalidate}s {$item->permalink} (priority: {$item->priority})", __FILE__);
+
+				// `get_next_item()` has already deleted the row, and delivery is
+				// at most once, so this is the only moment the attempt is ever
+				// accounted for. The window is what an operator who has not
+				// switched logging on will see; the log line below is for one
+				// who has.
+				//
+				// A refusal is not evidence about the front-end — an
+				// unconfigured site was never attempted against it — so it is
+				// not an outcome the window records. The queue refuses at the
+				// door, so this only guards against ever being reached.
+				$refused = is_wp_error( $outcome ) && 'not_configured' === $outcome->get_error_code();
+				if ( !$refused ) FailureWindow::record( $outcome );
+
+				$this->log_purge_outcome( $id, $item, $outcome, $t_to_revalidate );
 			}
 
 		} while ($item && $max_exec_time > (time() - $start_time) );
 
 		$this->remove_running_cron();
 		$this->schedule_next_cron();
+	}
+
+	/**
+	 * Write what became of one drained item.
+	 *
+	 * The item is already gone from the queue by the time this runs — delivery
+	 * is at most once, so a **failure** is recorded here and dropped, and this
+	 * line is the only surface it ever appears on. Which is why it names the
+	 * error code `purge()` came back with instead of a bare ❌: `unreachable`
+	 * and `http_401` send an operator to completely different places.
+	 * See `docs/adr/0004-at-most-once-revalidation.md`.
+	 *
+	 * @param string          $id        The id of the drain writing the line.
+	 * @param RevalidateItem  $item      The item that was drained.
+	 * @param true|WP_Error   $outcome   What `Revalidate::purge()` answered.
+	 * @param float           $duration  Seconds the attempt took.
+	 *
+	 * @return void
+	 */
+	private function log_purge_outcome( $id, $item, $outcome, $duration ) {
+
+		if ( ! is_wp_error($outcome) ) {
+			Logger::log( "#$id: ✅ Revalidated in {$duration}s {$item->permalink} (priority: {$item->priority})", __FILE__ );
+			return;
+		}
+
+		// A **refusal** is not a **failure**: an unconfigured site declined to
+		// deliver rather than tried and missed. Both end the revalidation's life
+		// here, and they send an operator to different places.
+		$is_refusal = ( 'not_configured' === $outcome->get_error_code() );
+
+		Logger::log(
+			sprintf(
+				'#%s: %s %s after %ss %s (priority: %s) — %s: %s',
+				$id,
+				$is_refusal ? '⛔' : '❌',
+				$is_refusal ? 'Refused' : 'Failed to revalidate',
+				$duration,
+				$item->permalink,
+				$item->priority,
+				$outcome->get_error_code(),
+				$outcome->get_error_message()
+			),
+			__FILE__,
+			Logger::ERROR
+		);
 	}
 
 	function admin_queue_notice() {

@@ -1,6 +1,7 @@
 {
 	"plugins": [
-		"."
+		".",
+		"https://downloads.wordpress.org/plugin/redirection.zip"
 	],
 	"port": 8080,
 	"testsPort": 8888,

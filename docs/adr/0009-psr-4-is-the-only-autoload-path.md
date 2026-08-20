@@ -20,11 +20,15 @@ against a directory named `abstracts/`, and `NextJsRevalidate\Traits\*` against
 were still classmap-only, which is exactly the case #64 tripped over when it
 added `include/traits/AdminBarMenu.php`.
 
-`abstracts/` and `traits/` are therefore renamed to `Abstracts/` and `Traits/`.
-`Cron/` already matched. The alternative — keeping a classmap entry for just
-those two directories — was rejected for the reason the whole issue exists: it
-leaves a rule that is true of most of `include/` and quietly false for part of
-it, which is worse than no rule.
+`abstracts/` and `traits/` are therefore renamed to `Abstracts/` and `Traits/`,
+and `interfaces/` — which arrived on `main` while this was open, carrying
+`NextJsRevalidate\Interfaces\Hookable` — to `Interfaces/` with it. `Cron/` and
+`Integrations/` already matched. That a third lowercase directory appeared in the
+weeks this change took is the argument for the guard test below, not against the
+rename. The alternative — keeping a classmap entry for just the lowercase
+directories — was rejected for the reason the whole issue exists: it leaves a
+rule that is true of most of `include/` and quietly false for part of it, which
+is worse than no rule.
 
 ## The classmap is removed rather than kept
 
@@ -38,7 +42,7 @@ is a failure that reaches a reviewer or a deploy rather than the author.
 
 With the classmap gone, PSR-4 is the only path, so a mapping that does not hold
 fails immediately and in the same way for everyone. The cost is a `file_exists()`
-per class on first load of thirteen files, and release CI can take it back with
+per class on first load of seventeen files, and release CI can take it back with
 `-o` whenever that is measured to matter — an optimisation derived from the
 PSR-4 rules is a different thing from a classmap that substitutes for them.
 

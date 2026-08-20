@@ -40,7 +40,7 @@ used for content with a publication or expiry date.
 A revalidation that was enqueued, attempted against the front-end, and did not
 succeed. Recorded and dropped rather than retried: delivery is at most once, so a
 failure is the end of that revalidation's life. Distinct from a **refusal**,
-which is declined before it ever enters the queue.
+which is declined without the front-end being asked anything at all.
 _Avoid_: Error, rejected, unsuccessful purge
 
 **Failure window**:
@@ -127,11 +127,14 @@ _Avoid_: Set up, installed — site setup is the plugin preparing a site, which
 says nothing about whether an operator has since supplied these two values.
 
 **Refusal**:
-Declining to enqueue a revalidation that could not be delivered, in preference to
+Declining to deliver a revalidation that could not be delivered, in preference to
 accepting one and dropping it later. The response to an unconfigured site.
-Distinct from **failure**, which is a revalidation that was enqueued, attempted
-against the front-end, and did not succeed — a refused revalidation never reaches
-the queue at all.
+Normally the answer at enqueue time, so a refused revalidation usually never
+reaches the queue at all; a site whose settings are cleared while items are
+pending is refused at the drain instead, which is the same answer given later.
+Distinct from **failure**, which is a revalidation that reached the front-end and
+did not succeed — what separates the two is whether anything was ever asked of
+the front-end, not how far down the queue the answer was given.
 _Avoid_: Skip, ignore — both suggest the revalidation was unimportant rather than
 undeliverable.
 
@@ -231,7 +234,7 @@ returns the already-built root, not the thing that builds it.
 Attaching a class's callbacks to WordPress actions and filters. A separate act
 from constructing that class, performed once, by the composition root. The order
 is load-bearing: WordPress runs same-hook, same-priority callbacks in
-registration order, and ten of this plugin's callbacks sit on `admin_init` at
+registration order, and eight of this plugin's callbacks sit on `admin_init` at
 priority 10.
 _Avoid_: Wiring, binding, hooking up
 
@@ -240,6 +243,8 @@ A class that registers WordPress hooks, declaring so by implementing the
 interface of that name. Constructing one has no effect on global state;
 `register_hooks()` is the only thing that does. Every class the composition root
 constructs is Hookable, and a Hookable is always safe to construct for a single
-method call.
+method call. The root registers all of them but the Redirection integration in
+one loop, in construction order; that one registers last, because it alone is
+conditional on another plugin being installed.
 _Avoid_: Listener, subscriber, observer — all imply a dispatcher this plugin does
 not have.
