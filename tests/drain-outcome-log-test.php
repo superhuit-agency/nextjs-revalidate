@@ -82,6 +82,7 @@ class NextJsRevalidate {
 // ====
 
 require_once __DIR__ . '/../include/Logger.php';
+require_once __DIR__ . '/../include/interfaces/Hookable.php';
 require_once __DIR__ . '/../include/abstracts/Base.php';
 require_once __DIR__ . '/../include/traits/SendbackUrl.php';
 require_once __DIR__ . '/../include/RevalidateItem.php';

@@ -5,8 +5,9 @@ namespace NextJsRevalidate\Cron;
 use DateTime;
 use DateTimeZone;
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 
-class ScheduledPurges extends Base {
+class ScheduledPurges extends Base implements Hookable {
 
 	const CRON_HOOK_NAME = 'nextjs-revalidate-scheduled_purges';
 	const OPTION_NAME    = 'nextjs-revalidate-scheduled_purges';
@@ -14,8 +15,11 @@ class ScheduledPurges extends Base {
 	private $timezone;
 
 	public function __construct() {
-		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron_hook'] );
 		$this->timezone = new DateTimeZone( 'Europe/Zurich' ); // TODO: maybe use timezone set in WP settings
+	}
+
+	public function register_hooks(): void {
+		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron_hook'] );
 	}
 
 	public function run_cron_hook() {

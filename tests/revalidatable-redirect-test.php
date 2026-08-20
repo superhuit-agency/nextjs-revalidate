@@ -192,6 +192,7 @@ namespace {
 	// The subject
 	// ====
 
+	require_once __DIR__ . '/../include/interfaces/Hookable.php';
 	require_once __DIR__ . '/../include/abstracts/Base.php';
 	require_once __DIR__ . '/../include/Integrations/Redirection.php';
 

@@ -5,10 +5,11 @@ namespace NextJsRevalidate;
 use DateTime;
 use DateTimeZone;
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Error;
 
-class RevalidateQueue extends Base {
+class RevalidateQueue extends Base implements Hookable {
 	use SendbackUrl;
 
 	const CRON_HOOK_NAME = 'nextjs_revalidate-queue';
@@ -16,7 +17,7 @@ class RevalidateQueue extends Base {
 
 	const MAX_NB_RUNNING_CRON = 4;
 
-	public function __construct() {
+	public function register_hooks(): void {
 		add_action( 'admin_init', [$this, 'action_reset_queue'] );
 		add_action( 'admin_init', [$this, 'ajax_queue_progress'] );
 		add_action( 'admin_notices', [$this, 'admin_queue_notice'] );

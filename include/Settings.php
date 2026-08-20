@@ -3,8 +3,9 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 
-class Settings extends Base {
+class Settings extends Base implements Hookable {
 
 	const PAGE_NAME = 'nextjs-revalidate-settings';
 
@@ -58,10 +59,7 @@ class Settings extends Base {
 		'1.5.0' => [ 'nextjs-revalidate-queue', 'nextjs-revalidate-revalidate_all' ],
 	];
 
-	/**
-	 * Settings constructor.
-	 */
-	function __construct() {
+	public function register_hooks(): void {
 		add_action( 'admin_menu', [$this, 'add_page'] );
 		add_action( 'admin_init', [$this, 'register_fields'] );
 

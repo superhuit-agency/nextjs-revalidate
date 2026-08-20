@@ -3,6 +3,7 @@
 namespace NextJsRevalidate\Integrations;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Logger;
 
 // Exit if accessed directly.
@@ -26,7 +27,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * @property-read \NextJsRevalidate\RevalidateQueue $queue The revalidation
  *                queue of the site being served, reached through `Base`.
  */
-class Redirection extends Base {
+class Redirection extends Base implements Hookable {
 
 	/**
 	 * Register the integration's hooks.
@@ -38,9 +39,14 @@ class Redirection extends Base {
 	 * saved through Redirection's own REST routes, where the admin side hooks
 	 * never fire.
 	 *
+	 * Called by the composition root like every other Hookable's, but by name
+	 * rather than through the registration loop: this one asks a question the
+	 * others do not — whether the plugin it integrates with is installed — and
+	 * answers it after everything else has registered.
+	 *
 	 * @return void
 	 */
-	public function register_hooks() {
+	public function register_hooks(): void {
 
 		if ( did_action( 'plugins_loaded' ) ) {
 			$this->register_redirect_hooks();

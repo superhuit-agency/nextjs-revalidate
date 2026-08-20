@@ -3,8 +3,9 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate;
+use NextJsRevalidate\Interfaces\Hookable;
 
-class Assets {
+class Assets implements Hookable {
 
 	const WEBPACK_PORT = 8000;
 
@@ -22,7 +23,7 @@ class Assets {
 	/**
 	 * Hook into WP actions & filters
 	 */
-	function __construct() {
+	public function register_hooks(): void {
 		add_action( 'init', [$this, 'register_assets'] );
 		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_admin_assets'] );
 		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_editor_assets'] );

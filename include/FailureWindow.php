@@ -3,6 +3,7 @@
 namespace NextJsRevalidate;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\BlockEditorScreen;
 use WP_Error;
 
@@ -28,7 +29,7 @@ use WP_Error;
  *
  * @property Settings $settings
  */
-class FailureWindow extends Base {
+class FailureWindow extends Base implements Hookable {
 	use BlockEditorScreen;
 
 	/**
@@ -58,7 +59,7 @@ class FailureWindow extends Base {
 	 */
 	const DEGRADED_AT = 3;
 
-	public function __construct() {
+	public function register_hooks(): void {
 		add_action( 'admin_notices', [$this, 'degraded_notice'] );
 		add_action( 'admin_enqueue_scripts', [$this, 'enqueue_editor_notice'], 11 );
 	}

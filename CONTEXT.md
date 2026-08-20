@@ -234,7 +234,7 @@ returns the already-built root, not the thing that builds it.
 Attaching a class's callbacks to WordPress actions and filters. A separate act
 from constructing that class, performed once, by the composition root. The order
 is load-bearing: WordPress runs same-hook, same-priority callbacks in
-registration order, and ten of this plugin's callbacks sit on `admin_init` at
+registration order, and eight of this plugin's callbacks sit on `admin_init` at
 priority 10.
 _Avoid_: Wiring, binding, hooking up
 
@@ -243,6 +243,8 @@ A class that registers WordPress hooks, declaring so by implementing the
 interface of that name. Constructing one has no effect on global state;
 `register_hooks()` is the only thing that does. Every class the composition root
 constructs is Hookable, and a Hookable is always safe to construct for a single
-method call.
+method call. The root registers all of them but the Redirection integration in
+one loop, in construction order; that one registers last, because it alone is
+conditional on another plugin being installed.
 _Avoid_: Listener, subscriber, observer — all imply a dispatcher this plugin does
 not have.
