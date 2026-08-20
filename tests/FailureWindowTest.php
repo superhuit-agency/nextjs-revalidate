@@ -171,9 +171,9 @@ class NextJsRevalidate {
  * ===========
  */
 
-require_once __DIR__ . '/../include/interfaces/Hookable.php';
-require_once __DIR__ . '/../include/abstracts/Base.php';
-require_once __DIR__ . '/../include/traits/BlockEditorScreen.php';
+require_once __DIR__ . '/../include/Interfaces/Hookable.php';
+require_once __DIR__ . '/../include/Abstracts/Base.php';
+require_once __DIR__ . '/../include/Traits/BlockEditorScreen.php';
 require_once __DIR__ . '/../include/Assets.php';
 require_once __DIR__ . '/../include/Settings.php';
 require_once __DIR__ . '/../include/FailureWindow.php';
