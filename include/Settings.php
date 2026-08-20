@@ -532,16 +532,21 @@ class Settings extends Base implements Hookable {
 	 * first, and this is what keeps a mistake there from becoming a request to
 	 * a relative URL.
 	 *
+	 * Both halves are trimmed first. Neither field is sanitised on save, and a
+	 * domain pasted in with a trailing space composes a URL `wp_remote_get()`
+	 * rejects — a revalidation that fails for a reason nothing on screen names.
+	 * Trimming here rather than on save also covers the rows already stored.
+	 *
 	 * @param string $path    The path the operator supplied, possibly empty.
 	 * @param string $default The path to use when they supplied none.
 	 *
 	 * @return string
 	 */
 	private function endpoint_url( $path, $default ) {
-		$domain = untrailingslashit( $this->domain );
+		$domain = untrailingslashit( trim( (string) $this->domain ) );
 		if ( empty($domain) ) return '';
 
-		$path = untrailingslashit( $path );
+		$path = untrailingslashit( trim( (string) $path ) );
 		if ( empty($path) ) $path = $default;
 
 		return $domain . '/' . ltrim( $path, '/' );
@@ -554,15 +559,20 @@ class Settings extends Base implements Hookable {
 	 * The paths are deliberately not among them: each falls back to a default,
 	 * so a standard install configures a domain and a secret and nothing else.
 	 *
+	 * A field holding nothing but whitespace is a field nobody filled in. It has
+	 * to read as missing here, because `endpoint_url()` trims before composing
+	 * and would answer nothing for it — a site reported as configured which
+	 * cannot address its front-end is exactly the silence the notice exists for.
+	 *
 	 * @return string[] Any of 'domain' and 'secret'. Empty on a configured site.
 	 */
 	public function missing_settings() {
 		$missing = [];
 
-		$domain = $this->domain;
+		$domain = trim( (string) $this->domain );
 		if ( empty($domain) ) $missing[] = 'domain';
 
-		$secret = $this->secret;
+		$secret = trim( (string) $this->secret );
 		if ( empty($secret) ) $missing[] = 'secret';
 
 		return $missing;

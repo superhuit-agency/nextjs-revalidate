@@ -125,6 +125,20 @@ $cases = [
 		[ 'secret' ],
 	],
 
+	// A field holding nothing but whitespace is a field nobody filled in, and
+	// `endpoint_url()` trims before composing — so reporting such a site as
+	// configured would leave it unable to address its front-end, silently.
+	[
+		'a site holding a whitespace-only domain is missing the domain',
+		[ $domain => '   ', $secret => 's3cret' ],
+		[ 'domain' ],
+	],
+	[
+		'a site holding a whitespace-only secret is missing the secret',
+		[ $domain => 'https://front-end.test', $secret => "\t\n" ],
+		[ 'secret' ],
+	],
+
 	// The order the two are named in does not depend on which is present.
 	[
 		'the missing settings are named domain first, secret second',

@@ -128,6 +128,23 @@ check_same( 'http://localhost:8083/revalidate', $settings->revalidate_endpoint_u
 site( [ DOMAIN => 'https://front-end.test/blog', PATH_OPT => '/api/revalidate' ] );
 check_same( 'https://front-end.test/blog/api/revalidate', $settings->revalidate_endpoint_url(), 'a subdirectory domain is carried through' );
 
+// Neither field is sanitised on save, and a domain or a path pasted in with
+// surrounding whitespace composes a URL `wp_remote_get()` rejects — a
+// revalidation that fails for a reason nothing on screen names.
+site( [ DOMAIN => '  https://front-end.test  ' ] );
+check_same( 'https://front-end.test/api/revalidate', $settings->revalidate_endpoint_url(), 'whitespace around the domain is trimmed off' );
+
+site( [ DOMAIN => 'https://front-end.test', PATH_OPT => ' /api/purge ' ] );
+check_same( 'https://front-end.test/api/purge', $settings->revalidate_endpoint_url(), 'whitespace around the path is trimmed off' );
+
+// Trimmed before the fallback, so a field an operator left as spaces is a field
+// they left empty, not a path of its own.
+site( [ DOMAIN => 'https://front-end.test', PATH_OPT => '   ' ] );
+check_same( 'https://front-end.test/api/revalidate', $settings->revalidate_endpoint_url(), 'a path of nothing but whitespace falls back to the default' );
+
+site( [ DOMAIN => '   ' ] );
+check_same( '', $settings->revalidate_endpoint_url(), 'a domain of nothing but whitespace composes nothing' );
+
 // An unconfigured site composes nothing rather than a bare path. Nothing calls
 // these without an `is_configured()` guard, and this is what keeps a mistake
 // there from becoming a request to a relative URL.
