@@ -147,10 +147,13 @@ $expected_per_class = [
 	],
 
 	Settings::class => [
-		[ 'admin_menu',    'add_page',            10, 1 ],
-		[ 'admin_init',    'register_fields',     10, 1 ],
-		[ 'admin_init',    'migrate_db',          10, 1 ],
-		[ 'admin_notices', 'unconfigured_notice', 10, 1 ],
+		[ 'admin_menu',             'add_page',              10, 1 ],
+		[ 'admin_init',             'register_fields',       10, 1 ],
+		[ 'admin_init',             'migrate_db',            10, 1 ],
+		[ 'admin_init',             'sweep_migrations',      10, 1 ],
+		[ 'admin_notices',          'unconfigured_notice',   10, 1 ],
+		[ 'admin_notices',          'sweep_declined_notice', 10, 1 ],
+		[ 'network_admin_notices',  'sweep_declined_notice', 10, 1 ],
 	],
 
 	FailureWindow::class => [

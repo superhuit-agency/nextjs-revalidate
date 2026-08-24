@@ -2,6 +2,7 @@
 
 namespace NextJsRevalidate;
 
+use NextJsRevalidate;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Interfaces\Hookable;
 
@@ -83,6 +84,18 @@ class Settings extends Base implements Hookable {
 	const DB_VERSION_OPTION_NAME = 'nextjs_revalidate-db_version';
 
 	/**
+	 * The swept version: the network-scoped record of the release every site of
+	 * the network was last asked to migrate at.
+	 *
+	 * Stored through the site-option API rather than the per-site one, because
+	 * it is the network's own state and not any one site's — the only piece of
+	 * this plugin's state that is. It answers a different question from the
+	 * ledger above: the ledger says which migrations a site has been through,
+	 * this says only whether every site has been asked this release.
+	 */
+	const SWEPT_VERSION_OPTION_NAME = 'nextjs_revalidate-swept_version';
+
+	/**
 	 * Fingerprints used to backfill the ledger on sites which predate it.
 	 *
 	 * Each entry maps a DB version to the legacy options a site still holding
@@ -101,8 +114,15 @@ class Settings extends Base implements Hookable {
 		add_action( 'admin_init', [$this, 'register_fields'] );
 
 		add_action( 'admin_init', [$this, 'migrate_db'] );
+		add_action( 'admin_init', [$this, 'sweep_migrations'] );
 
 		add_action( 'admin_notices', [$this, 'unconfigured_notice'] );
+
+		// The declined sweep is the network's business, and a super admin
+		// reads network notices in the network admin — where `admin_notices`
+		// does not fire at all.
+		add_action( 'admin_notices', [$this, 'sweep_declined_notice'] );
+		add_action( 'network_admin_notices', [$this, 'sweep_declined_notice'] );
 	}
 
 	public function __get( $name ) {
@@ -656,6 +676,46 @@ class Settings extends Base implements Hookable {
 	}
 
 	/**
+	 * Tell the network admin that the migration sweep declined, and why.
+	 *
+	 * A sweep reaches every site or it does not start, so on a large network
+	 * this one declines and nothing stamps the swept version — which is what
+	 * makes this condition true, and keeps it true for as long as the network
+	 * stays over core's threshold. Nothing here can know that the sites were
+	 * migrated one admin visit at a time, so the notice does not stop of its
+	 * own accord; saying nothing instead would leave a network running new code
+	 * over old data with no sign of it anywhere, which is the silence this
+	 * whole change is against.
+	 *
+	 * The condition is recomputed here rather than handed over by
+	 * `sweep_migrations()`, so the notice states something true on its own
+	 * terms instead of describing a flag an earlier hook happened to set.
+	 */
+	public function sweep_declined_notice() {
+
+		// First, and in this order: `wp_is_large_network()` and
+		// `get_blog_count()` live in `ms-functions.php`, which a single install
+		// never loads. The multisite test is inside `network_sweep_is_due()`.
+		if ( !$this->network_sweep_is_due() ) return;
+		if ( !wp_is_large_network( 'sites' ) ) return;
+
+		// Nobody but a super admin can act on this, and nobody but a super
+		// admin can even see the sites it is about.
+		if ( !current_user_can( 'manage_network' ) ) return;
+
+		printf(
+			'<div class="notice notice-warning nextjs-revalidate-sweep-declined__notice"><p>%s</p></div>',
+			esc_html(
+				sprintf(
+					/* translators: %s: number of sites on the network. */
+					__( 'Next.js revalidate cannot migrate the %s sites of this network in a single request, and it does not migrate some of them and leave the rest running new code over old data. Open the admin of each site once instead — a site migrates itself the first time somebody does.', 'nextjs-revalidate' ),
+					number_format_i18n( get_blog_count() )
+				)
+			)
+		);
+	}
+
+	/**
 	 * Migrate this site's options to the data shape the running code expects.
 	 *
 	 * Each migration is gated on the site's DB version — read from the
@@ -706,6 +766,78 @@ class Settings extends Base implements Hookable {
 		// has already been through eligible again.
 		$stamp = version_compare( $db_version, NJR_VERSION, '>' ) ? $db_version : NJR_VERSION;
 		if ( $stamp !== $stored ) update_option( self::DB_VERSION_OPTION_NAME, $stamp );
+	}
+
+	/**
+	 * Ask every site of the network to migrate, once per release.
+	 *
+	 * `migrate_db()` above is hooked on `admin_init`, which fires per site: on
+	 * a network a site therefore migrates only when a human opens *that site's*
+	 * admin. A plugin update reaches every site's code at once and no site's
+	 * data, and `register_activation_hook` does not fire on an update at all,
+	 * so nothing else closes the gap. It is not dormant inertia either — cron
+	 * on a site is triggered by *front-end* traffic, so a subsite with visitors
+	 * and no admin visitors drains its queue and reads its revalidate domain
+	 * and secret out of unmigrated options for as long as nobody logs in.
+	 *
+	 * The trigger is a version *comparison* and not an update *event*, on
+	 * purpose: Composer, git and manual zip deploys all replace the plugin's
+	 * files without WordPress's own updater ever running, and each of them has
+	 * to sweep on the next admin request just as an update through the updater
+	 * does.
+	 *
+	 * This decides only *when every site gets asked*. Which migrations then run
+	 * on a given site is the site's own ledger's answer, unchanged — asking a
+	 * site that is already up to date costs it one option read.
+	 *
+	 * Single-site installs never reach any of this: there, the per-site hook
+	 * above already reaches the only site there is.
+	 */
+	public function sweep_migrations() {
+
+		if ( !$this->network_sweep_is_due() ) return;
+
+		// One sweep helper serves setup, teardown and migration alike — there
+		// is no second blog-switching path here. On a large network it declines
+		// rather than covering as many sites as one request has time for, and
+		// leaves the swept version alone so that a network whose threshold is
+		// later raised is swept on the next admin request. Until then,
+		// `sweep_declined_notice()` says so.
+		if ( !NextJsRevalidate::for_each_site( [$this, 'migrate_db'] ) ) return;
+
+		// Stamped only now the sweep has been through every site. A sweep cut
+		// short — a fatal on one site, a request nobody waited for — leaves the
+		// record behind the running version, so the next admin request retries
+		// it rather than skipping a network that was never finished.
+		update_site_option( self::SWEPT_VERSION_OPTION_NAME, NJR_VERSION );
+	}
+
+	/**
+	 * Whether this network still has to be swept for the running release.
+	 *
+	 * A live property, computed when it is asked for rather than a flag some
+	 * earlier code path set, so the sweep and the notice cannot disagree.
+	 *
+	 * A network swept by *newer* code than is running keeps its higher record,
+	 * for the reason the per-site ledger keeps its higher DB version: a
+	 * downgrade must not make a sweep the network has already been through due
+	 * again. Everything else — a record one release behind, a record left by a
+	 * sweep that never finished, no record at all — is due.
+	 *
+	 * @return bool
+	 */
+	private function network_sweep_is_due() {
+
+		if ( !is_multisite() ) return false;
+
+		$swept = get_site_option( self::SWEPT_VERSION_OPTION_NAME );
+
+		// Compared as versions, never as concatenated digits: the scheme this
+		// plugin used before the ledger read 1.7.0 as 170 and 1.6.10 as 1610,
+		// and so ranked the newer release as the older one.
+		if ( !is_string($swept) || $swept === '' ) return true;
+
+		return version_compare( $swept, NJR_VERSION, '<' );
 	}
 
 	/**

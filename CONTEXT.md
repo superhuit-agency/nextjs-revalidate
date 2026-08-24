@@ -215,6 +215,20 @@ Establishing a DB version for a site that predates the migration ledger, by
 inferring it from which legacy options are present in the site's data.
 _Avoid_: Bootstrapping, seeding
 
+**Swept version**:
+The record of the release every site of a **network** was last asked to migrate
+at. Network-scoped rather than per-site — the one piece of this plugin's state
+that is — and compared against the **plugin version** on admin requests: when the
+running code is newer, every site is swept and the record is then stamped.
+
+Not a second ledger. It says nothing about any site's data shape, only whether
+every site has been *asked* this release; the **migration ledger** remains the
+authority on which migrations a given site runs, and a site that has nothing to
+do answers the sweep with one option read. That split is what lets the sweep fire
+once per network per release while migrations stay a per-site decision.
+_Avoid_: Network DB version — it describes no data shape; last migrated version —
+a site the sweep reached may have had nothing to migrate.
+
 ### Network and sites
 
 **Site**:
@@ -227,7 +241,7 @@ only where core's API forces it.
 
 **Network**:
 The set of sites sharing one WordPress install. Owns nothing of this plugin's
-state except the record of which sites have been swept.
+state except the **swept version**.
 _Avoid_: Multisite as a noun — it is a mode the install is in, not a thing.
 
 **Site setup**:
@@ -276,7 +290,7 @@ returns the already-built root, not the thing that builds it.
 Attaching a class's callbacks to WordPress actions and filters. A separate act
 from constructing that class, performed once, by the composition root. The order
 is load-bearing: WordPress runs same-hook, same-priority callbacks in
-registration order, and eight of this plugin's callbacks sit on `admin_init` at
+registration order, and nine of this plugin's callbacks sit on `admin_init` at
 priority 10.
 _Avoid_: Wiring, binding, hooking up
 

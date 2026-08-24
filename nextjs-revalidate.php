@@ -114,7 +114,7 @@ class NextJsRevalidate {
 	 * Constructing a Hookable touches no global state, so the two are separate
 	 * acts here: everything is built first, then every one of them is asked to
 	 * register, in construction order. That order is load-bearing — WordPress
-	 * runs same-hook, same-priority callbacks in registration order, and eight
+	 * runs same-hook, same-priority callbacks in registration order, and nine
 	 * of this plugin's callbacks sit on `admin_init` at priority 10.
 	 *
 	 * See `docs/adr/0003-explicit-hook-registration.md`.
@@ -349,6 +349,13 @@ class NextJsRevalidate {
 	 */
 	public static function uninstall() {
 		self::for_each_site( [self::init(), 'uninstall_site'] );
+
+		// The swept version is the network's own state rather than any site's,
+		// so it is dropped here and not once per site. Left behind, a later
+		// reinstall would read it, believe every site had already been asked to
+		// migrate for this release, and sweep none of them — the network-scoped
+		// twin of the stale ledger `uninstall_site()` deletes.
+		if ( is_multisite() ) delete_site_option( Settings::SWEPT_VERSION_OPTION_NAME );
 	}
 
 }
