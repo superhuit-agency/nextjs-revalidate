@@ -205,7 +205,8 @@ actions. Return `false` to keep it out of the queue.
 ## Tests
 
 Two commands, and which one a test belongs to depends on whether it needs real
-WordPress state. See `docs/adr/0008-two-testing-idioms.md`.
+WordPress state. See `docs/adr/0008-two-testing-idioms.md`. A third idiom is not
+a command at all — see the runbook below.
 
 ### `npm run test:php` — standalone scripts
 
@@ -260,6 +261,25 @@ the site's home url, so a test survives a change of `testsPort`.
 The queue table is created once in the bootstrap and emptied around every test.
 It has to be: `RevalidateQueue::add_item()` runs its own transaction, whose
 `COMMIT` also commits the one `WP_UnitTestCase` uses to roll a test back.
+
+### The manual test runbook — checks no command can run
+
+An admin notice rendering on the screen it is meant for, a redirect saved through
+Redirection's own UI, a site upgraded from 1.6.9. What puts a check here is
+**reach** — whether the answer can only come from a browser, a console or a file
+on a running site — never its subject. See
+`docs/adr/0012-a-third-testing-idiom.md`.
+
+Two files, partitioning the checks between them. **No step appears in both.**
+
+- **`docs/manual-tests.md`** — the **core pass**: steps on a single site. Run
+  it before every release, and after any change worth ten minutes.
+- **`docs/manual-tests-extended.md`** — the **extended pass**: everything else,
+  including the network stack and a site upgraded from the previous release. Run
+  the part covering what you touched, and all of it before a structural release.
+
+Both are committed **unchecked**. Tick the boxes in your working copy during a
+pass; never commit the ticks.
 
 ## Checks
 

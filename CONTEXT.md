@@ -276,3 +276,54 @@ one loop, in construction order; that one registers last, because it alone is
 conditional on another plugin being installed.
 _Avoid_: Listener, subscriber, observer — all imply a dispatcher this plugin does
 not have.
+
+### Testing
+
+**Manual test**:
+A check a person performs against a running site, whose answer only a browser, a
+console or a file on disk can give. Not a test that happens to be unautomated:
+what puts a check here is **reach** — an admin notice rendering, a redirect saved
+through another plugin's own screens, a site upgraded from an earlier release —
+never its subject. The automated idioms pin units and seams; a manual test pins
+that the assembled plugin is wired together at all.
+_Avoid_: Smoke test as a synonym — that is one kind of pass, not the category;
+QA, acceptance test.
+
+**Runbook**:
+Where the manual tests are written down. Two documents, because one that holds
+every check is one nobody runs: `docs/manual-tests.md` is the **core pass** and
+`docs/manual-tests-extended.md` is the **extended pass**. No check appears in
+both, so neither can drift from the other. Always committed unchecked: a runbook
+describes a **pass** and never records one, and a ticked box in the repository is
+a mistake rather than a result.
+_Avoid_: Test plan, checklist, QA doc.
+
+**Pass**:
+One execution of a runbook, whole or partial. What a person does; distinct from
+the runbook, which is what they read.
+_Avoid_: Run — reserved for the automated suites, which are run rather than
+passed through.
+
+**Core pass**:
+The manual tests worth running before every release and after any substantial
+change: one **stack**, and short enough to actually be run. Not a summary of the
+**extended pass** and not a subset of it — the two partition the manual tests
+between them.
+_Avoid_: Smoke test, quick test, sanity check — all three imply a shallower
+version of something else, and this is not one.
+
+**Extended pass**:
+The manual tests the **core pass** leaves out, including every check that needs a
+stack other than a single site. Run against the ground it covers when that ground
+has been touched, and in full before a release that changes anything structural.
+_Avoid_: Full pass — the whole of the manual tests is both documents, not this
+one.
+
+**Stack**:
+The shape of the WordPress install a group of manual tests needs — a single site,
+a network, or a site upgraded from an earlier release. Never the software
+underneath: PHP, MySQL and Docker are the same in all three, and it is the
+install that differs. Switching stacks is the expensive move a **pass** is
+ordered to minimise, so every stack states its setup and its teardown in full.
+_Avoid_: Environment, technology stack, LAMP — the first is wp-env's word for
+something else, the last two are the reading this term exists to rule out.

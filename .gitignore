@@ -124,3 +124,9 @@ dist
 .vscode-test
 
 # End of https://www.toptal.com/developers/gitignore/api/composer,node
+
+# The network stack of docs/manual-tests.md, copied here from
+# config/wp-env.multisite.json for the length of a pass and removed after.
+# wp-env merges it over .wp-env.json, so a stale one silently changes every
+# subsequent `wp-env start`.
+.wp-env.override.json

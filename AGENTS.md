@@ -15,3 +15,11 @@ Default vocabulary — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-f
 ### Domain docs
 
 Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Manual tests
+
+The checks only a person at a browser can perform, split across two files that
+partition them — `docs/manual-tests.md` (the core pass, single site) and
+`docs/manual-tests-extended.md` (everything else). No step is in both. Committed
+**unchecked**. See `docs/agents/manual-tests.md` for what obliges you to update
+them, and what obliges you to shrink them.
