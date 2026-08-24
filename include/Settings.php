@@ -17,6 +17,7 @@ use NextJsRevalidate\Interfaces\Hookable;
  * @property string $secret                  The shared secret every request carries.
  * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
+ * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — '', 'on' or 'off'.
  * @property array  $debug                   Debug switches, keyed by name.
  */
 class Settings extends Base implements Hookable {
@@ -31,6 +32,7 @@ class Settings extends Base implements Hookable {
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
 	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
+	const SETTINGS_REVALIDATE_ON_FSE_SAVE = 'nextjs_revalidate-revalidate-on-fse-save';
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
@@ -51,6 +53,7 @@ class Settings extends Base implements Hookable {
 		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,                   'empty' => ''  ],
 		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,     'empty' => []  ],
 		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,       'empty' => []  ],
+		'revalidate_on_fse_save'  => [ 'name' => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,        'empty' => ''  ],
 		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                         'empty' => []  ],
 	];
 
@@ -174,6 +177,7 @@ class Settings extends Base implements Hookable {
 			[ 'id' => 'api',            'title' => __('Next.js API', 'nextjs-revalidate')     ],
 			[ 'id' => 'allow_all_opts', 'title' => __('Allow purge all', 'nextjs-revalidate') ],
 			[ 'id' => 'on_menu_save',   'title' => __('On menu update', 'nextjs-revalidate')  ],
+			[ 'id' => 'on_fse_save',    'title' => __('On FSE update', 'nextjs-revalidate')   ],
 			[ 'id' => 'debug',          'title' => __('Debug', 'nextjs-revalidate')           ],
 			[ 'id' => 'queue',          'title' => __('Queue', 'nextjs-revalidate') . sprintf('<span class="badge">%s</span>', $nb_in_queue) ],
 		];
@@ -430,6 +434,56 @@ class Settings extends Base implements Hookable {
 		);
 
 
+		// On FSE save section settings
+		//
+		// One switch, and deliberately not the per-post-type shape of the
+		// section above: that shape exists because "revalidate all" has to
+		// enumerate post types in order to enqueue a URL for each. Here the
+		// front-end is told once that its snapshot is stale and rebuilds its
+		// pages itself, so a post type is not a choice anybody could make.
+		add_settings_section(
+			'nextjs-revalidate-section-revalidate-on-fse-save',
+			__('On FSE update options', 'nextjs-revalidate'),
+			function() {
+				printf( '<p>%s</p>', __('Editing a template or a template part in the site editor changes every page at once. The front-end is told, in one request, that its template snapshot is stale.', 'nextjs-revalidate') );
+			},
+			self::PAGE_NAME,
+			[
+				'before_section' => '<section aria-hidden="true" id="tab-panel--on_fse_save" role="tabpanel" tabindex="-1" aria-labelledby="tab-on_fse_save">',
+				'after_section'  => '</section>',
+			]
+		);
+
+		$id = "revalidate-on-fse-save";
+		add_settings_field(
+			$id,
+			__('Revalidate on FSE update', 'nextjs-revalidate'),
+			function ($args) {
+				// The hidden input is what lets this setting default to *on*.
+				// An unchecked switch submits nothing at all, WordPress stores
+				// that as an empty row, and an empty row is how a site that has
+				// never been configured reads — so without an explicit `off`,
+				// switching this off would look exactly like never having
+				// touched it, and the default would win back on the next read.
+				printf(
+					'<input type="hidden" name="%s" value="off" />',
+					esc_attr( self::SETTINGS_REVALIDATE_ON_FSE_SAVE )
+				);
+
+				\Kuuak\WordPressSettingFields\Fields::switch( $args );
+			},
+			self::PAGE_NAME,
+			'nextjs-revalidate-section-revalidate-on-fse-save',
+			[
+				'label_for' => $id,
+				'id'        => $id,
+				'name'      => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,
+				'checked'   => $this->revalidates_on_fse_save(),
+				'help'      => __('On by default. Switch it off for a front-end that does not serve the FSE revalidate endpoint yet — otherwise every template save asks it for a route it does not have.', 'nextjs-revalidate'),
+			]
+		);
+
+
 		// Debug section settings
 		add_settings_section(
 			'nextjs-revalidate-section-debug',
@@ -514,6 +568,39 @@ class Settings extends Base implements Hookable {
 	 */
 	public function fse_endpoint_url() {
 		return $this->endpoint_url( $this->fse_endpoint_path, self::DEFAULT_FSE_ENDPOINT_PATH );
+	}
+
+	/**
+	 * Whether a template or template part change invalidates the FSE snapshot.
+	 *
+	 * On unless a site has switched it off, and the empty value is what carries
+	 * that: absence means the operator has never had an opinion, and the
+	 * behaviour a plugin does by default is not a preference to seed a row with.
+	 * The same distinction the endpoint paths draw — an **empty value** is what
+	 * a read yields, and something else decides what absence *resolves to*.
+	 *
+	 * Which is why the field posts an explicit `off`: a bare switch submits
+	 * nothing when unchecked, WordPress stores that as an empty row, and a site
+	 * that had just turned this off would read as never having touched it.
+	 *
+	 * So it is the `off` that is read, not the `on`: only a row saying so in as
+	 * many words switches this off, and a row holding anything else — an empty
+	 * value, whitespace, or something no version of this plugin ever wrote —
+	 * leaves the site revalidating rather than silently stopping.
+	 *
+	 * @return bool
+	 */
+	public function revalidates_on_fse_save() {
+		$value = trim( (string) $this->revalidate_on_fse_save );
+
+		// The empty value, tested before the filter rather than left to it:
+		// `FILTER_VALIDATE_BOOLEAN` reads '' as false, which is the one reading
+		// this setting must not have.
+		if ( '' === $value ) return true;
+
+		// `FILTER_NULL_ON_FAILURE` is what separates the rest: `off`, `0`, `no`
+		// and `false` answer false, and anything unrecognised answers null.
+		return false !== filter_var( $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
 	}
 
 	/**

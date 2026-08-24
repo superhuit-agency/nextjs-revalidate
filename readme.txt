@@ -23,6 +23,12 @@ The domain and the secret are required. The revalidate path (default
 `/api/revalidate`) and the FSE revalidate path (default `/api/revalidate-fse`)
 are optional, for apps that route those endpoints elsewhere.
 
+Saving an FSE template or template part, resetting one to its theme default, or
+switching themes sends one request to the FSE endpoint instead — the front-end
+holds the whole template structure as a single cached value, so there is no page
+to name. Switch "Revalidate on FSE update" off for a front-end that does not
+serve that endpoint yet.
+
 Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
 split into a domain and a path automatically on the first admin request after
 the upgrade, custom paths and all.

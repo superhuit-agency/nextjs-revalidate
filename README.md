@@ -18,10 +18,31 @@ The revalidation request is sent to an endpoint composed from the settings — t
 | Revalidate path | no | `/api/revalidate` |
 | FSE revalidate path | no | `/api/revalidate-fse` |
 | Revalidate secret | yes | — |
+| Revalidate on FSE update | no | on |
 
 A standard install fills in the domain and the secret. The paths exist for apps
 that route these endpoints somewhere else; each falls back to the default shown
 in its placeholder when left empty.
+
+### FSE templates
+
+Next.js renders its pages inside WordPress FSE templates, and holds the whole
+template structure as one cached value. Saving a template or a template part in
+the site editor, resetting one to its theme default, or switching themes
+therefore changes every page at once — so the plugin sends **one** request to the
+FSE endpoint, with the secret and no path, and the front-end's pages rebuild
+lazily from there. Nothing is enqueued and nothing is rebuilt page by page.
+
+```
+https://example.com/api/revalidate-fse?secret=my-super-secret-string
+```
+
+Menu changes do **not** trigger this: menu items are fetched at request time by
+the front-end and are not part of the template snapshot.
+
+Switch **Revalidate on FSE update** off for a front-end that does not serve that
+endpoint yet — otherwise every template save asks it for a route it does not
+have.
 
 Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
 split into a domain and a path automatically on the first admin request after the

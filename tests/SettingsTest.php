@@ -243,6 +243,43 @@ foreach ( $empty_checks as [ $name, $expected_empty ] ) {
 	}
 }
 
+// The one setting whose absence does not mean "off".
+// ====
+//
+// #30 — an FSE change invalidates the front-end's snapshot unless a site has
+// said otherwise, so the row a site does not hold has to read as *on*. That
+// makes the stored `off` load-bearing in a way no other switch's is: it is the
+// only thing distinguishing a site that turned this off from one that has never
+// touched it, and it exists only because the field posts it explicitly.
+
+$fse_save = NextJsRevalidate\Settings::SETTINGS_REVALIDATE_ON_FSE_SAVE;
+
+foreach ( [
+	[ 'a site holding no row invalidates the snapshot',        [],                        true  ],
+	[ 'a site seeded with the empty value invalidates it too', [ $fse_save => '' ],       true  ],
+	[ 'a row stored as false is an absent row',                [ $fse_save => false ],    true  ],
+	[ 'a site that switched it on invalidates the snapshot',   [ $fse_save => 'on' ],     true  ],
+	[ 'a site that switched it off does not',                  [ $fse_save => 'off' ],    false ],
+	// The switch has exactly two positions, and anything else in the row is a
+	// site that has not switched it off.
+	[ 'whitespace is a field nobody filled in',                [ $fse_save => '  ' ],     true  ],
+	[ 'a value nothing writes is not an off switch',           [ $fse_save => 'banana' ], true  ],
+] as [ $description, $options, $expected ] ) {
+	$GLOBALS['njr_test_options'] = $options;
+
+	$actual = $settings->revalidates_on_fse_save();
+
+	if ( $actual === $expected ) {
+		printf( "ok   — %s\n", $description );
+	}
+	else {
+		$failures++;
+		printf( "FAIL — %s (expected %s, got %s)\n", $description, var_export( $expected, true ), var_export( $actual, true ) );
+	}
+}
+
+$GLOBALS['njr_test_options'] = [ $domain => 'https://front-end.test', $secret => 's3cret' ];
+
 // Nothing outside the settings declaration is a setting, however it is asked.
 if ( ! isset( $settings->not_a_setting ) ) {
 	printf( "ok   — a name that is not a setting is not set\n" );
