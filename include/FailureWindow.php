@@ -118,9 +118,17 @@ class FailureWindow extends Base implements Hookable {
 	 * cause: the condition is about failure, not about diagnosis, and an
 	 * unnamed cause is not a reason to stay silent.
 	 *
-	 * A **refusal** is not an outcome to record and must not reach here — an
-	 * unconfigured site was never attempted against the front-end, so it is no
-	 * evidence about the front-end's health.
+	 * Two outcomes must not reach here, and one rule excludes both: what this
+	 * window samples is the *queue's own traffic*, and nothing else.
+	 *
+	 *  - A **refusal** — an unconfigured site was never attempted against the
+	 *    front-end at all, so it is no evidence about the front-end.
+	 *  - A **probe** — a real attempt, but one made because an operator asked
+	 *    rather than because content changed. A sample only means anything if
+	 *    what enters it is drawn from the population it claims to describe, and
+	 *    a probe enters at a rate set by how worried the operator is: recording
+	 *    one would let a diagnostic silence its own alarm. See
+	 *    `docs/adr/0013-a-probe-is-not-evidence.md`.
 	 *
 	 * @param true|WP_Error $outcome What `Revalidate::purge()` answered. Only
 	 *                               `true` is a success: any other value —

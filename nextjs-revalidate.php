@@ -36,6 +36,7 @@ use NextJsRevalidate\Assets;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Integrations\Redirection;
+use NextJsRevalidate\Probe;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
@@ -82,6 +83,7 @@ class NextJsRevalidate {
 
 	private Assets $assets;
 	private Revalidate $revalidate;
+	private Probe $probe;
 	private Settings $settings;
 	private FailureWindow $failureWindow;
 	private ScheduledPurges $cronScheduledPurges;
@@ -114,7 +116,7 @@ class NextJsRevalidate {
 	 * Constructing a Hookable touches no global state, so the two are separate
 	 * acts here: everything is built first, then every one of them is asked to
 	 * register, in construction order. That order is load-bearing — WordPress
-	 * runs same-hook, same-priority callbacks in registration order, and eight
+	 * runs same-hook, same-priority callbacks in registration order, and nine
 	 * of this plugin's callbacks sit on `admin_init` at priority 10.
 	 *
 	 * See `docs/adr/0003-explicit-hook-registration.md`.
@@ -127,6 +129,7 @@ class NextJsRevalidate {
 		$this->settings            = $this->hookable( new Settings() );
 		$this->failureWindow       = $this->hookable( new FailureWindow() );
 		$this->revalidate          = $this->hookable( new Revalidate() );
+		$this->probe               = $this->hookable( new Probe() );
 		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
 		$this->queue               = $this->hookable( new RevalidateQueue() );
