@@ -202,6 +202,70 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->assertQueueRevalidates( [ '/the-old-source/', '/the-new-source/' ] );
 	}
 
+	/**
+	 * The two sides of an edit are put to the revalidatable redirect rules
+	 * independently, so a source edited into a regular expression frees the
+	 * path it stopped redirecting from even though the redirect it now is
+	 * names no single path at all.
+	 */
+	public function test_a_source_edited_into_a_regular_expression_revalidates_the_old_path_only() {
+		$this->configure_site();
+
+		$this->redirect_edited(
+			$this->redirect_row( [ 'url' => '/a-literal-source' ] ),
+			$this->redirect_row( [ 'url' => '/a-literal-source/(.*)', 'regex' => 1 ] )
+		);
+
+		$this->assertQueueRevalidates( [ '/a-literal-source/' ] );
+	}
+
+	/**
+	 * And the other way round: there was no single path to free, and there is
+	 * one to start redirecting.
+	 */
+	public function test_a_regular_expression_source_edited_into_a_literal_path_revalidates_the_new_path_only() {
+		$this->configure_site();
+
+		$this->redirect_edited(
+			$this->redirect_row( [ 'url' => '/blog/(.*)', 'regex' => 1 ] ),
+			$this->redirect_row( [ 'url' => '/blog-home' ] )
+		);
+
+		$this->assertQueueRevalidates( [ '/blog-home/' ] );
+	}
+
+	/**
+	 * A disabled redirect resolves to nothing on either side of the edit, so
+	 * the answers the front-end holds for both paths are already right.
+	 */
+	public function test_editing_a_disabled_redirect_revalidates_nothing() {
+		$this->configure_site();
+
+		$this->redirect_edited(
+			$this->redirect_row( [ 'url' => '/an-old-source', 'status' => 'disabled' ] ),
+			$this->redirect_row( [ 'url' => '/a-new-source', 'status' => 'disabled' ] )
+		);
+
+		$this->assertQueueIsEmpty();
+	}
+
+	/**
+	 * An edit that left the source alone hands the queue one path twice, and
+	 * costs one revalidation — the queue holds a permalink it already has
+	 * exactly once, which is where this is decided. Asserted here rather than
+	 * in the standalone suite because only the real queue can answer it.
+	 */
+	public function test_an_edit_that_leaves_the_source_alone_costs_one_revalidation() {
+		$this->configure_site();
+
+		$this->redirect_edited(
+			$this->redirect_row( [ 'url' => '/an-unchanged-source' ] ),
+			$this->redirect_row( [ 'url' => '/an-unchanged-source' ] )
+		);
+
+		$this->assertQueueRevalidates( [ '/an-unchanged-source/' ] );
+	}
+
 	// The source path
 	// ====
 
@@ -413,6 +477,24 @@ class RedirectRevalidationTest extends QueueTestCase {
 	 */
 	private function redirect_updated( $redirect ) {
 		do_action( 'redirection_redirect_updated', $redirect->get_id(), $redirect );
+	}
+
+	/**
+	 * Fire the same action as its update call site does on the versions of
+	 * Redirection that carry the previous state: the redirect as it was, then
+	 * the redirect as it now is.
+	 *
+	 * The rows are built rather than saved because what an edit *was* is not
+	 * something Redirection keeps: by the time it has stored the new state, the
+	 * old one exists only in the argument it hands over.
+	 *
+	 * @param Red_Item $previous The redirect as it was before the edit.
+	 * @param Red_Item $now      The redirect as it is after it.
+	 *
+	 * @return void
+	 */
+	private function redirect_edited( $previous, $now ) {
+		do_action( 'redirection_redirect_updated', $previous, $now );
 	}
 
 	/**
