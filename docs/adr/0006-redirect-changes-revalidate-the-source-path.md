@@ -110,6 +110,19 @@ be wrong: a set kept in memory outlives the queue entry it describes, and in a
 long-running process (a WP-CLI import) it would decline a path that had already
 been enqueued, drained, and made stale again.
 
+**The escape hatch declines; it does not admit.** `nextjs_revalidate_should_revalidate_redirect`
+is applied after the revalidatable redirect rules and over the source path they
+produced, which is what lets a site decline one path rather than the feature —
+and what stops it resurrecting a revalidation those rules never had a path for. A
+regular expression source returns before the filter is reached, so no amount of
+returning `true` turns it into a revalidation, and the stampede rejected above
+cannot be filtered back into existence. This is where it parts company with
+`nextjs_revalidate_purge_should_revalidate_post_on_save`, which admits as well as
+declines: every post has a permalink whatever its type, so there is always a
+single path for that filter to be right about. The reach is the whole of the
+integration — every event that enqueues a source path asks, and an update that
+changes the source asks twice, once per path. Issue #60.
+
 **A source names a path from the domain root, not from the site.** Redirection
 matches its redirects against `REQUEST_URI`, and its post slug monitor stores the
 path component of a post's permalink, so on a site served from a subdirectory
