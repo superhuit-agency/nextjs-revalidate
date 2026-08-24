@@ -36,6 +36,20 @@ _Avoid_: Job list, backlog
 A revalidation registered to happen at a future time rather than immediately,
 used for content with a publication or expiry date.
 
+**Probe**:
+A revalidation the operator asks for directly, in order to observe its outcome.
+Delivered in the request that asked for it rather than through the **revalidation
+queue**, and answered to the operator rather than recorded — a probe is never a
+**failure** and never enters the **failure window**, because nothing about it
+samples the queue's traffic.
+
+Not a read-only check: a probe rebuilds the path it names, on the live front-end,
+exactly as any other revalidation would. The operator's motive is the diagnosis;
+the rebuild is real and happens anyway.
+_Avoid_: Test — reserved for checks performed against *this plugin*, see **Manual
+test**; ping, health check — both suggest the front-end is asked something
+cheaper than a rebuild.
+
 **Failure**:
 A revalidation that was enqueued, attempted against the front-end, and did not
 succeed. Recorded and dropped rather than retried: delivery is at most once, so a
