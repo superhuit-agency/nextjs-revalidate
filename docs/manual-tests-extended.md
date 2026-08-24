@@ -169,13 +169,12 @@ Create a subscriber once:
 - [ ] **As the subscriber, load the posts list.** Expect no Purge cache row
       action and no Purge caches bulk action. Restore the secret afterwards.
 
-## J. The REST API
+## J. The REST API (#100)
 
-> **This section is an exception and has no issue number yet.** These routes are
-> reachable from a wp-env PHPUnit test, so by the rule in
-> [ADR 0012](adr/0012-a-third-testing-idiom.md) they belong in the automated
-> suite. File the issue, put its number here, and delete this section when it
-> closes.
+> **This section is a temporary exception under
+> [ADR 0012](adr/0012-a-third-testing-idiom.md).** These routes need real
+> WordPress state but no browser, so they belong in the wp-env PHPUnit suite.
+> **Delete this section when #100 closes.**
 
 - [ ] **Call the single route with the right secret:**
       ```sh
