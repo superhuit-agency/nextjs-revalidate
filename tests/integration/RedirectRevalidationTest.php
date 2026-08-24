@@ -165,6 +165,71 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->assertQueueRevalidates( [ '/switched-on/' ] );
 	}
 
+	/**
+	 * The same two non-candidates as on the way in, asked again on the way out.
+	 * A regular expression source names no single path however the redirect
+	 * leaves.
+	 */
+	public function test_deleting_a_redirect_with_a_regular_expression_source_revalidates_nothing() {
+		$redirect = $this->arrange_redirect( [ 'url' => '/blog/(.*)', 'regex' => 1 ] );
+
+		$this->configure_site();
+		$redirect->delete();
+
+		$this->assertQueueIsEmpty();
+	}
+
+	/**
+	 * A disabled redirect was resolving to nothing already, so deleting it
+	 * changes nothing the front-end holds for its source.
+	 */
+	public function test_deleting_a_redirect_that_was_already_disabled_revalidates_nothing() {
+		$redirect = $this->arrange_redirect( [ 'url' => '/never-resolved', 'status' => 'disabled' ] );
+
+		$this->configure_site();
+		$redirect->delete();
+
+		$this->assertQueueIsEmpty();
+	}
+
+	/**
+	 * Enabling and disabling carry only the redirect's id, so the handler that
+	 * receives one has to load the redirect to find its source at all.
+	 *
+	 * Asserted by firing the actions the way Redirection fires them — with an
+	 * id and nothing else — over a redirect this test never hands over. The
+	 * tests above go through `enable()` and `disable()`, which is the everyday
+	 * route; this one is what stops the id from arriving unread.
+	 */
+	public function test_enabling_and_disabling_work_from_the_id_alone() {
+		$switched_on  = $this->arrange_redirect( [ 'url' => '/switched-on-by-id' ] );
+		$switched_off = $this->arrange_redirect( [ 'url' => '/switched-off-by-id' ] );
+
+		$this->configure_site();
+
+		// Both fixtures are stored enabled, which is the state each action
+		// leaves behind: enabling writes `enabled` before it fires, and the
+		// disable handler must not consult the flag at all — that the redirect
+		// has stopped being enabled is the change the front-end has not heard.
+		do_action( 'redirection_redirect_enabled', $switched_on->get_id() );
+		do_action( 'redirection_redirect_disabled', $switched_off->get_id() );
+
+		$this->assertQueueRevalidates( [ '/switched-on-by-id/', '/switched-off-by-id/' ] );
+	}
+
+	/**
+	 * An id no redirect answers to — a selection bulk-deleted in one tab and
+	 * bulk-disabled in another is enough to produce one.
+	 */
+	public function test_an_id_no_redirect_answers_to_revalidates_nothing() {
+		$this->configure_site();
+
+		do_action( 'redirection_redirect_enabled', 987654 );
+		do_action( 'redirection_redirect_disabled', 987654 );
+
+		$this->assertQueueIsEmpty();
+	}
+
 	// Updating
 	// ====
 
@@ -297,6 +362,63 @@ class RedirectRevalidationTest extends QueueTestCase {
 		}
 
 		$this->assertQueueRevalidates( [ '/campaign-legacy/', '/campaign/' ] );
+	}
+
+	/**
+	 * The deduplication above, isolated: every redirect in the batch shares one
+	 * source, and the batch costs exactly one queue entry.
+	 *
+	 * Asserted rather than inherited, and asserted *here* rather than against
+	 * the queue directly, because this is the one place a single click in
+	 * wp-admin can produce unbounded queue growth. The integration hands the
+	 * same permalink over once per redirect on purpose — it keeps no memory of
+	 * what it has seen, see ADR 0006 — so what collapses them is
+	 * `RevalidateQueue::add_item()`, which enqueues a permalink it already
+	 * holds exactly once. That is a claim about MySQL as much as about PHP,
+	 * which is why it lives in this suite and not in a standalone script.
+	 */
+	public function test_a_bulk_operation_over_redirects_sharing_a_source_revalidates_it_exactly_once() {
+		$redirects = [];
+		foreach ( range( 1, 25 ) as $i ) {
+			$redirects[] = $this->arrange_redirect( [ 'url' => '/campaign' ] );
+		}
+
+		$this->configure_site();
+		foreach ( $redirects as $redirect ) {
+			$redirect->disable();
+		}
+
+		$this->assertQueueRevalidates(
+			[ '/campaign/' ],
+			'25 redirects sharing one source cost more than one queue entry: the queue is no longer deduplicating.'
+		);
+	}
+
+	/**
+	 * And nothing is capped or collapsed above a threshold: N distinct source
+	 * paths cost N entries, whatever N is.
+	 *
+	 * The number is deliberately larger than any round figure someone would
+	 * reach for as a limit. A cap would silently drop revalidations ADR 0004
+	 * guarantees no retry for, and collapsing above a threshold would
+	 * reintroduce the site-wide stampede ADR 0006 rejected — neither failure
+	 * shows up in a batch of three.
+	 */
+	public function test_a_bulk_delete_over_distinct_sources_is_not_capped() {
+		$paths     = [];
+		$redirects = [];
+
+		foreach ( range( 1, 120 ) as $i ) {
+			$paths[]     = "/offer-$i/";
+			$redirects[] = $this->arrange_redirect( [ 'url' => "/offer-$i" ] );
+		}
+
+		$this->configure_site();
+		foreach ( $redirects as $redirect ) {
+			$redirect->delete();
+		}
+
+		$this->assertQueueRevalidates( $paths, 'A bulk delete enqueues one revalidation per distinct source path, uncapped.' );
 	}
 
 	// The site has the last word
