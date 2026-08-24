@@ -6,7 +6,7 @@ and after any change worth the ten minutes.
 It is not everything. The network stack, the upgrade-from-1.6.9 stack, and the
 groups this one leaves out — endpoint composition, revalidatable-post edges, row
 and bulk actions, the admin bar, revalidate all, menu save, scheduled purges, the
-log file, the REST API, the French translation, uninstallation — live in
+log file, the French translation, uninstallation — live in
 [`manual-tests-extended.md`](manual-tests-extended.md). **No step appears in both
 files.** Run the extended pass when you have touched its ground, and before a
 release that changes anything structural.
