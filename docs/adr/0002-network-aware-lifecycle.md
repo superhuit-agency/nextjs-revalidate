@@ -94,4 +94,4 @@ version â€” which parses every version as `0` and re-runs the oldest migration â
 once per site, multiplying the bug by the site count rather than fixing it. It
 landed in #36 once #28 had replaced that version; what triggers it, and why a
 version comparison rather than an update event, is
-[ADR 0014](0014-the-network-sweeps-migrations-by-version-comparison.md).
+[ADR 0015](0015-the-network-sweeps-migrations-by-version-comparison.md).

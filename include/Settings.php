@@ -18,6 +18,7 @@ use NextJsRevalidate\Interfaces\Hookable;
  * @property string $secret                  The shared secret every request carries.
  * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
+ * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — '', 'on' or 'off'.
  * @property array  $debug                   Debug switches, keyed by name.
  */
 class Settings extends Base implements Hookable {
@@ -32,6 +33,7 @@ class Settings extends Base implements Hookable {
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
 	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
+	const SETTINGS_REVALIDATE_ON_FSE_SAVE = 'nextjs_revalidate-revalidate-on-fse-save';
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
@@ -52,6 +54,7 @@ class Settings extends Base implements Hookable {
 		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,                   'empty' => ''  ],
 		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,     'empty' => []  ],
 		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,       'empty' => []  ],
+		'revalidate_on_fse_save'  => [ 'name' => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,        'empty' => ''  ],
 		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                         'empty' => []  ],
 	];
 
@@ -194,8 +197,10 @@ class Settings extends Base implements Hookable {
 			[ 'id' => 'api',            'title' => __('Next.js API', 'nextjs-revalidate')     ],
 			[ 'id' => 'allow_all_opts', 'title' => __('Allow purge all', 'nextjs-revalidate') ],
 			[ 'id' => 'on_menu_save',   'title' => __('On menu update', 'nextjs-revalidate')  ],
+			[ 'id' => 'on_fse_save',    'title' => __('On FSE update', 'nextjs-revalidate')   ],
 			[ 'id' => 'debug',          'title' => __('Debug', 'nextjs-revalidate')           ],
 			[ 'id' => 'queue',          'title' => __('Queue', 'nextjs-revalidate') . sprintf('<span class="badge">%s</span>', $nb_in_queue) ],
+			[ 'id' => 'probe',          'title' => __('Probe', 'nextjs-revalidate')          ],
 		];
 		?>
 		<div class="wrap njr-settings">
@@ -250,6 +255,14 @@ class Settings extends Base implements Hookable {
 
 					<?php submit_button(); ?>
 			</form>
+			<?php
+				// Its own form, beside the settings one rather than inside it:
+				// a probe answers about the *saved* settings, and a button
+				// intercepted from the settings form’s own submit would have
+				// to answer before that form was saved — silently dropping
+				// whatever the operator had typed into it.
+				Probe::render_panel();
+			?>
 		</div>
 		<?php
 	}
@@ -450,6 +463,43 @@ class Settings extends Base implements Hookable {
 		);
 
 
+		// On FSE save section settings
+		//
+		// One switch, and deliberately not the per-post-type shape of the
+		// section above: that shape exists because "revalidate all" has to
+		// enumerate post types in order to enqueue a URL for each. Here the
+		// front-end is told once that its snapshot is stale and rebuilds its
+		// pages itself, so a post type is not a choice anybody could make.
+		add_settings_section(
+			'nextjs-revalidate-section-revalidate-on-fse-save',
+			__('On FSE update options', 'nextjs-revalidate'),
+			function() {
+				printf( '<p>%s</p>', __('Editing a template or a template part in the site editor changes every page at once. The front-end is told, in one request, that its template snapshot is stale.', 'nextjs-revalidate') );
+			},
+			self::PAGE_NAME,
+			[
+				'before_section' => '<section aria-hidden="true" id="tab-panel--on_fse_save" role="tabpanel" tabindex="-1" aria-labelledby="tab-on_fse_save">',
+				'after_section'  => '</section>',
+			]
+		);
+
+		$id = "revalidate-on-fse-save";
+		add_settings_field(
+			$id,
+			__('Revalidate on FSE update', 'nextjs-revalidate'),
+			'Kuuak\WordPressSettingFields\Fields::switch',
+			self::PAGE_NAME,
+			'nextjs-revalidate-section-revalidate-on-fse-save',
+			[
+				'label_for' => $id,
+				'id'        => $id,
+				'name'      => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,
+				'checked'   => $this->revalidates_on_fse_save(),
+				'help'      => __('On for a new install, off for a site upgraded from an earlier release. Leave it off until the front-end serves the FSE revalidate endpoint — otherwise every template save asks it for a route it does not have.', 'nextjs-revalidate'),
+			]
+		);
+
+
 		// Debug section settings
 		add_settings_section(
 			'nextjs-revalidate-section-debug',
@@ -510,12 +560,62 @@ class Settings extends Base implements Hookable {
 	 * Register every setting of the site currently being served,
 	 * holding its empty value until an operator supplies one.
 	 *
+	 * The FSE gate is the one exception, and the only setting this plugin
+	 * seeds with a value rather than an empty one: a **new** install starts
+	 * invalidating the snapshot, and an existing site does not. The difference
+	 * cannot be a migration gated on a version — every site predating the
+	 * ledger is backfilled to the release that introduces it, so a 1.7.0 gate
+	 * would never fire for anybody (see `backfill_db_version()`) — and it
+	 * cannot be a reading of the empty value either, because a site upgrading
+	 * into 1.7.0 and a site that has just switched the gate off store the same
+	 * empty row.
+	 *
+	 * So it is decided here, once, on evidence about the site: a site holding
+	 * none of this plugin's rows has never run it, and only that site is seeded
+	 * `on`. An existing site — reached by an upgrade, a reactivation, or a
+	 * network sweep — holds rows already and keeps its empty value, which reads
+	 * as off. Its operator switches the gate on when the front-end serves the
+	 * endpoint.
+	 *
 	 * @return void
 	 */
 	public function define_settings() {
+
+		// Read before the loop below writes any of them.
+		$is_new_install = ! $this->holds_any_data();
+
 		foreach ( self::OPTIONS as $setting ) {
 			add_option( $setting['name'], $setting['empty'] );
 		}
+
+		// `update_option`, not `add_option`: the loop has just created the row.
+		if ( $is_new_install ) update_option( self::SETTINGS_REVALIDATE_ON_FSE_SAVE, 'on' );
+	}
+
+	/**
+	 * Whether this site holds any row this plugin has ever written.
+	 *
+	 * Rows rather than values: `define_settings()` creates every setting at
+	 * setup holding its empty value, so a site that was set up and never
+	 * configured still answers true here — which is the point. What this
+	 * separates is "has this plugin ever run on this site", not "has anybody
+	 * configured it".
+	 *
+	 * The legacy URL and the ledger are in the list because a site old enough
+	 * to hold one of them is the very site this exists to recognise, and
+	 * uninstallation removes all three sets — so a reinstall is a new install,
+	 * which is what an operator who deleted the plugin's data would expect.
+	 *
+	 * @return bool
+	 */
+	private function holds_any_data() {
+
+		foreach ( self::OPTIONS as $setting ) {
+			if ( self::option_exists( $setting['name'] ) ) return true;
+		}
+
+		return self::option_exists( self::LEGACY_URL_OPTION_NAME )
+			|| self::option_exists( self::DB_VERSION_OPTION_NAME );
 	}
 
 	/**
@@ -534,6 +634,32 @@ class Settings extends Base implements Hookable {
 	 */
 	public function fse_endpoint_url() {
 		return $this->endpoint_url( $this->fse_endpoint_path, self::DEFAULT_FSE_ENDPOINT_PATH );
+	}
+
+	/**
+	 * Whether a template or template part change invalidates the FSE snapshot.
+	 *
+	 * The **empty value** means off, as it does for every other setting in the
+	 * table: only a row saying `on` in as many words invalidates. Which is what
+	 * makes this safe to ship to sites that already exist — their Next.js app
+	 * may not serve the FSE endpoint yet, and a site that has never had an
+	 * opinion about a setting must not start making requests it cannot answer.
+	 *
+	 * A *new* install is the one that starts on, and it says so in the row:
+	 * `define_settings()` seeds an explicit `on` for a site holding none of
+	 * this plugin's data. So "on by default" is a decision taken once, at
+	 * setup, on evidence about the site — not a reading of absence.
+	 *
+	 * @return bool
+	 */
+	public function revalidates_on_fse_save() {
+		$value = trim( (string) $this->revalidate_on_fse_save );
+
+		// `on`, `1`, `yes` and `true` answer true; the empty value, `off` and
+		// anything no version of this plugin ever wrote answer false. An
+		// unchecked switch submits nothing at all, which WordPress stores as an
+		// empty row — so switching this off needs no hidden field to carry it.
+		return filter_var( $value, FILTER_VALIDATE_BOOLEAN );
 	}
 
 	/**

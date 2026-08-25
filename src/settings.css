@@ -73,7 +73,8 @@
 		}
 	}
 
-	.njr-settings__form {
+	.njr-settings__form,
+	.njr-settings__probe-form {
 		> section {
 			padding: 20px;
 			background-color: white;
