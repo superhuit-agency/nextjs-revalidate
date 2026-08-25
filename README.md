@@ -34,6 +34,19 @@ https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-str
 
 > Based on the Next.js [On-demand revalidation](https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration#on-demand-revalidation) documentation
 
+### Probing the front-end
+
+The **Probe** tab of the settings screen asks the front-end to rebuild one path
+straight away, and shows what it answered — including the error message and its
+code when it did not work. It is a real revalidation and not a dry run: the page
+is rebuilt exactly as it would be after an edit, using the *saved* settings, so
+it answers "does this site revalidate right now" rather than "would these values
+work".
+
+A probe is never counted towards the "not keeping this site up to date" warning:
+pressing it can neither raise that warning nor clear it. It is written to the log
+file when logging is on, marked `🔎 Probe`.
+
 ## Requirements
 
 - Requires PHP 7.4+

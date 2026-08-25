@@ -176,6 +176,7 @@ class Settings extends Base implements Hookable {
 			[ 'id' => 'on_menu_save',   'title' => __('On menu update', 'nextjs-revalidate')  ],
 			[ 'id' => 'debug',          'title' => __('Debug', 'nextjs-revalidate')           ],
 			[ 'id' => 'queue',          'title' => __('Queue', 'nextjs-revalidate') . sprintf('<span class="badge">%s</span>', $nb_in_queue) ],
+			[ 'id' => 'probe',          'title' => __('Probe', 'nextjs-revalidate')          ],
 		];
 		?>
 		<div class="wrap njr-settings">
@@ -230,6 +231,14 @@ class Settings extends Base implements Hookable {
 
 					<?php submit_button(); ?>
 			</form>
+			<?php
+				// Its own form, beside the settings one rather than inside it:
+				// a probe answers about the *saved* settings, and a button
+				// intercepted from the settings form’s own submit would have
+				// to answer before that form was saved — silently dropping
+				// whatever the operator had typed into it.
+				Probe::render_panel();
+			?>
 		</div>
 		<?php
 	}

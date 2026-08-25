@@ -6,7 +6,7 @@
  * Two things are asserted, and they are the two halves of ADR-0003:
  *
  *  1. **Constructing a Hookable touches no global state.** Every one of the
- *     nine classes is constructed with the recorder watching, and the recorder
+ *     ten classes is constructed with the recorder watching, and the recorder
  *     stays empty. This is the property the whole convention exists for: an
  *     instance can be obtained for a single method call without paying for the
  *     hooks.
@@ -108,6 +108,7 @@ require_once __DIR__ . '/../include/Assets.php';
 require_once __DIR__ . '/../include/Settings.php';
 require_once __DIR__ . '/../include/FailureWindow.php';
 require_once __DIR__ . '/../include/Revalidate.php';
+require_once __DIR__ . '/../include/Probe.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/RevalidateQueue.php';
@@ -118,6 +119,7 @@ use NextJsRevalidate\Cron\ScheduledPurges;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\Probe;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\RevalidateAll;
@@ -167,6 +169,11 @@ $expected_per_class = [
 		[ 'admin_bar_menu',       'admin_top_bar_menu',             100, 1 ],
 		[ 'admin_init',           'revalidate_current_post_action',  10, 1 ],
 		[ 'admin_notices',        'purged_notice',                   10, 1 ],
+	],
+
+	Probe::class => [
+		[ 'admin_init',    'probe_action', 10, 1 ],
+		[ 'admin_notices', 'probe_notice', 10, 1 ],
 	],
 
 	ScheduledPurges::class => [
