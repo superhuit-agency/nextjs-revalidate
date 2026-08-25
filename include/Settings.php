@@ -467,20 +467,7 @@ class Settings extends Base implements Hookable {
 		add_settings_field(
 			$id,
 			__('Revalidate on FSE update', 'nextjs-revalidate'),
-			function ($args) {
-				// The hidden input is what lets this setting default to *on*.
-				// An unchecked switch submits nothing at all, WordPress stores
-				// that as an empty row, and an empty row is how a site that has
-				// never been configured reads — so without an explicit `off`,
-				// switching this off would look exactly like never having
-				// touched it, and the default would win back on the next read.
-				printf(
-					'<input type="hidden" name="%s" value="off" />',
-					esc_attr( self::SETTINGS_REVALIDATE_ON_FSE_SAVE )
-				);
-
-				\Kuuak\WordPressSettingFields\Fields::switch( $args );
-			},
+			'Kuuak\WordPressSettingFields\Fields::switch',
 			self::PAGE_NAME,
 			'nextjs-revalidate-section-revalidate-on-fse-save',
 			[
@@ -488,7 +475,7 @@ class Settings extends Base implements Hookable {
 				'id'        => $id,
 				'name'      => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,
 				'checked'   => $this->revalidates_on_fse_save(),
-				'help'      => __('On by default. Switch it off for a front-end that does not serve the FSE revalidate endpoint yet — otherwise every template save asks it for a route it does not have.', 'nextjs-revalidate'),
+				'help'      => __('On for a new install, off for a site upgraded from an earlier release. Leave it off until the front-end serves the FSE revalidate endpoint — otherwise every template save asks it for a route it does not have.', 'nextjs-revalidate'),
 			]
 		);
 
@@ -553,12 +540,62 @@ class Settings extends Base implements Hookable {
 	 * Register every setting of the site currently being served,
 	 * holding its empty value until an operator supplies one.
 	 *
+	 * The FSE gate is the one exception, and the only setting this plugin
+	 * seeds with a value rather than an empty one: a **new** install starts
+	 * invalidating the snapshot, and an existing site does not. The difference
+	 * cannot be a migration gated on a version — every site predating the
+	 * ledger is backfilled to the release that introduces it, so a 1.7.0 gate
+	 * would never fire for anybody (see `backfill_db_version()`) — and it
+	 * cannot be a reading of the empty value either, because a site upgrading
+	 * into 1.7.0 and a site that has just switched the gate off store the same
+	 * empty row.
+	 *
+	 * So it is decided here, once, on evidence about the site: a site holding
+	 * none of this plugin's rows has never run it, and only that site is seeded
+	 * `on`. An existing site — reached by an upgrade, a reactivation, or a
+	 * network sweep — holds rows already and keeps its empty value, which reads
+	 * as off. Its operator switches the gate on when the front-end serves the
+	 * endpoint.
+	 *
 	 * @return void
 	 */
 	public function define_settings() {
+
+		// Read before the loop below writes any of them.
+		$is_new_install = ! $this->holds_any_data();
+
 		foreach ( self::OPTIONS as $setting ) {
 			add_option( $setting['name'], $setting['empty'] );
 		}
+
+		// `update_option`, not `add_option`: the loop has just created the row.
+		if ( $is_new_install ) update_option( self::SETTINGS_REVALIDATE_ON_FSE_SAVE, 'on' );
+	}
+
+	/**
+	 * Whether this site holds any row this plugin has ever written.
+	 *
+	 * Rows rather than values: `define_settings()` creates every setting at
+	 * setup holding its empty value, so a site that was set up and never
+	 * configured still answers true here — which is the point. What this
+	 * separates is "has this plugin ever run on this site", not "has anybody
+	 * configured it".
+	 *
+	 * The legacy URL and the ledger are in the list because a site old enough
+	 * to hold one of them is the very site this exists to recognise, and
+	 * uninstallation removes all three sets — so a reinstall is a new install,
+	 * which is what an operator who deleted the plugin's data would expect.
+	 *
+	 * @return bool
+	 */
+	private function holds_any_data() {
+
+		foreach ( self::OPTIONS as $setting ) {
+			if ( self::option_exists( $setting['name'] ) ) return true;
+		}
+
+		return self::option_exists( self::LEGACY_URL_OPTION_NAME )
+			|| self::option_exists( self::DB_VERSION_OPTION_NAME );
 	}
 
 	/**
@@ -582,34 +619,27 @@ class Settings extends Base implements Hookable {
 	/**
 	 * Whether a template or template part change invalidates the FSE snapshot.
 	 *
-	 * On unless a site has switched it off, and the empty value is what carries
-	 * that: absence means the operator has never had an opinion, and the
-	 * behaviour a plugin does by default is not a preference to seed a row with.
-	 * The same distinction the endpoint paths draw — an **empty value** is what
-	 * a read yields, and something else decides what absence *resolves to*.
+	 * The **empty value** means off, as it does for every other setting in the
+	 * table: only a row saying `on` in as many words invalidates. Which is what
+	 * makes this safe to ship to sites that already exist — their Next.js app
+	 * may not serve the FSE endpoint yet, and a site that has never had an
+	 * opinion about a setting must not start making requests it cannot answer.
 	 *
-	 * Which is why the field posts an explicit `off`: a bare switch submits
-	 * nothing when unchecked, WordPress stores that as an empty row, and a site
-	 * that had just turned this off would read as never having touched it.
-	 *
-	 * So it is the `off` that is read, not the `on`: only a row saying so in as
-	 * many words switches this off, and a row holding anything else — an empty
-	 * value, whitespace, or something no version of this plugin ever wrote —
-	 * leaves the site revalidating rather than silently stopping.
+	 * A *new* install is the one that starts on, and it says so in the row:
+	 * `define_settings()` seeds an explicit `on` for a site holding none of
+	 * this plugin's data. So "on by default" is a decision taken once, at
+	 * setup, on evidence about the site — not a reading of absence.
 	 *
 	 * @return bool
 	 */
 	public function revalidates_on_fse_save() {
 		$value = trim( (string) $this->revalidate_on_fse_save );
 
-		// The empty value, tested before the filter rather than left to it:
-		// `FILTER_VALIDATE_BOOLEAN` reads '' as false, which is the one reading
-		// this setting must not have.
-		if ( '' === $value ) return true;
-
-		// `FILTER_NULL_ON_FAILURE` is what separates the rest: `off`, `0`, `no`
-		// and `false` answer false, and anything unrecognised answers null.
-		return false !== filter_var( $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+		// `on`, `1`, `yes` and `true` answer true; the empty value, `off` and
+		// anything no version of this plugin ever wrote answer false. An
+		// unchecked switch submits nothing at all, which WordPress stores as an
+		// empty row — so switching this off needs no hidden field to carry it.
+		return filter_var( $value, FILTER_VALIDATE_BOOLEAN );
 	}
 
 	/**

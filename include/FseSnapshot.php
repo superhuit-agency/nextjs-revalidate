@@ -99,9 +99,12 @@ class FseSnapshot extends Base implements Hookable {
 	 * A post was deleted, which is a snapshot change when it was a template.
 	 *
 	 * The post is gone from the database by now, so its type is read from the
-	 * object the hook carries. WordPress has passed one since 5.5; a site older
-	 * than that falls back to the cache `get_post_type()` still holds — and can
-	 * have no FSE templates in the first place.
+	 * object the hook carries. WordPress has passed one since 5.5, and the site
+	 * editor needs 5.9, so every site that can reach this has it. The
+	 * `get_post_type()` fallback is for the plugin's declared floor of 5.0 and
+	 * answers `false` there rather than a type — `wp_delete_post()` cleans the
+	 * post cache before firing this hook, so there is nothing left to read. A
+	 * site that old has no FSE templates to miss.
 	 *
 	 * @param int          $post_id The post that was deleted.
 	 * @param WP_Post|null $post    The post object, as it was.
@@ -133,8 +136,9 @@ class FseSnapshot extends Base implements Hookable {
 	 * tidiness: it is what makes the coalescing whole — every hook of this
 	 * request has fired by then, whatever order they came in — and it keeps a
 	 * request to another host out of the middle of a save the editor is waiting
-	 * on. `shutdown` runs after `exit()` too, so the redirect a theme switch
-	 * ends in does not skip it.
+	 * on — with `close_request()` taking the editor out of the waiting
+	 * altogether. `shutdown` runs after `exit()` too, so the redirect a theme
+	 * switch ends in does not skip it.
 	 *
 	 * @return void
 	 */
@@ -164,7 +168,39 @@ class FseSnapshot extends Base implements Hookable {
 		// from here on, the front-end has already been told.
 		$this->is_stale = false;
 
+		$this->close_request();
+
 		$this->invalidate();
+	}
+
+	/**
+	 * Answer the editor before asking another host anything.
+	 *
+	 * `shutdown` runs after the save has produced its response, but produced is
+	 * not delivered: under PHP-FPM the response sits in the buffer until the
+	 * process ends, so without this the person who pressed Save waits out our
+	 * timeout as well as their own save. Flushing here is what makes the
+	 * request asynchronous *from the editor's side*, and it costs nothing that
+	 * matters — the outcome is still awaited, and still logged, which is the
+	 * only place it was ever going to be read.
+	 *
+	 * Nothing after this point can add to the response, which is precisely the
+	 * property being relied on: `shutdown` has no output left to produce, and
+	 * the SAPIs with no such call are left running as they did.
+	 *
+	 * @return void
+	 */
+	private function close_request() {
+
+		if ( function_exists( 'fastcgi_finish_request' ) ) {
+			fastcgi_finish_request();
+			return;
+		}
+
+		// LiteSpeed's equivalent, under its own name.
+		if ( function_exists( 'litespeed_finish_request' ) ) {
+			litespeed_finish_request();
+		}
 	}
 
 	/**

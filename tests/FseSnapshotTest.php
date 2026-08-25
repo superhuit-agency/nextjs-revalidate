@@ -142,11 +142,7 @@ class NextJsRevalidate_Test_Settings {
 	}
 
 	public function revalidates_on_fse_save() {
-		$value = trim( (string) $this->revalidate_on_fse_save );
-
-		if ( '' === $value ) return true;
-
-		return false !== filter_var( $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+		return filter_var( trim( (string) $this->revalidate_on_fse_save ), FILTER_VALIDATE_BOOLEAN );
 	}
 }
 
@@ -199,7 +195,7 @@ function njr_test_assert( $condition, $description ) {
  * @param array $settings What the site holds.
  * @return FseSnapshot
  */
-function njr_test_subject( array $settings = [ 'domain' => 'https://front-end.test', 'secret' => 's3cret' ] ) {
+function njr_test_subject( array $settings = [ 'domain' => 'https://front-end.test', 'secret' => 's3cret', 'revalidate_on_fse_save' => 'on' ] ) {
 	$GLOBALS['njr_test_settings'] = $settings;
 	$GLOBALS['njr_test_requests'] = [];
 	$GLOBALS['njr_test_shutdown'] = [];
@@ -290,13 +286,24 @@ njr_test_shutdown();
 njr_test_assert( [] === $GLOBALS['njr_test_requests'], 'the setting switched off asks the front-end nothing' );
 njr_test_assert( [] === $GLOBALS['njr_test_shutdown'], 'the setting switched off defers nothing either' );
 
-// On is the default, and a site that has explicitly switched it on is the same
-// site as one that has never touched it.
-foreach ( [ '', 'on' ] as $stored ) {
-	$fse = njr_test_subject( [ 'domain' => 'https://front-end.test', 'secret' => 's3cret', 'revalidate_on_fse_save' => $stored ] );
+// Only a site that says so invalidates. The empty row is the site that upgraded
+// into this release without opting in — and it is *the same row* as the site
+// that has just switched the gate off, which is why neither can invalidate: of
+// the two, the one whose front-end may not serve the endpoint at all is the one
+// this has to be safe for. `Settings::define_settings()` is what gives a new
+// install the `on`, and `tests/SettingsTest.php` is what pins that.
+foreach ( [ 'on' => 1, '1' => 1, 'true' => 1, '' => 0, 'off' => 0, '  ' => 0, 'banana' => 0 ] as $stored => $expected ) {
+	$fse = njr_test_subject( [ 'domain' => 'https://front-end.test', 'secret' => 's3cret', 'revalidate_on_fse_save' => (string) $stored ] );
 	$fse->on_template_save( 42 );
 	njr_test_shutdown();
-	njr_test_assert( 1 === count( $GLOBALS['njr_test_requests'] ), sprintf( 'a setting stored as %s invalidates', '' === $stored ? 'nothing' : "`$stored`" ) );
+	njr_test_assert(
+		$expected === count( $GLOBALS['njr_test_requests'] ),
+		sprintf(
+			'a setting stored as %s %s',
+			'' === trim( (string) $stored ) ? "'$stored'" : "`$stored`",
+			$expected ? 'invalidates' : 'asks the front-end nothing'
+		)
+	);
 }
 
 // An unconfigured site refuses: it could not deliver, so it asks nothing.

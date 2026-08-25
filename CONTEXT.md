@@ -155,10 +155,14 @@ _Avoid_: Default — the value is what *absence* means, not a preference a site
 would sensibly keep.
 
 > What absence *resolves to* is a separate question, answered by whoever reads
-> the setting rather than by the table. An **endpoint path**'s `''` resolves to
-> its **default path**; the FSE gate's `''` resolves to *on*, which is why the
-> site that has switched it off stores an explicit `off` rather than nothing.
-> Neither of those is the empty value having an opinion.
+> the setting rather than by the table: an **endpoint path**'s `''` resolves to
+> its **default path**, which is not the empty value having an opinion.
+>
+> A setting whose default differs between a new install and an existing site
+> cannot be answered that way at all — the two hold the same empty row. The FSE
+> gate is the one such setting: `''` reads as off, and the `on` a new install
+> starts with is written into the row at setup, by `define_settings()`, on the
+> evidence that the site held none of this plugin's rows.
 
 > The option table is authoritative for **reads**, registration, seeding and
 > teardown alike: each enumerates the same declaration, so a setting cannot be

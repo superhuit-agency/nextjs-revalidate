@@ -35,6 +35,18 @@ function get_option( $name, $default = false ) {
 		: $default;
 }
 
+function add_option( $name, $value = '' ) {
+	if ( array_key_exists( $name, $GLOBALS['njr_test_options'] ) ) return false;
+
+	$GLOBALS['njr_test_options'][ $name ] = $value;
+	return true;
+}
+
+function update_option( $name, $value ) {
+	$GLOBALS['njr_test_options'][ $name ] = $value;
+	return true;
+}
+
 function __( $text, $domain = null ) { return $text; }
 
 class WP_Error {
@@ -243,29 +255,104 @@ foreach ( $empty_checks as [ $name, $expected_empty ] ) {
 	}
 }
 
-// The one setting whose absence does not mean "off".
+// The gate a new install starts with, and an existing site does not.
 // ====
 //
-// #30 — an FSE change invalidates the front-end's snapshot unless a site has
-// said otherwise, so the row a site does not hold has to read as *on*. That
-// makes the stored `off` load-bearing in a way no other switch's is: it is the
-// only thing distinguishing a site that turned this off from one that has never
-// touched it, and it exists only because the field posts it explicitly.
+// #30 — an FSE change invalidates the front-end's snapshot, but only on a site
+// that says so in as many words. The empty value reads as off like every other
+// setting's, because a site upgrading into this release and a site that has
+// just switched the gate off store exactly the same row — and of those two, the
+// one that must not start making requests is the site whose front-end may not
+// serve the endpoint at all. `define_settings()` is what puts the `on` in a new
+// install's row; see the seeding cases below.
 
 $fse_save = NextJsRevalidate\Settings::SETTINGS_REVALIDATE_ON_FSE_SAVE;
 
 foreach ( [
-	[ 'a site holding no row invalidates the snapshot',        [],                        true  ],
-	[ 'a site seeded with the empty value invalidates it too', [ $fse_save => '' ],       true  ],
-	[ 'a row stored as false is an absent row',                [ $fse_save => false ],    true  ],
-	[ 'a site that switched it on invalidates the snapshot',   [ $fse_save => 'on' ],     true  ],
-	[ 'a site that switched it off does not',                  [ $fse_save => 'off' ],    false ],
-	// The switch has exactly two positions, and anything else in the row is a
-	// site that has not switched it off.
-	[ 'whitespace is a field nobody filled in',                [ $fse_save => '  ' ],     true  ],
-	[ 'a value nothing writes is not an off switch',           [ $fse_save => 'banana' ], true  ],
+	[ 'a site holding no row does not invalidate the snapshot', [],                        false ],
+	[ 'a site holding the empty value does not either',         [ $fse_save => '' ],       false ],
+	[ 'a row stored as false is an absent row',                 [ $fse_save => false ],    false ],
+	[ 'a site seeded on at setup invalidates the snapshot',     [ $fse_save => 'on' ],     true  ],
+	[ 'a site that switched it off does not',                   [ $fse_save => 'off' ],    false ],
+	// The switch has exactly two positions, and only one of them is written.
+	[ 'whitespace is a field nobody filled in',                 [ $fse_save => '  ' ],     false ],
+	[ 'a value nothing writes is not an on switch',             [ $fse_save => 'banana' ], false ],
 ] as [ $description, $options, $expected ] ) {
 	$GLOBALS['njr_test_options'] = $options;
+
+	$actual = $settings->revalidates_on_fse_save();
+
+	if ( $actual === $expected ) {
+		printf( "ok   — %s\n", $description );
+	}
+	else {
+		$failures++;
+		printf( "FAIL — %s (expected %s, got %s)\n", $description, var_export( $expected, true ), var_export( $actual, true ) );
+	}
+}
+
+// Which site starts with the gate on.
+// ====
+//
+// #30 — the decision is taken once, at setup, on evidence about the site: a
+// site holding none of this plugin's rows has never run it and is seeded `on`;
+// a site reached by an upgrade, a reactivation or a network sweep holds rows
+// already and keeps the empty value, which reads as off. A version gate could
+// not tell those apart — every site predating the ledger is backfilled to the
+// release that introduces it — and neither could the stored value, because the
+// upgraded site and the site that has just switched the gate off store the
+// same empty row.
+
+foreach ( [
+	[
+		'a new install is seeded with the gate on',
+		[],
+		true,
+	],
+	[
+		'a site set up by an earlier release keeps the gate off',
+		[ NextJsRevalidate\Settings::SETTINGS_DOMAIN_NAME => 'https://front-end.test' ],
+		false,
+	],
+	[
+		'a site holding nothing but an empty row keeps the gate off',
+		[ NextJsRevalidate\Settings::SETTINGS_SECRET_NAME => '' ],
+		false,
+	],
+	[
+		'a 1.6.x site holding only the legacy URL keeps the gate off',
+		[ NextJsRevalidate\Settings::LEGACY_URL_OPTION_NAME => 'https://front-end.test/api/revalidate' ],
+		false,
+	],
+	[
+		'a site holding only the migration ledger keeps the gate off',
+		[ NextJsRevalidate\Settings::DB_VERSION_OPTION_NAME => '1.6.0' ],
+		false,
+	],
+	[
+		'setting a site up twice does not seed it again',
+		[],
+		false,
+		'twice',
+	],
+	[
+		'setting up an operator who switched it on leaves the row alone',
+		[ $fse_save => 'on' ],
+		true,
+	],
+] as $case ) {
+	[ $description, $options, $expected ] = $case;
+
+	$GLOBALS['njr_test_options'] = $options;
+
+	$settings->define_settings();
+
+	// The second setup is the reactivation: the rows the first one created are
+	// exactly the evidence that says this site is not new any more.
+	if ( isset($case[3]) ) {
+		$GLOBALS['njr_test_options'][ $fse_save ] = '';
+		$settings->define_settings();
+	}
 
 	$actual = $settings->revalidates_on_fse_save();
 

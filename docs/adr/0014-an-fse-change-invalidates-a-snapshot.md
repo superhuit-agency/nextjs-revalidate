@@ -18,7 +18,8 @@ that says when it went stale.**
 
 From 1.7.0, saving a `wp_template` or `wp_template_part`, deleting one, or
 switching themes sends **one request to the FSE endpoint**, gated by a single
-`revalidate_on_fse_save` setting that is on unless a site says otherwise.
+`revalidate_on_fse_save` setting that a **new install** starts with on and an
+**existing site** starts with off.
 
 ## It is not a revalidation, and the vocabulary is not decoration
 
@@ -66,23 +67,41 @@ The on/off escape hatch still earns its place. A site whose Next.js app has not
 been upgraded to serve the endpoint yet would otherwise emit a stream of failing
 requests on every template save, with no way to stop them.
 
-### Off is stored; on is the absence of it
+### A new install starts on; an existing site does not
 
-This is the only setting in the table whose **empty value does not mean "off"**,
-and it takes one unobvious thing to make that work.
+The gate is on for a site installing 1.7.0 fresh, and off for a site upgrading
+into it. The asymmetry is the whole point: an existing install's Next.js app is
+whatever it already was, and it may not serve `/api/revalidate-fse` at all. On by
+default there would mean a failing request on every template save, reported only
+to the log — the site editor saves over REST and never reloads the page, so
+there is no notice to show — until somebody found the switch. A site that has
+never had an opinion about a setting must not start making requests it cannot
+answer.
 
-A switch field submits `on` when checked and **nothing at all** when unchecked,
-and WordPress writes an absent field as an empty row. So on a plain switch, "the
-operator just turned this off" and "the operator has never touched this" are the
-same stored value — and a default of *on* would win back on the very next read.
-The field therefore posts an explicit `off` from a hidden input beside the
-switch, and `Settings::revalidates_on_fse_save()` reads the `off` rather than the
-`on`: only a row saying so in as many words switches this off.
+So the **empty value means off**, exactly as it does for every other setting in
+the table, and only a row saying `on` invalidates. That is not the whole answer,
+though, because it makes "on by default for new installs" something that has to
+be *written down somewhere*, and neither obvious place works:
 
-That keeps the **empty value** meaning what it means for every other setting —
-what a read yields on a site holding no row — and puts the opinion about what
-absence *resolves to* in the reader, exactly as the **default path** does for an
-**endpoint path** (ADR 0010).
+- **Not a migration gated on the version.** Every site predating the migration
+  ledger is backfilled to the release that introduces it, so a `1.7.0` gate is
+  read after the site has already been stamped past it and never fires for
+  anybody. That constraint is already written down in `backfill_db_version()`,
+  and it binds this exactly as it bound the settings split of #29.
+- **Not a reading of the stored value.** A site upgrading into 1.7.0 and a site
+  that has just switched the gate off hold the same empty row. Nothing about the
+  value distinguishes them.
+
+What does distinguish them is evidence about the site itself, and it is
+available at exactly one moment: `Settings::define_settings()`, which runs when
+a site is set up. A site holding **none of this plugin's rows** — no setting, no
+legacy URL, no ledger — has never run this plugin, and only that site is seeded
+`on`. An existing site holds rows already, whether it was ever configured or
+not, and keeps its empty value. Setting a site up twice cannot re-seed it,
+because the first setup is what created the evidence.
+
+Uninstallation removes all three sets, so a reinstall is a new install. That is
+the reading an operator who deleted the plugin's data would expect.
 
 ## Coalescing is per request, and the request is made at `shutdown`
 
@@ -96,6 +115,15 @@ coalescing whole — every hook of the request has fired by then, whatever order
 they came in — and it keeps a request to another host out of the middle of a save
 an editor is waiting on. It survives the redirect a theme switch ends in, because
 PHP runs shutdown functions after `exit()`.
+
+`shutdown` alone does not get the editor out of the waiting, though. The response
+is *produced* by then but not *delivered*: under PHP-FPM it sits in the buffer
+until the process ends, so the person who pressed Save would wait out our timeout
+as well as their own save. `FseSnapshot::close_request()` flushes it first —
+`fastcgi_finish_request()`, or LiteSpeed's equivalent under its own name, and
+nothing at all on a SAPI with neither. The request stays blocking on our side,
+which is what keeps the outcome real enough to log; it is asynchronous from the
+only side that was waiting.
 
 The timeout is fifteen seconds rather than the minute a revalidation is given.
 That request comes from cron; this one comes from a person's save, and what is on

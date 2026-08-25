@@ -181,8 +181,12 @@ change is a **snapshot invalidation**, and nothing about it reaches the queue.
 Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
 
 - [ ] **Settings → Next.js revalidate → On FSE update.** Expect one switch,
-      **Revalidate on FSE update**, and expect it **on**. It is the only setting
-      in this plugin that starts on rather than off.
+      **Revalidate on FSE update**, and expect it **on** — this stack is a new
+      install, and it is the only setting seeded with a value rather than an
+      empty one. Confirm the row says so:
+      `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`.
+      Expect `on`. (A site *upgrading* into this release starts off instead;
+      section X covers that.)
 - [ ] **Appearance → Editor → Patterns → a template part (Footer) → move a block
       → Save.** Expect **exactly one** `= Invalidating: the FSE snapshot` in the
       console, and `✅ Invalidated the FSE snapshot` in the log. Not two — the
@@ -205,10 +209,10 @@ Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
 - [ ] **Switch the On FSE update setting off, save, and edit a template part
       again.** Expect **nothing** in the console and nothing in the log — the
       escape hatch for a front-end that does not serve the endpoint yet.
-- [ ] **Confirm the off is stored**:
-      `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`.
-      Expect `off` rather than an empty value — an empty one would read as "never
-      touched", and this setting defaults to on.
+- [ ] **Confirm the switch stayed off across a reload** of the settings screen.
+      The row is empty now rather than `off` — an unchecked switch submits
+      nothing — and empty reads as off, which is the same thing a site that has
+      never touched it reads as.
 - [ ] **Switch it back on, save, and confirm an edit invalidates again.**
 - [ ] **Clear the secret, save, and edit a template part.** Expect
       `⛔ Refused the FSE snapshot invalidation — site not configured (missing:
@@ -479,6 +483,22 @@ what the backfill exists to avoid needing.
 - [ ] **Reload wp-admin several times.** Expect the ledger to stay put and
       nothing to be re-migrated: a migration decides by the ledger, never by the
       plugin version.
+- [ ] **Expect the FSE gate off** — the whole point of the asymmetry. On the
+      settings screen, **On FSE update → Revalidate on FSE update** is
+      unchecked, and
+      `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`
+      answers an empty value or "could not be found", never `on`. This site's
+      front-end is whatever it already was, and it may serve no FSE endpoint at
+      all.
+- [ ] **Edit a template part and confirm nothing is sent** — no line in the
+      revalidate server console, nothing in the log. An upgraded site does not
+      start making a request it was never making.
+- [ ] **Deactivate and reactivate the plugin, then look again.** Expect the gate
+      still off: setup seeds `on` only for a site holding none of this plugin's
+      rows, and this one has held them since 1.6.9.
+- [ ] **Switch it on, save, and edit a template part.** Expect one
+      `= Invalidating: the FSE snapshot`. The operator opting in is the whole
+      of the upgrade path.
 
 ## Y. Backfill from an older shape
 

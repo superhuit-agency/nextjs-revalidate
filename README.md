@@ -18,7 +18,7 @@ The revalidation request is sent to an endpoint composed from the settings — t
 | Revalidate path | no | `/api/revalidate` |
 | FSE revalidate path | no | `/api/revalidate-fse` |
 | Revalidate secret | yes | — |
-| Revalidate on FSE update | no | on |
+| Revalidate on FSE update | no | on for a new install, off for an upgrade |
 
 A standard install fills in the domain and the secret. The paths exist for apps
 that route these endpoints somewhere else; each falls back to the default shown
@@ -40,9 +40,10 @@ https://example.com/api/revalidate-fse?secret=my-super-secret-string
 Menu changes do **not** trigger this: menu items are fetched at request time by
 the front-end and are not part of the template snapshot.
 
-Switch **Revalidate on FSE update** off for a front-end that does not serve that
-endpoint yet — otherwise every template save asks it for a route it does not
-have.
+**Revalidate on FSE update** starts on for a new install and **off for a site
+upgrading from an earlier release** — an existing front-end may not serve that
+endpoint yet, and every template save would otherwise ask it for a route it does
+not have. Switch it on once the front-end is serving it.
 
 Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
 split into a domain and a path automatically on the first admin request after the
