@@ -131,7 +131,7 @@ one thing that must be immediate — an editor watching to see their change appe
 
 ## Consequences
 
-**A sixth tab appears on the settings screen**, holding one switch. The
+**A tab of its own appears on the settings screen**, holding one switch. The
 alternative — putting it in the API tab beside the FSE path — was declined
 because that section is about *addressing* the front-end and this is about *when*
 the plugin speaks to it, which is what the "On menu update" tab is already for.
