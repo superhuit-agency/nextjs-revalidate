@@ -34,6 +34,7 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 
 use NextJsRevalidate\Assets;
 use NextJsRevalidate\FailureWindow;
+use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Integrations\Redirection;
 use NextJsRevalidate\Probe;
@@ -88,6 +89,7 @@ class NextJsRevalidate {
 	private FailureWindow $failureWindow;
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
+	private FseSnapshot $fseSnapshot;
 	private RevalidateQueue $queue;
 	private RestApi $restApi;
 	private Redirection $redirection;
@@ -132,6 +134,7 @@ class NextJsRevalidate {
 		$this->probe               = $this->hookable( new Probe() );
 		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
+		$this->fseSnapshot         = $this->hookable( new FseSnapshot() );
 		$this->queue               = $this->hookable( new RevalidateQueue() );
 		$this->restApi             = $this->hookable( new RestApi() );
 

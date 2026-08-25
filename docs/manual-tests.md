@@ -6,8 +6,8 @@ and after any change worth the ten minutes.
 It is not everything. The network stack, the upgrade-from-1.6.9 stack, and the
 groups this one leaves out — endpoint composition, the probe,
 revalidatable-post edges, row and bulk actions, the admin bar, revalidate all,
-menu save, scheduled purges, the log file, the REST API, the French translation,
-uninstallation — live in
+menu save, FSE update, scheduled purges, the log file, the REST API, the French
+translation, uninstallation — live in
 [`manual-tests-extended.md`](manual-tests-extended.md). **No step appears in both
 files.** Run the extended pass when you have touched its ground, and before a
 release that changes anything structural.
@@ -65,11 +65,11 @@ Precondition: section 1 done.
 - [ ] **Confirm the queue table exists**:
       `npx wp-env run cli wp db query "SHOW TABLES LIKE 'wp_revalidate_queue'"`.
       Expect one row.
-- [ ] **Settings → Next.js revalidate.** Expect six tabs — **Next.js API**,
-      **Allow purge all**, **On menu update**, **Debug**, **Queue**, **Probe** —
-      with a count badge on Queue. Click each: expect one panel visible at a
-      time, Probe included, though it is a form of its own. (All six stacked
-      means a broken `settings.js`.)
+- [ ] **Settings → Next.js revalidate.** Expect seven tabs — **Next.js API**,
+      **Allow purge all**, **On menu update**, **On FSE update**, **Debug**,
+      **Queue**, **Probe** — with a count badge on Queue. Click each: expect one
+      panel visible at a time, Probe included, though it is a form of its own.
+      (All seven stacked means a broken `settings.js`.)
 - [ ] **On Next.js API, confirm the seeded values**: domain
       `http://host.docker.internal:8083`, revalidate path `/revalidate`, FSE
       revalidate path empty but showing a `/api/revalidate-fse` placeholder,
