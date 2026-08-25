@@ -74,6 +74,21 @@ opened, and that is the operator's route through. The notice recomputes the
 condition rather than reading a flag `sweep_migrations()` set, so it states
 something true on its own terms.
 
+The sweep is for a **network-activated** plugin only, and the same test that
+guards `setup_new_site()` guards it — `NextJsRevalidate::is_network_active()`,
+which lives on the composition root because only the plugin file can name itself
+to `plugin_basename()`.
+Activated site by site instead, this is a per-site plugin that happens to live on
+a network: every site reaches `migrate_db()` on its own `admin_init` exactly as a
+single install does, and there is no gap to close. Sweeping from the one site
+that has the plugin would write its rows into sites it has never run on, and
+those rows are not inert — `holds_any_data()` reads one as proof the plugin has
+run there, so a site activated for the first time afterwards would be taken for
+an existing one and never get the settings `define_settings()` seeds only a new
+install. The test lives in `network_sweep_is_due()` rather than in
+`sweep_migrations()`, so the notice cannot announce a declined sweep that was
+never going to run.
+
 The swept version is deleted by `NextJsRevalidate::uninstall()` rather than by
 `uninstall_site()` — it is the network's state, not a site's. Left behind, a
 later reinstall would read it, believe every site had already been asked for this

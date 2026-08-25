@@ -182,6 +182,32 @@ class NextJsRevalidate {
 	}
 
 	/**
+	 * Whether this plugin is activated for the whole network.
+	 *
+	 * Asked here rather than wherever it is needed because only this file can
+	 * ask it: `plugin_basename()` answers about the file it is called from, so
+	 * a class under `include/` putting the same question would name itself
+	 * instead of the plugin.
+	 *
+	 * False on a single install, where there is no network to be active for.
+	 *
+	 * @return bool
+	 */
+	public static function is_network_active() {
+
+		if ( !is_multisite() ) return false;
+
+		// An admin-only include. Loaded on demand rather than assumed: this is
+		// read from `admin_init`, where it is already there, and from the site
+		// creation hook, where it need not be.
+		if ( !function_exists( 'is_plugin_active_for_network' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		return is_plugin_active_for_network( plugin_basename( __FILE__ ) );
+	}
+
+	/**
 	 * Apply a per-site operation to every site of the network.
 	 *
 	 * Every piece of this plugin's state is per-site, so setup, teardown and
@@ -292,8 +318,7 @@ class NextJsRevalidate {
 	public function setup_new_site( $new_site ) {
 
 		// A site the plugin is not active on is not this plugin's to set up.
-		require_once ABSPATH . 'wp-admin/includes/plugin.php';
-		if ( !is_plugin_active_for_network( plugin_basename( __FILE__ ) ) ) return;
+		if ( !self::is_network_active() ) return;
 
 		switch_to_blog( (int) $new_site->blog_id );
 		$this->setup_site();

@@ -49,6 +49,9 @@ $GLOBALS['njr_network'] = [];
 /** Whether the fixture install is a network at all. @var bool */
 $GLOBALS['njr_is_multisite'] = true;
 
+/** Whether the fixture plugin is network-activated rather than site by site. @var bool */
+$GLOBALS['njr_network_active'] = true;
+
 /** Whether the fixture network is over core's large-network threshold. @var bool */
 $GLOBALS['njr_large_network'] = false;
 
@@ -146,6 +149,10 @@ function wp_parse_url( $url, $component = -1 ) { return parse_url( $url, $compon
  */
 class NextJsRevalidate {
 
+	public static function is_network_active() {
+		return $GLOBALS['njr_is_multisite'] && $GLOBALS['njr_network_active'];
+	}
+
 	public static function for_each_site( callable $callback ) {
 
 		$GLOBALS['njr_sweeps']++;
@@ -226,6 +233,7 @@ function network( array $sites, array $network = [] ) {
 	$GLOBALS['njr_network']         = $network;
 	$GLOBALS['njr_current']         = 1;
 	$GLOBALS['njr_is_multisite']    = true;
+	$GLOBALS['njr_network_active']  = true;
 	$GLOBALS['njr_large_network']   = false;
 	$GLOBALS['njr_is_super_admin']  = true;
 	$GLOBALS['njr_sweeps']          = 0;
@@ -374,6 +382,41 @@ check_same( '', notice( $settings ), 'a swept network is told nothing' );
 $settings = network( [ 1 => [], 2 => [] ] );
 $settings->sweep_migrations();
 check_same( '', notice( $settings ), 'an ordinary network renders no notice' );
+
+// A plugin activated site by site on a network is a per-site plugin that happens
+// to live on one: each site reaches `migrate_db()` on its own `admin_init`, and
+// nothing here may reach across to the sites it was never activated on. Writing
+// this plugin's rows there is not a harmless stray either — `holds_any_data()`
+// reads one as proof the plugin has run on that site, so a site activated for
+// the first time afterwards is taken for an existing one and never gets the
+// settings seeded only for a new install.
+$settings = network( [ 1 => [], 2 => [], 3 => [] ] );
+$GLOBALS['njr_network_active'] = false;
+$settings->sweep_migrations();
+check_same( 0, $GLOBALS['njr_sweeps'], 'a plugin activated site by site does not sweep the network' );
+check_same( [], $GLOBALS['njr_visited'], 'and reaches no site it was not activated on' );
+check_same(
+	[ 1 => null, 2 => null, 3 => null ],
+	ledgers(),
+	'and writes no ledger row into a site it has never run on'
+);
+check_same( [], $GLOBALS['njr_network'], 'and stamps no network record it has no network to speak for' );
+check_same( '', notice( $settings ), 'and says nothing about a sweep it was never going to run' );
+
+// Network-activated afterwards, the same network sweeps on the next admin
+// request: the guard is a live reading, not a decision taken once.
+$GLOBALS['njr_network_active'] = true;
+$settings->sweep_migrations();
+check_same( [ 1, 2, 3 ], $GLOBALS['njr_visited'], 'a network activated afterwards is swept' );
+check_same( '1.7.0', $GLOBALS['njr_network'][ SWEPT ] ?? null, 'and stamped' );
+
+// A large network is not told to open every site's admin when the plugin is not
+// network-activated: there is no sweep to decline.
+$settings = network( [ 1 => [], 2 => [], 3 => [] ] );
+$GLOBALS['njr_network_active'] = false;
+$GLOBALS['njr_large_network']  = true;
+$settings->sweep_migrations();
+check_same( '', notice( $settings ), 'a large network with a per-site plugin is told nothing' );
 
 // One sweep helper serves setup, teardown and migration alike. A second
 // blog-switching path here would be one more place for the large-network refusal

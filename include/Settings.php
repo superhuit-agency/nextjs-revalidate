@@ -956,6 +956,18 @@ class Settings extends Base implements Hookable {
 
 		if ( !is_multisite() ) return false;
 
+		// Only a network-activated plugin has a network's worth of data to
+		// migrate. Activated site by site instead, it is a per-site plugin that
+		// happens to live on a network: each site reaches `migrate_db()` on its
+		// own `admin_init` exactly as a single install does, and sweeping from
+		// the one site that has it would write this plugin's rows into sites it
+		// has never run on. Those rows are not inert — `holds_any_data()` reads
+		// one as proof the plugin has run here, so a site later activated for
+		// the first time would be taken for an existing one and lose the
+		// settings `define_settings()` seeds only a new install. The same test
+		// guards `setup_new_site()`, for the same reason.
+		if ( !NextJsRevalidate::is_network_active() ) return false;
+
 		$swept = get_site_option( self::SWEPT_VERSION_OPTION_NAME );
 
 		// Compared as versions, never as concatenated digits: the scheme this
