@@ -34,8 +34,10 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 
 use NextJsRevalidate\Assets;
 use NextJsRevalidate\FailureWindow;
+use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Integrations\Redirection;
+use NextJsRevalidate\Probe;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
@@ -82,10 +84,12 @@ class NextJsRevalidate {
 
 	private Assets $assets;
 	private Revalidate $revalidate;
+	private Probe $probe;
 	private Settings $settings;
 	private FailureWindow $failureWindow;
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
+	private FseSnapshot $fseSnapshot;
 	private RevalidateQueue $queue;
 	private RestApi $restApi;
 	private Redirection $redirection;
@@ -114,7 +118,7 @@ class NextJsRevalidate {
 	 * Constructing a Hookable touches no global state, so the two are separate
 	 * acts here: everything is built first, then every one of them is asked to
 	 * register, in construction order. That order is load-bearing — WordPress
-	 * runs same-hook, same-priority callbacks in registration order, and eight
+	 * runs same-hook, same-priority callbacks in registration order, and nine
 	 * of this plugin's callbacks sit on `admin_init` at priority 10.
 	 *
 	 * See `docs/adr/0003-explicit-hook-registration.md`.
@@ -127,8 +131,10 @@ class NextJsRevalidate {
 		$this->settings            = $this->hookable( new Settings() );
 		$this->failureWindow       = $this->hookable( new FailureWindow() );
 		$this->revalidate          = $this->hookable( new Revalidate() );
+		$this->probe               = $this->hookable( new Probe() );
 		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
+		$this->fseSnapshot         = $this->hookable( new FseSnapshot() );
 		$this->queue               = $this->hookable( new RevalidateQueue() );
 		$this->restApi             = $this->hookable( new RestApi() );
 
@@ -173,6 +179,32 @@ class NextJsRevalidate {
 
 	function __get($name) {
 		return $this->{$name};
+	}
+
+	/**
+	 * Whether this plugin is activated for the whole network.
+	 *
+	 * Asked here rather than wherever it is needed because only this file can
+	 * ask it: `plugin_basename()` answers about the file it is called from, so
+	 * a class under `include/` putting the same question would name itself
+	 * instead of the plugin.
+	 *
+	 * False on a single install, where there is no network to be active for.
+	 *
+	 * @return bool
+	 */
+	public static function is_network_active() {
+
+		if ( !is_multisite() ) return false;
+
+		// An admin-only include. Loaded on demand rather than assumed: this is
+		// read from `admin_init`, where it is already there, and from the site
+		// creation hook, where it need not be.
+		if ( !function_exists( 'is_plugin_active_for_network' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		return is_plugin_active_for_network( plugin_basename( __FILE__ ) );
 	}
 
 	/**
@@ -286,8 +318,7 @@ class NextJsRevalidate {
 	public function setup_new_site( $new_site ) {
 
 		// A site the plugin is not active on is not this plugin's to set up.
-		require_once ABSPATH . 'wp-admin/includes/plugin.php';
-		if ( !is_plugin_active_for_network( plugin_basename( __FILE__ ) ) ) return;
+		if ( !self::is_network_active() ) return;
 
 		switch_to_blog( (int) $new_site->blog_id );
 		$this->setup_site();
@@ -349,6 +380,13 @@ class NextJsRevalidate {
 	 */
 	public static function uninstall() {
 		self::for_each_site( [self::init(), 'uninstall_site'] );
+
+		// The swept version is the network's own state rather than any site's,
+		// so it is dropped here and not once per site. Left behind, a later
+		// reinstall would read it, believe every site had already been asked to
+		// migrate for this release, and sweep none of them — the network-scoped
+		// twin of the stale ledger `uninstall_site()` deletes.
+		if ( is_multisite() ) delete_site_option( Settings::SWEPT_VERSION_OPTION_NAME );
 	}
 
 }

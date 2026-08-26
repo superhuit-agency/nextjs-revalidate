@@ -53,9 +53,9 @@ success for a release claiming 7.4 support. A CI job that quieted the refusal to
 Step order inside the PHP job is the gate's order, for the gate's reason: the
 parse and the standalone tests need nothing installed and take seconds, so a PHP
 8-only construct fails before the job pays for a Composer install
-([ADR 0007](0007-php-compatibility-gate.md)), which only PHPStan needs.
+([ADR 0016](0016-php-compatibility-gate.md)), which only PHPStan needs.
 
-This retires the "nothing runs on pull requests" clause in ADR 0007 and in
+This retires the "nothing runs on pull requests" clause in ADR 0016 and in
 `phpstan.neon`. All four checks now run on every PR.
 
 ## PHPStan was red on `main` before this workflow existed, and that is the argument for it

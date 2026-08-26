@@ -6,6 +6,7 @@ use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\BlockEditorScreen;
+use NextJsRevalidate\Traits\FrontEndRequest;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 use WP_Error;
@@ -17,6 +18,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 class Revalidate extends Base implements Hookable {
 	use AdminBarMenu;
 	use BlockEditorScreen;
+	use FrontEndRequest;
 	use SendbackUrl;
 
 	public function register_hooks(): void {
@@ -173,40 +175,11 @@ class Revalidate extends Base implements Hookable {
 		// later. It is also the guard for any other caller.
 		if ( !$this->settings->is_configured() ) return $this->settings->not_configured_error();
 
-		try {
-			$response = wp_remote_get(
-				$this->build_revalidate_uri( $permalink ),
-				[ 'timeout' => 60 ]
-			);
-
-			// The request never got an answer — DNS, TLS, a timeout. What the
-			// transport has to say about it is the diagnostic, so it is carried
-			// over rather than thrown away.
-			if ( is_wp_error($response) ) return new WP_Error( 'unreachable', $response->get_error_message() );
-
-			$status = intval( wp_remote_retrieve_response_code( $response ) );
-
-			if ( 200 === $status ) return true;
-
-			// An answer with no status line at all is not an HTTP outcome to
-			// report back, and `http_0` would name nothing an operator can act on.
-			if ( 0 === $status ) return new WP_Error( 'no_response', __( 'The front-end answered without a status code.', 'nextjs-revalidate' ) );
-
-			return new WP_Error(
-				"http_$status",
-				sprintf(
-					/* translators: %d: the HTTP status code the front-end answered with. */
-					__( 'The front-end answered %d.', 'nextjs-revalidate' ),
-					$status
-				)
-			);
-		} catch (\Throwable $th) {
-			// The drain runs this in a loop and keeps a running-cron count while
-			// it does, so a throw escaping here would cost more than the one
-			// revalidation. Caught, named, and handed back as a failure like any
-			// other.
-			return new WP_Error( 'exception', $th->getMessage() );
-		}
+		// The transport, and the naming of what comes back, are shared with the
+		// FSE snapshot invalidation — see `Traits\FrontEndRequest`. A minute is
+		// what a rebuild is given: this runs from the queue's cron, never from
+		// the request an editor is waiting on.
+		return $this->send_front_end_request( $this->build_revalidate_uri( $permalink ), 60 );
 	}
 
 	function build_revalidate_uri( $permalink ) {

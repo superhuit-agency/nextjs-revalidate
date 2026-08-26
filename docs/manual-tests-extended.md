@@ -29,22 +29,70 @@ page.
 - [ ] **Clear the revalidate path, leaving it empty, save.** Expect the field to
       show its placeholder `/api/revalidate`, not an empty box with no hint.
 - [ ] **Update a post and run the queue cron.** Expect a failure in the log
-      naming `http_404` — the dev server serves `/revalidate` only, so the
-      default path composing to `/api/revalidate` is *expected* to 404 here. That
-      the request went to `/api/revalidate` at all is what this proves.
+      naming `http_404` — the dev server serves the single-path revalidation at
+      `/revalidate` only, so the default path composing to `/api/revalidate` is
+      *expected* to 404 here. That the request went to `/api/revalidate` at all is
+      what this proves.
 - [ ] **Type the path without its leading slash** — `revalidate` — save, update a
       post, run cron. Expect a success: exactly one slash is inserted between the
       domain and the path.
 - [ ] **Put a trailing slash on the domain** — `http://host.docker.internal:8083/`
       — save, update, run cron. Expect a success, and no `//` in the logged
       permalink's endpoint.
-- [ ] **Set the FSE revalidate path to `/fse`, save.** Expect it to persist across
-      a reload. Nothing more: `Settings::fse_endpoint_url()` has no caller today,
-      so the FSE endpoint composes a URL that nothing sends to. This asserts the
-      field, not a feature.
+- [ ] **Set the FSE revalidate path to `/fse`, save, and save a template part**
+      (section H has how). Expect a failure in the log naming `http_404`: the
+      dev server serves the FSE endpoint at the default `/api/revalidate-fse`, so
+      a path the operator supplied is *expected* to 404 here. That the request
+      went to `/fse` at all is what this proves.
+- [ ] **Clear the FSE revalidate path, leaving it empty, save.** Expect the field
+      to show its placeholder `/api/revalidate-fse`.
 - [ ] **Restore the path to `/revalidate` and the domain to its seeded value.**
 
-## B. Which posts revalidate, and at which path
+## B. The probe
+
+Precondition: spine state, with the seeded API settings — section A restores
+them at its end, so run this after it or check the Next.js API tab first.
+
+- [ ] **Settings → Next.js revalidate → Probe.** Expect a sixth tab holding a
+      path field showing `/`, a "Send probe" button, and the note that a probe
+      uses the *saved* settings.
+- [ ] **Type `/runbook-post/` and press Send probe.** Expect
+      `= Revalidating: /runbook-post/` in the revalidate server console — a
+      probe is a real rebuild, not a dry run — and a success notice on the
+      settings screen: "The front-end rebuilt
+      http://localhost:8080/runbook-post/."
+- [ ] **Check the log.** Expect one line
+      `🔎 Probe: ✅ Revalidated in 0.04s http://localhost:8080/runbook-post/`,
+      carrying neither a queue id nor a priority — a probe has neither.
+- [ ] **Check the queue table.** Expect **no** row for that permalink: a probe
+      is delivered in the request that asked for it and never enqueued.
+- [ ] **Reload the settings screen.** Expect the notice gone and **no** second
+      line in the console: the answer comes back through a redirect, so a
+      refresh does not quietly probe again.
+- [ ] **Empty the field and probe.** Expect the home page — `/` in the console,
+      `http://localhost:8080/` in the notice.
+- [ ] **Paste the full permalink** `http://localhost:8080/runbook-page/` **and
+      probe.** Expect exactly what typing `/runbook-page/` gives: only the path
+      is kept.
+- [ ] **Set the secret to `wrong-secret`, save, and probe again.** Expect an
+      error notice naming both the message and the code: "The front-end did not
+      rebuild http://localhost:8080/runbook-post/ — The front-end answered 401.
+      (http_401)", and a `🔎 Probe: ❌ Failed to revalidate … http_401` line in
+      the log.
+- [ ] **Forget the failure window**
+      (`npx wp-env run cli wp option delete nextjs_revalidate-failure_window`)
+      **and probe three times with the wrong secret still saved.** Expect
+      `wp option get nextjs_revalidate-failure_window` to still answer "could
+      not be found", and no degraded notice anywhere: a probe is never
+      evidence, so this button can neither trip its own alarm nor silence it.
+- [ ] **Clear the secret, save, and probe.** Expect an error notice "Nothing was
+      sent for http://localhost:8080/runbook-post/. Next.js revalidate is not
+      configured for this site…", a `🔎 Probe: ⛔ Refused` line in the log, and
+      **nothing at all** in the revalidate server console.
+- [ ] **Restore the secret, save, and probe once more.** Expect the success
+      notice again.
+
+## C. Which posts revalidate, and at which path
 
 - [ ] **Publish a post with visibility Private.** Expect a revalidation — private
       posts are revalidatable.
@@ -69,7 +117,7 @@ page.
       old path is not revalidated and the front-end may keep a stale page at the
       old slug. Behaviour to know rather than a step that fails.
 
-## C. Row action and bulk action
+## D. Row action and bulk action
 
 - [ ] **Posts list → hover a published post.** Expect a **Purge cache** row
       action beside Edit and Trash.
@@ -84,7 +132,7 @@ page.
 - [ ] **Trash a post from the row action and confirm the list still works.**
       Expect no PHP notice and no broken action column.
 
-## D. Purge this page, from the admin bar
+## E. Purge this page, from the admin bar
 
 - [ ] **Open a published post in the block editor.** Expect an admin bar menu
       **Next.js revalidate** with a **Purge this page** item under it.
@@ -98,7 +146,7 @@ page.
 - [ ] **Open a brand-new unsaved post.** Expect **no** Purge this page item —
       there is no permalink to purge.
 
-## E. Revalidate all
+## F. Revalidate all
 
 - [ ] **Admin bar → Next.js revalidate.** Expect items for **All**, **Posts** and
       **Pages**, and none for post types not ticked in the settings.
@@ -112,7 +160,7 @@ page.
 - [ ] **Register a post type with no published posts and allow it.** Expect
       "Purge all: 0 pages added to purge." rather than an error.
 
-## F. Menu save
+## G. Menu save
 
 - [ ] **Settings → Next.js revalidate → On menu update: enable, save.**
 - [ ] **Appearance → Menus → create a menu, add the page, Save Menu.** Expect a
@@ -120,7 +168,57 @@ page.
 - [ ] **Disable the setting, save, and save the menu again.** Expect **no** new
       queue rows.
 
-## G. Scheduled purge
+## H. FSE update
+
+Precondition: a **block theme**, so the site editor exists. Note which theme is
+active — `npx wp-env run cli wp theme list --status=active --field=name` — and
+activate a block one if it is not; `npx wp-env run cli wp theme list` shows what
+is installed, and the bundled Twenty Twenty-Four and later are block themes.
+Restore the theme that was active when the section is done.
+
+The oracle here is the **revalidate server console**, not the queue: an FSE
+change is a **snapshot invalidation**, and nothing about it reaches the queue.
+Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
+
+- [ ] **Settings → Next.js revalidate → On FSE update.** Expect one switch,
+      **Revalidate on FSE update**, and expect it **on** — this stack is a new
+      install, and it is the only setting seeded with a value rather than an
+      empty one. Confirm the row says so:
+      `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`.
+      Expect `on`. (A site *upgrading* into this release starts off instead;
+      section X covers that.)
+- [ ] **Appearance → Editor → Patterns → a template part (Footer) → move a block
+      → Save.** Expect **exactly one** `= Invalidating: the FSE snapshot` in the
+      console, and `✅ Invalidated the FSE snapshot` in the log. Not two — the
+      site editor's save reaches more than one hook and they are coalesced.
+- [ ] **Confirm the queue stayed empty**:
+      `npx wp-env run cli wp db query "SELECT COUNT(*) FROM wp_revalidate_queue"`.
+      Expect 0. No page was named, and none needed to be.
+- [ ] **Edit a template (Editor → Templates → Single) and Save.** Expect one
+      invalidation.
+- [ ] **Reset that template to its theme default** — Editor → Templates → the
+      template's ⋮ → **Reset**. Expect one invalidation: the reset *deletes* the
+      database post, and there is no save to hook.
+- [ ] **Switch themes**: activate another installed theme, then switch back.
+      Expect one invalidation per switch — every template changed at once.
+- [ ] **Save an ordinary post.** Expect a queue row and **no** invalidation: the
+      two paths are independent, and a post has not touched the snapshot.
+- [ ] **Save a navigation menu** (Appearance → Menus, with the On menu update
+      setting off). Expect **no** invalidation. Menu items are fetched at request
+      time by the front-end and are deliberately not in the snapshot.
+- [ ] **Switch the On FSE update setting off, save, and edit a template part
+      again.** Expect **nothing** in the console and nothing in the log — the
+      escape hatch for a front-end that does not serve the endpoint yet.
+- [ ] **Confirm the switch stayed off across a reload** of the settings screen.
+      The row is empty now rather than `off` — an unchecked switch submits
+      nothing — and empty reads as off, which is the same thing a site that has
+      never touched it reads as.
+- [ ] **Switch it back on, save, and confirm an edit invalidates again.**
+- [ ] **Clear the secret, save, and edit a template part.** Expect
+      `⛔ Refused the FSE snapshot invalidation — site not configured (missing:
+      secret)` in the log and **no** request in the console. Restore the secret.
+
+## I. Scheduled purge
 
 - [ ] **Schedule a post for two minutes from now and publish.** Expect **no**
       immediate revalidation of its path — it is not published yet.
@@ -132,7 +230,7 @@ page.
 - [ ] **Wait for the time to pass and load an admin page.** Expect a revalidation
       of the now-published path, and the option entry gone.
 
-## H. The log file
+## J. The log file
 
 - [ ] **Confirm its location**:
       `npx wp-env run cli -- ls -l wp-content/uploads/nextjs-revalidate.log`.
@@ -155,7 +253,7 @@ page.
       that has never logged, its absence is the normal state. The next logged
       line recreates it.
 
-## I. Who sees the notices
+## K. Who sees the notices
 
 Create a subscriber once:
 `npx wp-env run cli wp user create sub sub@example.com --role=subscriber --user_pass=sub`
@@ -169,7 +267,7 @@ Create a subscriber once:
 - [ ] **As the subscriber, load the posts list.** Expect no Purge cache row
       action and no Purge caches bulk action. Restore the secret afterwards.
 
-## J. The French translation
+## L. The French translation
 
 - [ ] **Settings → General → Site Language → Français, save.**
 - [ ] **Load the Next.js revalidate settings screen.** Expect tab labels, field
@@ -180,7 +278,7 @@ Create a subscriber once:
       a French row action label.
 - [ ] **Restore English and restore the secret.**
 
-## K. Uninstallation
+## M. Uninstallation
 
 Run this last in Part 1 — it destroys the site's plugin data.
 
@@ -192,6 +290,7 @@ Run this last in Part 1 — it destroys the site's plugin data.
 - [ ] **Expect every option gone.** Check `nextjs_revalidate-domain`,
       `-endpoint_path`, `-fse_endpoint_path`, `-secret`,
       `-allow_revalidate_all`, `nextjs_revalidate-revalidate-on-menu-save`,
+      `nextjs_revalidate-revalidate-on-fse-save`,
       `nextjs_revalidate-debug`, `nextjs_revalidate-db_version`,
       `nextjs_revalidate-failure_window`, `nextjs-revalidate-scheduled_purges`.
       Expect all "could not be found".
@@ -205,7 +304,7 @@ Run this last in Part 1 — it destroys the site's plugin data.
 Precondition: Part 1 finished and `npm run stop` run. This stack is raised by an
 override file, never by editing `.wp-env.json`.
 
-## L. Setup
+## N. Setup
 
 - [ ] **`cp config/wp-env.multisite.json .wp-env.override.json`.**
 - [ ] **`npx wp-env destroy`** and confirm. The install has to be rebuilt as a
@@ -216,9 +315,9 @@ override file, never by editing `.wp-env.json`.
       only it. Create a second site:
       `npx wp-env run cli wp site create --slug=second --title="Second"`.
 
-## M. Network activation sets up every site
+## O. Network activation sets up every site
 
-Precondition: L done, plugin **not** yet network-activated, at least two sites.
+Precondition: O done, plugin **not** yet network-activated, at least two sites.
 
 - [ ] **Network Admin → Plugins → Network Activate "Next.js revalidate".**
       Expect no error.
@@ -231,9 +330,9 @@ Precondition: L done, plugin **not** yet network-activated, at least two sites.
       `npx wp-env run cli wp option get nextjs_revalidate-db_version --url=localhost:8080/second`.
       Expect a version string, not "could not be found".
 
-## N. A site created after activation
+## P. A site created after activation
 
-Precondition: M done, plugin network-active.
+Precondition: O done, plugin network-active.
 
 - [ ] **Network Admin → Sites → Add New**, slug `third`.
 - [ ] **Expect `wp_3_revalidate_queue` to exist** without anyone visiting the new
@@ -243,9 +342,9 @@ Precondition: M done, plugin network-active.
       domain, no secret. Load its wp-admin and expect the unconfigured notice. A
       newly created site starting unconfigured is by design.
 
-## O. Settings are per site
+## Q. Settings are per site
 
-Precondition: M done, main site configured, `second` not.
+Precondition: O done, main site configured, `second` not.
 
 - [ ] **Configure `second`** with the same domain and secret, through its own
       Settings screen at `http://localhost:8080/second/wp-admin`.
@@ -259,9 +358,54 @@ Precondition: M done, main site configured, `second` not.
       notice on the main site and **not** on `second` — the failure window is per
       site. Restore the main site's secret.
 
-## P. A large network declines rather than truncates
+## R. An update migrates every site, without visiting any
 
-Precondition: M done. This simulates a large network with a filter; it cannot be
+Precondition: P done, plugin network-active, at least two sites. The update is
+faked rather than performed: what triggers the sweep is the swept version
+differing from the running one, so a Composer or git deploy that never runs
+WordPress's updater reaches this the same way a real update does.
+
+- [ ] **Rewind the network and `second` only**, leaving `second` a site whose
+      code an update has reached and whose data it has not:
+      ```sh
+      npx wp-env run cli wp site option delete nextjs_revalidate-swept_version
+      npx wp-env run cli wp option delete nextjs_revalidate-db_version --url=localhost:8080/second
+      npx wp-env run cli wp option update nextjs_revalidate-allow_purge_all --format=json '["post"]' --url=localhost:8080/second
+      ```
+- [ ] **Load the main site's wp-admin, and nothing of `second`'s.** Expect
+      `second` migrated anyway:
+      `wp option get nextjs_revalidate-allow_revalidate_all --url=localhost:8080/second`
+      returns `["post"]`, and `nextjs_revalidate-allow_purge_all` is gone. Nobody
+      opened that site's admin, which is the whole of what this proves.
+- [ ] **Expect the network stamped**:
+      `npx wp-env run cli wp site option get nextjs_revalidate-swept_version`
+      returns the running version — a network-wide value, not one per site.
+- [ ] **Reload the main site's wp-admin three or four times.** Expect the swept
+      version unchanged and nothing re-migrated: once per network per release,
+      not once per admin request.
+- [ ] **Clear the swept version and fake a large network**:
+      ```sh
+      npx wp-env run cli wp site option delete nextjs_revalidate-swept_version
+      npx wp-env run cli -- bash -c 'mkdir -p wp-content/mu-plugins && cat > wp-content/mu-plugins/njr-large-network.php <<PHP
+      <?php add_filter("wp_is_large_network", "__return_true");
+      PHP'
+      ```
+- [ ] **Load wp-admin as a super admin.** Expect a warning notice reading
+      `cannot migrate the … sites of this network in a single request`, naming
+      the number of sites, and `wp site option get nextjs_revalidate-swept_version`
+      still "could not be found" — a sweep reaches every site or it does not
+      start, and it says which it did.
+- [ ] **Log in as a plain site administrator** — any user without super admin —
+      and load the same screen. Expect **no** such notice: nobody but a super
+      admin can act on it.
+- [ ] **Remove the filter** —
+      `npx wp-env run cli -- rm wp-content/mu-plugins/njr-large-network.php` —
+      and reload wp-admin as a super admin. Expect the notice gone and the swept
+      version stamped.
+
+## S. A large network declines rather than truncates
+
+Precondition: O done. This simulates a large network with a filter; it cannot be
 reached otherwise without ten thousand sites.
 
 - [ ] **Network-deactivate the plugin**, then install the filter:
@@ -280,9 +424,9 @@ reached otherwise without ten thousand sites.
       Expect it to succeed — the refusal exists to leave that door open. Then
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-large-network.php`.
 
-## Q. Network deactivation and uninstallation
+## T. Network deactivation and uninstallation
 
-Precondition: M done, plugin network-active, all sites set up.
+Precondition: O done, plugin network-active, all sites set up.
 
 - [ ] **Network Deactivate.** Expect the queue cron gone on **every** site, the
       settings kept on every site, and the failure window cleared on every site.
@@ -290,8 +434,12 @@ Precondition: M done, plugin network-active, all sites set up.
       table dropped and every site's options gone — check `second` explicitly,
       not just the main site. A site is torn down at the same depth on a network
       as it would be alone.
+- [ ] **Expect the network's own record gone too**:
+      `npx wp-env run cli wp site option get nextjs_revalidate-swept_version`
+      returns "could not be found". Left behind, a reinstall would read it and
+      sweep nothing.
 
-## R. Teardown
+## U. Teardown
 
 - [ ] **`npm run stop`.**
 - [ ] **`rm .wp-env.override.json`.** Not optional: wp-env merges it over
@@ -307,7 +455,7 @@ The only stack that can exercise the migration ledger's backfill. A fresh instal
 never can: it is stamped with the current DB version at setup, which is precisely
 what the backfill exists to avoid needing.
 
-## S. Raise a real 1.6.9 site
+## V. Raise a real 1.6.9 site
 
 - [ ] **Confirm the release asset URL.** Open the v1.6.9 release on GitHub and
       copy the zip's download URL. Do not assume the filename.
@@ -326,7 +474,7 @@ what the backfill exists to avoid needing.
       screen shows **1.6.9**. If it shows anything else the working tree is still
       mounted and nothing below tests an upgrade. Activate it.
 
-## T. A 1.6.9 site, configured the old way
+## W. A 1.6.9 site, configured the old way
 
 - [ ] **Set the legacy single URL option** — the shape 1.6.9 stores:
       ```sh
@@ -342,7 +490,7 @@ what the backfill exists to avoid needing.
       `= Revalidating: /…/` in the dev server console. Enter the upgrade from a
       *working* site, so that a broken one afterwards means something.
 
-## U. The upgrade
+## X. The upgrade
 
 - [ ] **`npm run stop`, `rm .wp-env.override.json`, `npm start`.** The working
       tree is now mounted into the same plugin directory over the same database.
@@ -364,10 +512,26 @@ what the backfill exists to avoid needing.
 - [ ] **Reload wp-admin several times.** Expect the ledger to stay put and
       nothing to be re-migrated: a migration decides by the ledger, never by the
       plugin version.
+- [ ] **Expect the FSE gate off** — the whole point of the asymmetry. On the
+      settings screen, **On FSE update → Revalidate on FSE update** is
+      unchecked, and
+      `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`
+      answers an empty value or "could not be found", never `on`. This site's
+      front-end is whatever it already was, and it may serve no FSE endpoint at
+      all.
+- [ ] **Edit a template part and confirm nothing is sent** — no line in the
+      revalidate server console, nothing in the log. An upgraded site does not
+      start making a request it was never making.
+- [ ] **Deactivate and reactivate the plugin, then look again.** Expect the gate
+      still off: setup seeds `on` only for a site holding none of this plugin's
+      rows, and this one has held them since 1.6.9.
+- [ ] **Switch it on, save, and edit a template part.** Expect one
+      `= Invalidating: the FSE snapshot`. The operator opting in is the whole
+      of the upgrade path.
 
-## V. Backfill from an older shape
+## Y. Backfill from an older shape
 
-Precondition: U done. This rewinds the ledger to fake a site that predates it.
+Precondition: Y done. This rewinds the ledger to fake a site that predates it.
 
 - [ ] **Rewind to a pre-1.5.0 shape**:
       ```sh
@@ -383,7 +547,7 @@ Precondition: U done. This rewinds the ledger to fake a site that predates it.
       ledger, load wp-admin. Expect the option deleted — the queue lives in its
       own table now — and the ledger stamped.
 
-## W. Teardown
+## Z. Teardown
 
 - [ ] **`npm run stop`**, then **`ls .wp-env.override.json`** and expect it
       absent.

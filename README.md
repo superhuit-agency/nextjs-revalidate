@@ -18,10 +18,32 @@ The revalidation request is sent to an endpoint composed from the settings — t
 | Revalidate path | no | `/api/revalidate` |
 | FSE revalidate path | no | `/api/revalidate-fse` |
 | Revalidate secret | yes | — |
+| Revalidate on FSE update | no | on for a new install, off for an upgrade |
 
 A standard install fills in the domain and the secret. The paths exist for apps
 that route these endpoints somewhere else; each falls back to the default shown
 in its placeholder when left empty.
+
+### FSE templates
+
+Next.js renders its pages inside WordPress FSE templates, and holds the whole
+template structure as one cached value. Saving a template or a template part in
+the site editor, resetting one to its theme default, or switching themes
+therefore changes every page at once — so the plugin sends **one** request to the
+FSE endpoint, with the secret and no path, and the front-end's pages rebuild
+lazily from there. Nothing is enqueued and nothing is rebuilt page by page.
+
+```
+https://example.com/api/revalidate-fse?secret=my-super-secret-string
+```
+
+Menu changes do **not** trigger this: menu items are fetched at request time by
+the front-end and are not part of the template snapshot.
+
+**Revalidate on FSE update** starts on for a new install and **off for a site
+upgrading from an earlier release** — an existing front-end may not serve that
+endpoint yet, and every template save would otherwise ask it for a route it does
+not have. Switch it on once the front-end is serving it.
 
 Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
 split into a domain and a path automatically on the first admin request after the
@@ -33,6 +55,19 @@ https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-str
 ```
 
 > Based on the Next.js [On-demand revalidation](https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration#on-demand-revalidation) documentation
+
+### Probing the front-end
+
+The **Probe** tab of the settings screen asks the front-end to rebuild one path
+straight away, and shows what it answered — including the error message and its
+code when it did not work. It is a real revalidation and not a dry run: the page
+is rebuilt exactly as it would be after an edit, using the *saved* settings, so
+it answers "does this site revalidate right now" rather than "would these values
+work".
+
+A probe is never counted towards the "not keeping this site up to date" warning:
+pressing it can neither raise that warning nor clear it. It is written to the log
+file when logging is on, marked `🔎 Probe`.
 
 ## Requirements
 

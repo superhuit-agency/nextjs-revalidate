@@ -71,7 +71,7 @@ worse than that.
 ## Consequences
 
 `Settings::missing_settings()` now names `domain` rather than `url`, and the
-unconfigured notice (ADR-0007) says so. The paths are absent from it on purpose:
+unconfigured notice (ADR-0015) says so. The paths are absent from it on purpose:
 a site is configured without them.
 
 **`Settings` gained a `__isset()`**, and it is not a tidy-up. PHP routes

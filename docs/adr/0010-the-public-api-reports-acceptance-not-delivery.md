@@ -9,7 +9,7 @@ only one of them was a bug.
 
 The bug — the function enqueued the permalink and returned a hardcoded `true`,
 discarding what `RevalidateQueue::add_item()` answered — was fixed as a
-consequence of #37 (ADR 0007): the queue grew a `not_configured` **refusal**, and
+consequence of #37 (ADR 0015): the queue grew a `not_configured` **refusal**, and
 the API function had to stop asserting success to be able to report one. The
 return is `$accepted && !is_wp_error($accepted)`, so a refusal and a failed
 insert are both `false`.

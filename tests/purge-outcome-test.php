@@ -143,6 +143,7 @@ require_once __DIR__ . '/../include/Abstracts/Base.php';
 require_once __DIR__ . '/../include/Traits/AdminBarMenu.php';
 require_once __DIR__ . '/../include/Traits/SendbackUrl.php';
 require_once __DIR__ . '/../include/Traits/BlockEditorScreen.php';
+require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
 require_once __DIR__ . '/../include/Revalidate.php';
 
 // The harness

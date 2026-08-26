@@ -88,6 +88,32 @@ action, the admin bar — never one that only save-time code consults.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
 
+### Full site editing
+
+**FSE snapshot**:
+The whole WordPress template structure, as one derived value the front-end holds:
+every template, with `core/template-part` blocks inlined and Polylang's
+translation variants attached. Not this plugin's data and never assembled here —
+the front-end builds it over WPGraphQL and caches it behind a cache tag. What
+this plugin knows about it is only which WordPress changes make it stale: a
+`wp_template` or `wp_template_part` saved or deleted, or a theme switched.
+_Avoid_: Template cache, templates — the snapshot is one value covering all of
+them, and a page holds no part of it separately.
+
+**Snapshot invalidation**:
+Telling the front-end, in one request to the **FSE endpoint**, that its **FSE
+snapshot** is stale. Not a **revalidation** and not a bulk one: nothing is
+enqueued, no permalink is composed, and no page is named — the front-end drops a
+cache tag and its pages rebuild lazily as they are asked for. So it never
+produces a **failure** in the sense the **failure window** holds, because it was
+never in the **revalidation queue** to be attempted from.
+
+The one exception to "invalidation" being a word this project avoids, and the
+exception is what the term is for: it names the act that is genuinely not a
+revalidation of a path.
+_Avoid_: FSE revalidation, revalidating the templates — both suggest a path is
+being rebuilt, which is the distinction this term exists to keep.
+
 ### Integrations
 
 **Integration**:
@@ -127,6 +153,16 @@ for the scalar ones — never `false`. A read is therefore always safe to iterat
 or compare without the caller guarding the type first.
 _Avoid_: Default — the value is what *absence* means, not a preference a site
 would sensibly keep.
+
+> What absence *resolves to* is a separate question, answered by whoever reads
+> the setting rather than by the table: an **endpoint path**'s `''` resolves to
+> its **default path**, which is not the empty value having an opinion.
+>
+> A setting whose default differs between a new install and an existing site
+> cannot be answered that way at all — the two hold the same empty row. The FSE
+> gate is the one such setting: `''` reads as off, and the `on` a new install
+> starts with is written into the row at setup, by `define_settings()`, on the
+> evidence that the site held none of this plugin's rows.
 
 > The option table is authoritative for **reads**, registration, seeding and
 > teardown alike: each enumerates the same declaration, so a setting cannot be
@@ -215,6 +251,20 @@ Establishing a DB version for a site that predates the migration ledger, by
 inferring it from which legacy options are present in the site's data.
 _Avoid_: Bootstrapping, seeding
 
+**Swept version**:
+The record of the release every site of a **network** was last asked to migrate
+at. Network-scoped rather than per-site — the one piece of this plugin's state
+that is — and compared against the **plugin version** on admin requests: when the
+running code is newer, every site is swept and the record is then stamped.
+
+Not a second ledger. It says nothing about any site's data shape, only whether
+every site has been *asked* this release; the **migration ledger** remains the
+authority on which migrations a given site runs, and a site that has nothing to
+do answers the sweep with one option read. That split is what lets the sweep fire
+once per network per release while migrations stay a per-site decision.
+_Avoid_: Network DB version — it describes no data shape; last migrated version —
+a site the sweep reached may have had nothing to migrate.
+
 ### Network and sites
 
 **Site**:
@@ -227,7 +277,7 @@ only where core's API forces it.
 
 **Network**:
 The set of sites sharing one WordPress install. Owns nothing of this plugin's
-state except the record of which sites have been swept.
+state except the **swept version**.
 _Avoid_: Multisite as a noun — it is a mode the install is in, not a thing.
 
 **Site setup**:
@@ -276,7 +326,7 @@ returns the already-built root, not the thing that builds it.
 Attaching a class's callbacks to WordPress actions and filters. A separate act
 from constructing that class, performed once, by the composition root. The order
 is load-bearing: WordPress runs same-hook, same-priority callbacks in
-registration order, and eight of this plugin's callbacks sit on `admin_init` at
+registration order, and nine of this plugin's callbacks sit on `admin_init` at
 priority 10.
 _Avoid_: Wiring, binding, hooking up
 
