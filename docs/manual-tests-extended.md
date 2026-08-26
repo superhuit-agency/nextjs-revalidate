@@ -317,7 +317,7 @@ override file, never by editing `.wp-env.json`.
 
 ## O. Network activation sets up every site
 
-Precondition: O done, plugin **not** yet network-activated, at least two sites.
+Precondition: N done, plugin **not** yet network-activated, at least two sites.
 
 - [ ] **Network Admin → Plugins → Network Activate "Next.js revalidate".**
       Expect no error.
@@ -332,7 +332,7 @@ Precondition: O done, plugin **not** yet network-activated, at least two sites.
 
 ## P. A site created after activation
 
-Precondition: O done, plugin network-active.
+Precondition: N done, plugin network-active.
 
 - [ ] **Network Admin → Sites → Add New**, slug `third`.
 - [ ] **Expect `wp_3_revalidate_queue` to exist** without anyone visiting the new
@@ -344,7 +344,7 @@ Precondition: O done, plugin network-active.
 
 ## Q. Settings are per site
 
-Precondition: O done, main site configured, `second` not.
+Precondition: N done, main site configured, `second` not.
 
 - [ ] **Configure `second`** with the same domain and secret, through its own
       Settings screen at `http://localhost:8080/second/wp-admin`.
@@ -360,7 +360,7 @@ Precondition: O done, main site configured, `second` not.
 
 ## R. An update migrates every site, without visiting any
 
-Precondition: P done, plugin network-active, at least two sites. The update is
+Precondition: O done, plugin network-active, at least two sites. The update is
 faked rather than performed: what triggers the sweep is the swept version
 differing from the running one, so a Composer or git deploy that never runs
 WordPress's updater reaches this the same way a real update does.
@@ -405,7 +405,7 @@ WordPress's updater reaches this the same way a real update does.
 
 ## S. A large network declines rather than truncates
 
-Precondition: O done. This simulates a large network with a filter; it cannot be
+Precondition: N done. This simulates a large network with a filter; it cannot be
 reached otherwise without ten thousand sites.
 
 - [ ] **Network-deactivate the plugin**, then install the filter:
@@ -426,7 +426,7 @@ reached otherwise without ten thousand sites.
 
 ## T. Network deactivation and uninstallation
 
-Precondition: O done, plugin network-active, all sites set up.
+Precondition: N done, plugin network-active, all sites set up.
 
 - [ ] **Network Deactivate.** Expect the queue cron gone on **every** site, the
       settings kept on every site, and the failure window cleared on every site.
@@ -531,7 +531,7 @@ what the backfill exists to avoid needing.
 
 ## Y. Backfill from an older shape
 
-Precondition: Y done. This rewinds the ledger to fake a site that predates it.
+Precondition: X done. This rewinds the ledger to fake a site that predates it.
 
 - [ ] **Rewind to a pre-1.5.0 shape**:
       ```sh
