@@ -167,7 +167,8 @@ class RestApiTest extends QueueTestCase {
 	 * The one branch where an unconfigured site is answered by the *permission
 	 * callback* rather than by a refusal at enqueue: `check_permission()` looks
 	 * at the secret before it compares anything, so the call never reaches
-	 * `add_item()` and never becomes one of the refusals ADR 0007 describes.
+	 * `add_item()` and never becomes one of the refusals
+	 * `docs/adr/0015-an-unconfigured-site-refuses-loudly.md` describes.
 	 */
 	public function test_a_site_with_no_secret_answers_missing_secret_on_either_route() {
 		// Deliberately not configured: this site holds neither setting.
