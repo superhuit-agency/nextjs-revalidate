@@ -108,7 +108,9 @@ which paths it has seen. `RevalidateQueue::add_item()` already enqueues a
 permalink it holds exactly once, so a second answer here would only add a way to
 be wrong: a set kept in memory outlives the queue entry it describes, and in a
 long-running process (a WP-CLI import) it would decline a path that had already
-been enqueued, drained, and made stale again.
+been enqueued, drained, and made stale again. An edit that leaves a source
+untouched is the sharpest case: both sides of it are put to the revalidatable
+redirect rules independently, so one path is handed over twice and costs one row.
 
 **A source names a path from the domain root, not from the site.** Redirection
 matches its redirects against `REQUEST_URI`, and its post slug monitor stores the
