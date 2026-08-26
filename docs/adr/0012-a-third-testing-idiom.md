@@ -76,7 +76,7 @@ exactly one home, and the question an author faces is "which file", never "both?
 The cost is real and is the one a layered design would have avoided: **the core
 pass is not a summary, so running it is not a weaker version of running
 everything.** It leaves whole features untested — the admin bar, revalidate all,
-scheduled purges, the REST API, uninstallation — and a green core pass says
+scheduled purges, the probe, uninstallation — and a green core pass says
 nothing about them. The split is a decision about what is worth a person's time
 before a release, and it can be wrong in either direction. Moving a step between
 files is cheap and expected; that is how the line gets corrected.
