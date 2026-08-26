@@ -180,13 +180,30 @@ well as the new one, on Redirection versions whose update action carries the
 redirect's previous state. Redirection 5.9.0 passes the redirect's id instead,
 where only the new source path is revalidated.
 
+A site whose front-end resolves redirects some other way can decline any of these
+revalidations with the
+[`nextjs_revalidate_should_revalidate_redirect`](#nextjs_revalidate_should_revalidate_redirect)
+filter, without deactivating the plugin or losing the revalidation of its posts.
+
 ## Filters
 
 ### nextjs_revalidate_should_revalidate_redirect
 
 Filters whether a redirect's source path is revalidated. Return `false` to leave
 the path alone — the escape hatch for a site whose front-end resolves redirects
-some other way.
+some other way, from build-time configuration, from middleware, or from anywhere
+a per-path revalidation does not reach.
+
+Applied last, and to every redirect change that revalidates a source path:
+creating, updating, deleting, enabling and disabling one alike. It is asked once
+per path, so changing a redirect's source puts the path that stops redirecting
+and the one that starts to it separately, and a site can decline either on its
+own.
+
+Unlike the post filter below it declines rather than admits. A redirect that is
+not revalidatable never reaches it — a regular expression source names no single
+path, so there is nothing to hand the filter, and returning `true` revalidates
+nothing.
 
 #### Usage
 ```php
