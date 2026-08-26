@@ -186,7 +186,7 @@ Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
       empty one. Confirm the row says so:
       `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`.
       Expect `on`. (A site *upgrading* into this release starts off instead;
-      section X covers that.)
+      section Y covers that.)
 - [ ] **Appearance → Editor → Patterns → a template part (Footer) → move a block
       → Save.** Expect **exactly one** `= Invalidating: the FSE snapshot` in the
       console, and `✅ Invalidated the FSE snapshot` in the log. Not two — the
@@ -337,7 +337,7 @@ override file, never by editing `.wp-env.json`.
 
 ## P. Network activation sets up every site
 
-Precondition: N done, plugin **not** yet network-activated, at least two sites.
+Precondition: O done, plugin **not** yet network-activated, at least two sites.
 
 - [ ] **Network Admin → Plugins → Network Activate "Next.js revalidate".**
       Expect no error.
@@ -378,7 +378,52 @@ Precondition: O done, main site configured, `second` not.
       notice on the main site and **not** on `second` — the failure window is per
       site. Restore the main site's secret.
 
-## S. A large network declines rather than truncates
+## S. An update migrates every site, without visiting any
+
+Precondition: P done, plugin network-active, at least two sites. The update is
+faked rather than performed: what triggers the sweep is the swept version
+differing from the running one, so a Composer or git deploy that never runs
+WordPress's updater reaches this the same way a real update does.
+
+- [ ] **Rewind the network and `second` only**, leaving `second` a site whose
+      code an update has reached and whose data it has not:
+      ```sh
+      npx wp-env run cli wp site option delete nextjs_revalidate-swept_version
+      npx wp-env run cli wp option delete nextjs_revalidate-db_version --url=localhost:8080/second
+      npx wp-env run cli wp option update nextjs_revalidate-allow_purge_all --format=json '["post"]' --url=localhost:8080/second
+      ```
+- [ ] **Load the main site's wp-admin, and nothing of `second`'s.** Expect
+      `second` migrated anyway:
+      `wp option get nextjs_revalidate-allow_revalidate_all --url=localhost:8080/second`
+      returns `["post"]`, and `nextjs_revalidate-allow_purge_all` is gone. Nobody
+      opened that site's admin, which is the whole of what this proves.
+- [ ] **Expect the network stamped**:
+      `npx wp-env run cli wp site option get nextjs_revalidate-swept_version`
+      returns the running version — a network-wide value, not one per site.
+- [ ] **Reload the main site's wp-admin three or four times.** Expect the swept
+      version unchanged and nothing re-migrated: once per network per release,
+      not once per admin request.
+- [ ] **Clear the swept version and fake a large network**:
+      ```sh
+      npx wp-env run cli wp site option delete nextjs_revalidate-swept_version
+      npx wp-env run cli -- bash -c 'mkdir -p wp-content/mu-plugins && cat > wp-content/mu-plugins/njr-large-network.php <<PHP
+      <?php add_filter("wp_is_large_network", "__return_true");
+      PHP'
+      ```
+- [ ] **Load wp-admin as a super admin.** Expect a warning notice reading
+      `cannot migrate the … sites of this network in a single request`, naming
+      the number of sites, and `wp site option get nextjs_revalidate-swept_version`
+      still "could not be found" — a sweep reaches every site or it does not
+      start, and it says which it did.
+- [ ] **Log in as a plain site administrator** — any user without super admin —
+      and load the same screen. Expect **no** such notice: nobody but a super
+      admin can act on it.
+- [ ] **Remove the filter** —
+      `npx wp-env run cli -- rm wp-content/mu-plugins/njr-large-network.php` —
+      and reload wp-admin as a super admin. Expect the notice gone and the swept
+      version stamped.
+
+## T. A large network declines rather than truncates
 
 Precondition: O done. This simulates a large network with a filter; it cannot be
 reached otherwise without ten thousand sites.
@@ -399,7 +444,7 @@ reached otherwise without ten thousand sites.
       Expect it to succeed — the refusal exists to leave that door open. Then
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-large-network.php`.
 
-## T. Network deactivation and uninstallation
+## U. Network deactivation and uninstallation
 
 Precondition: O done, plugin network-active, all sites set up.
 
@@ -409,8 +454,12 @@ Precondition: O done, plugin network-active, all sites set up.
       table dropped and every site's options gone — check `second` explicitly,
       not just the main site. A site is torn down at the same depth on a network
       as it would be alone.
+- [ ] **Expect the network's own record gone too**:
+      `npx wp-env run cli wp site option get nextjs_revalidate-swept_version`
+      returns "could not be found". Left behind, a reinstall would read it and
+      sweep nothing.
 
-## U. Teardown
+## V. Teardown
 
 - [ ] **`npm run stop`.**
 - [ ] **`rm .wp-env.override.json`.** Not optional: wp-env merges it over
@@ -426,7 +475,7 @@ The only stack that can exercise the migration ledger's backfill. A fresh instal
 never can: it is stamped with the current DB version at setup, which is precisely
 what the backfill exists to avoid needing.
 
-## V. Raise a real 1.6.9 site
+## W. Raise a real 1.6.9 site
 
 - [ ] **Confirm the release asset URL.** Open the v1.6.9 release on GitHub and
       copy the zip's download URL. Do not assume the filename.
@@ -445,7 +494,7 @@ what the backfill exists to avoid needing.
       screen shows **1.6.9**. If it shows anything else the working tree is still
       mounted and nothing below tests an upgrade. Activate it.
 
-## W. A 1.6.9 site, configured the old way
+## X. A 1.6.9 site, configured the old way
 
 - [ ] **Set the legacy single URL option** — the shape 1.6.9 stores:
       ```sh
@@ -461,7 +510,7 @@ what the backfill exists to avoid needing.
       `= Revalidating: /…/` in the dev server console. Enter the upgrade from a
       *working* site, so that a broken one afterwards means something.
 
-## X. The upgrade
+## Y. The upgrade
 
 - [ ] **`npm run stop`, `rm .wp-env.override.json`, `npm start`.** The working
       tree is now mounted into the same plugin directory over the same database.
@@ -500,9 +549,9 @@ what the backfill exists to avoid needing.
       `= Invalidating: the FSE snapshot`. The operator opting in is the whole
       of the upgrade path.
 
-## Y. Backfill from an older shape
+## Z. Backfill from an older shape
 
-Precondition: W done. This rewinds the ledger to fake a site that predates it.
+Precondition: Y done. This rewinds the ledger to fake a site that predates it.
 
 - [ ] **Rewind to a pre-1.5.0 shape**:
       ```sh
@@ -518,7 +567,7 @@ Precondition: W done. This rewinds the ledger to fake a site that predates it.
       ledger, load wp-admin. Expect the option deleted — the queue lives in its
       own table now — and the ledger stamped.
 
-## Z. Teardown
+## AA. Teardown
 
 - [ ] **`npm run stop`**, then **`ls .wp-env.override.json`** and expect it
       absent.
