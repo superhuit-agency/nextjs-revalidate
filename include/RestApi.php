@@ -89,7 +89,11 @@ class RestApi extends Base implements Hookable {
 	public function handle_revalidate(WP_REST_Request $request) {
 		// Single-item handler: build the single-item array and delegate
 		$path = $request->get_param('path');
-		$priority = $request->get_param('priority') ? absint($request->get_param('priority')) : 10;
+		// `0` is a priority — the most urgent one there is — and not an absence,
+		// so it must not be read as one. The route declares both a `default` and
+		// an `absint` sanitiser, which have already settled absence and type by
+		// the time this runs; all that is left here is to take what they left.
+		$priority = absint($request->get_param('priority'));
 		if (empty($path)) {
 			return new WP_REST_Response([
 				'success' => false,

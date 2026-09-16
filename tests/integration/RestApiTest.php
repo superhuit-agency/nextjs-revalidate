@@ -112,6 +112,38 @@ class RestApiTest extends QueueTestCase {
 	}
 
 	/**
+	 * A priority of `0` is the priority the caller asked for, and not an absence
+	 * of one — issue #110.
+	 *
+	 * `0` is the most urgent priority there is, so the failure it guards against
+	 * is a silent one: the handler used to read the parameter for truthiness and
+	 * hand `10` to the queue, and the route still answered 200 with
+	 * `success: true`. The caller is told the enqueue happened, which it did, and
+	 * nothing in the response says it happened anywhere but where it was asked
+	 * for — only the queue can tell, which is what this asserts on.
+	 */
+	public function test_the_single_route_enqueues_at_a_priority_of_zero() {
+		$this->configure_site();
+
+		$response = $this->call_route(
+			'/revalidate',
+			[
+				'secret'   => self::FIXTURE_SECRET,
+				'path'     => $this->permalink_of( '/most-urgent/' ),
+				'priority' => 0,
+			]
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertTrue( $response->get_data()['success'] );
+
+		$this->assertQueueRevalidatesAtPriorities(
+			[ '/most-urgent/' => 0 ],
+			'An explicit `0` reaches the queue as `0`, rather than falling through to the route\'s default of 10.'
+		);
+	}
+
+	/**
 	 * The queue holds the string the caller sent, and the route composes nothing
 	 * around it — a bare path is stored as a bare path.
 	 *
@@ -295,6 +327,39 @@ class RestApiTest extends QueueTestCase {
 				'/jumps-the-queue/' => 1,
 				'/ordinary/'        => 20,
 			]
+		);
+	}
+
+	/**
+	 * A batch item asking for priority `0` is enqueued at `0` too.
+	 *
+	 * The batch handler reads its priority with `isset()` and so never had the
+	 * defect the single route carried — which is exactly why this case is here:
+	 * the two routes read the same parameter through different code, and the
+	 * pair of tests is what stops them drifting apart again.
+	 */
+	public function test_the_batch_route_enqueues_an_item_at_a_priority_of_zero() {
+		$this->configure_site();
+
+		$response = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					[
+						'path'     => $this->permalink_of( '/most-urgent/' ),
+						'priority' => 0,
+					],
+				],
+			]
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertTrue( $response->get_data()['success'] );
+
+		$this->assertQueueRevalidatesAtPriorities(
+			[ '/most-urgent/' => 0 ],
+			'An explicit `0` reaches the queue as `0` on the batch route as well as on the single one.'
 		);
 	}
 
