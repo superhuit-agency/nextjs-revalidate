@@ -10,6 +10,12 @@
  * is a standalone script — ADR 0008's rule, and the reason it exists: this is a
  * suite the sandbox of ADR 0006 can run, where the wp-env one cannot.
  *
+ * An edit asks both questions twice. Redirection fires one action for creating
+ * and updating a redirect, from two call sites whose first argument differs —
+ * the new redirect's id, or the redirect's state before the edit — and when the
+ * previous state is there, the redirect as it was and the redirect as it now is
+ * are each put to the same rules, independently.
+ *
  * What the redirect *is* stays duck-typed here, exactly as the integration
  * reads it: a fixture object carrying the four methods it asks of a redirect
  * stands in for one of Redirection's. The single exception is `Red_Item`, whose
@@ -349,6 +355,28 @@ namespace {
 	}
 
 	/**
+	 * Hand the given redirects to the same action, as Redirection's update call
+	 * site does on the versions that carry the previous state: the redirect as
+	 * it was, then the redirect as it now is.
+	 *
+	 * Both stand for one redirect, so both carry the same id — what tells the
+	 * two call sites apart is the argument's type, not its value.
+	 *
+	 * @param array $previous What this redirect was about before the edit.
+	 * @param array $now      What it is about after it.
+	 *
+	 * @return void
+	 */
+	function njr_test_redirect_edited( array $previous, array $now ) {
+		njr_test_reset();
+
+		njr_test_integration()->on_redirect_updated(
+			new NJR_Test_Redirect( $previous ),
+			new NJR_Test_Redirect( $now )
+		);
+	}
+
+	/**
 	 * @param string $description What is being asserted.
 	 * @param array  $expected    The expected [permalink, priority] pairs.
 	 * @return void
@@ -497,6 +525,142 @@ namespace {
 		'a non url match type with a literal source enqueues that path',
 		[ [ 'https://example.test/seen-by-one-browser/', 10 ] ]
 	);
+
+	// Editing
+	// ====
+	//
+	// Everything above arrives through Redirection's create call site, whose
+	// first argument is the new redirect's id. Everything below arrives through
+	// its update one, whose first argument — on the versions that have it — is
+	// the redirect as it was before the edit. Nothing normalises the two away:
+	// the previous state is the only thing that knows the path an edited source
+	// stopped redirecting from.
+
+	// A numeric first argument is not a redirect, so a create enqueues the one
+	// source it has. Redirection 5.9.0 and later fire an update this way too,
+	// which is the same case seen from the other end: no previous state, no old
+	// path, and the new source enqueued alone.
+	njr_test_redirect_created( [ 'id' => 42, 'url' => '/a-created-source' ] );
+	njr_test_enqueued(
+		'a first argument that is the redirect\'s id enqueues the new source alone',
+		[ [ 'https://example.test/a-created-source/', 10 ] ]
+	);
+
+	// The interesting case: two paths are stale at once, the one that should
+	// stop redirecting and the one that should start. Old first, because that is
+	// the order they are handed over in and the queue drains in.
+	njr_test_redirect_edited(
+		[ 'url' => '/the-old-source' ],
+		[ 'url' => '/the-new-source' ]
+	);
+	njr_test_enqueued(
+		'changing a redirect\'s source enqueues the old path and the new one',
+		[
+			[ 'https://example.test/the-old-source/', 10 ],
+			[ 'https://example.test/the-new-source/', 10 ],
+		]
+	);
+
+	// The target moved and the source did not: the path the front-end still
+	// sends visitors from is the one whose answer changed. Both sides of the
+	// edit are put to the rules independently, so that one path is handed over
+	// twice — on purpose. It costs one revalidation because the queue holds a
+	// permalink it already has exactly once, which is asserted against the real
+	// queue in `tests/integration/RedirectRevalidationTest.php`; what this file
+	// pins is that the integration keeps no set of its own to collapse the two.
+	// See `docs/adr/0006-redirect-changes-revalidate-the-source-path.md`.
+	njr_test_redirect_edited(
+		[ 'url' => '/moved-target' ],
+		[ 'url' => '/moved-target' ]
+	);
+	njr_test_enqueued(
+		'changing a redirect\'s target hands its unchanged source path over from both sides of the edit',
+		[
+			[ 'https://example.test/moved-target/', 10 ],
+			[ 'https://example.test/moved-target/', 10 ],
+		]
+	);
+
+	// Independently means what it says: the side that is a candidate is
+	// enqueued whatever the other side is.
+	njr_test_redirect_edited(
+		[ 'url' => '/a-literal-source' ],
+		[ 'url' => '/a-literal-source/(.*)', 'regex' => true ]
+	);
+	njr_test_enqueued(
+		'a source edited into a regular expression enqueues the old path only',
+		[ [ 'https://example.test/a-literal-source/', 10 ] ]
+	);
+	njr_test_logged( 'the regular expression an edit produced is logged', '/a-literal-source/(.*)' );
+
+	njr_test_redirect_edited(
+		[ 'url' => '/blog/(.*)', 'regex' => true ],
+		[ 'url' => '/blog-home' ]
+	);
+	njr_test_enqueued(
+		'a regular expression source edited into a literal path enqueues the new path only',
+		[ [ 'https://example.test/blog-home/', 10 ] ]
+	);
+
+	// A disabled redirect resolves to nothing on either side of the edit, so
+	// the answers the front-end holds for both paths are already right.
+	njr_test_redirect_edited(
+		[ 'url' => '/an-old-source', 'enabled' => false ],
+		[ 'url' => '/a-new-source', 'enabled' => false ]
+	);
+	njr_test_enqueued( 'editing a disabled redirect enqueues nothing', [] );
+
+	// An editor can change the source and switch the redirect on in one save.
+	// The path it never redirected from needs nothing; the one it now does.
+	njr_test_redirect_edited(
+		[ 'url' => '/never-redirected', 'enabled' => false ],
+		[ 'url' => '/now-redirecting' ]
+	);
+	njr_test_enqueued(
+		'an edit that switches a redirect on enqueues the path it starts redirecting',
+		[ [ 'https://example.test/now-redirecting/', 10 ] ]
+	);
+
+	// A source that named no path leaves nothing behind to free.
+	njr_test_redirect_edited(
+		[ 'url' => '/' ],
+		[ 'url' => '/a-source-at-last' ]
+	);
+	njr_test_enqueued(
+		'an edit away from a source that named no path enqueues the new path only',
+		[ [ 'https://example.test/a-source-at-last/', 10 ] ]
+	);
+
+	// Both paths are normalised the way a created redirect's source is: a
+	// stored domain and query string are dropped, and the site's trailing slash
+	// convention is applied, on the old side exactly as on the new one.
+	njr_test_redirect_edited(
+		[ 'url' => 'https://an-old-domain.test/an-old-source?ref=newsletter' ],
+		[ 'url' => '/a-new-source' ]
+	);
+	njr_test_enqueued(
+		'a stored domain and query string are dropped from both sides of an edit',
+		[
+			[ 'https://example.test/an-old-source/', 10 ],
+			[ 'https://example.test/a-new-source/', 10 ],
+		]
+	);
+
+	$GLOBALS['njr_test_trailing_slash'] = false;
+
+	njr_test_redirect_edited(
+		[ 'url' => '/the-old-source/' ],
+		[ 'url' => '/the-new-source/' ]
+	);
+	njr_test_enqueued(
+		'both paths follow the site\'s trailing slash convention',
+		[
+			[ 'https://example.test/the-old-source', 10 ],
+			[ 'https://example.test/the-new-source', 10 ],
+		]
+	);
+
+	$GLOBALS['njr_test_trailing_slash'] = true;
 
 	// The rest of a redirect's life
 	// ====

@@ -167,9 +167,14 @@ Complete its setup wizard once if prompted.
       `/runbook-post/`, enabled. Expect a revalidation of `/old-path/` — the
       **source**, not the target. The front-end's cached 404 for that path is
       what is now wrong.
-- [ ] **Edit it, changing the source to `/older-path/`.** Expect **two**
-      revalidations, `/old-path/` and `/older-path/`: one stopped redirecting,
-      one started.
+- [ ] **Edit it, changing the source to `/older-path/`.** Expect **one**
+      revalidation, of `/older-path/`, and none of `/old-path/`. Redirection
+      5.9.0 and later hand over only the redirect's id on an edit, so nothing
+      carries the source it had — `/old-path/` keeps redirecting on the
+      front-end until its cache entry expires. That is the recorded limit in
+      `docs/adr/0006-redirect-changes-revalidate-the-source-path.md`, not a
+      regression; a second revalidation here means upstream started passing
+      the previous state again.
 - [ ] **Disable it, enable it, then delete it.** Expect a revalidation of its
       source each time.
 - [ ] **Add a regex redirect** (tick "Regex", source `^/blog/(.*)`). Expect **no**
