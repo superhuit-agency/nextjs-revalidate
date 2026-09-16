@@ -95,7 +95,9 @@ NextJsRevalidate::init()->queue->create_table();
 // the plugin's own autoloader — covering all of `Redirection\` by then — loads
 // on demand; the files this used to require are gone. Both layouts are asked
 // for rather than one pinned, because the development environment tracks
-// Redirection's latest release (ADR 0006) and a site can be running either.
+// Redirection's latest release (see
+// `docs/adr/0006-redirect-changes-revalidate-the-source-path.md`) and a site
+// can be running either.
 if ( isset( $njr_redirection ) && file_exists( $njr_redirection ) ) {
 	$njr_redirection_dir = dirname( $njr_redirection );
 

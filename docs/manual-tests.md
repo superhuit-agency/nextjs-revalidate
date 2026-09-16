@@ -172,8 +172,9 @@ Complete its setup wizard once if prompted.
       5.9.0 and later hand over only the redirect's id on an edit, so nothing
       carries the source it had — `/old-path/` keeps redirecting on the
       front-end until its cache entry expires. That is the recorded limit in
-      ADR 0006, not a regression; a second revalidation here means upstream
-      started passing the previous state again.
+      `docs/adr/0006-redirect-changes-revalidate-the-source-path.md`, not a
+      regression; a second revalidation here means upstream started passing
+      the previous state again.
 - [ ] **Disable it, enable it, then delete it.** Expect a revalidation of its
       source each time.
 - [ ] **Add a regex redirect** (tick "Regex", source `^/blog/(.*)`). Expect **no**
