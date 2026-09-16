@@ -26,7 +26,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * already reacts to — a global structure changed — and the answer is a different
  * shape only because the front-end has somewhere to put it.
  *
- * See `docs/adr/0014-an-fse-change-invalidates-a-snapshot.md`.
+ * See `docs/adr/0018-an-fse-change-invalidates-a-snapshot.md`.
  *
  * @property Settings $settings The site's settings, from the composition root.
  */

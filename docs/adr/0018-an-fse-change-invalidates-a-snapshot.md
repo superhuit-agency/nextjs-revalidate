@@ -1,6 +1,6 @@
 # An FSE change invalidates a snapshot; it does not revalidate anything
 
-Decided while implementing #30, on the settings [ADR 0010](0010-endpoints-compose-from-a-domain-and-a-path.md)
+Decided while implementing #30, on the settings [ADR 0017](0017-endpoints-compose-from-a-domain-and-a-path.md)
 put in place.
 
 In the headless stack this plugin serves, Next.js renders every page inside a
