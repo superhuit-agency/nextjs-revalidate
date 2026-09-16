@@ -186,7 +186,7 @@ Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
       empty one. Confirm the row says so:
       `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`.
       Expect `on`. (A site *upgrading* into this release starts off instead;
-      section Y covers that.)
+      section X covers that.)
 - [ ] **Appearance → Editor → Patterns → a template part (Footer) → move a block
       → Save.** Expect **exactly one** `= Invalidating: the FSE snapshot` in the
       console, and `✅ Invalidated the FSE snapshot` in the log. Not two — the
@@ -267,27 +267,7 @@ Create a subscriber once:
 - [ ] **As the subscriber, load the posts list.** Expect no Purge cache row
       action and no Purge caches bulk action. Restore the secret afterwards.
 
-## L. The REST API (#100)
-
-> **This section is a temporary exception under
-> [ADR 0012](adr/0012-a-third-testing-idiom.md).** These routes need real
-> WordPress state but no browser, so they belong in the wp-env PHPUnit suite.
-> **Delete this section when #100 closes.**
-
-- [ ] **Call the single route with the right secret:**
-      ```sh
-      curl -s -X POST http://localhost:8080/wp-json/nextjs-revalidate/v1/revalidate \
-        -d 'secret=my-super-secret' -d 'path=/runbook-post/'
-      ```
-      Expect a success body and a queue row — the route reports the enqueue, not
-      the delivery.
-- [ ] **Call it with a wrong secret.** Expect a permission error and no queue row.
-- [ ] **Call the batch route** at `/wp-json/nextjs-revalidate/v1/revalidate/batch`
-      with an `items` array of two paths. Expect two queue rows.
-- [ ] **Clear the secret and call either route.** Expect a `missing_secret` error
-      with status 500, not a silent acceptance. Restore the secret.
-
-## M. The French translation
+## L. The French translation
 
 - [ ] **Settings → General → Site Language → Français, save.**
 - [ ] **Load the Next.js revalidate settings screen.** Expect tab labels, field
@@ -298,7 +278,7 @@ Create a subscriber once:
       a French row action label.
 - [ ] **Restore English and restore the secret.**
 
-## N. Uninstallation
+## M. Uninstallation
 
 Run this last in Part 1 — it destroys the site's plugin data.
 
@@ -324,7 +304,7 @@ Run this last in Part 1 — it destroys the site's plugin data.
 Precondition: Part 1 finished and `npm run stop` run. This stack is raised by an
 override file, never by editing `.wp-env.json`.
 
-## O. Setup
+## N. Setup
 
 - [ ] **`cp config/wp-env.multisite.json .wp-env.override.json`.**
 - [ ] **`npx wp-env destroy`** and confirm. The install has to be rebuilt as a
@@ -335,9 +315,9 @@ override file, never by editing `.wp-env.json`.
       only it. Create a second site:
       `npx wp-env run cli wp site create --slug=second --title="Second"`.
 
-## P. Network activation sets up every site
+## O. Network activation sets up every site
 
-Precondition: O done, plugin **not** yet network-activated, at least two sites.
+Precondition: N done, plugin **not** yet network-activated, at least two sites.
 
 - [ ] **Network Admin → Plugins → Network Activate "Next.js revalidate".**
       Expect no error.
@@ -350,9 +330,9 @@ Precondition: O done, plugin **not** yet network-activated, at least two sites.
       `npx wp-env run cli wp option get nextjs_revalidate-db_version --url=localhost:8080/second`.
       Expect a version string, not "could not be found".
 
-## Q. A site created after activation
+## P. A site created after activation
 
-Precondition: O done, plugin network-active.
+Precondition: N done, plugin network-active.
 
 - [ ] **Network Admin → Sites → Add New**, slug `third`.
 - [ ] **Expect `wp_3_revalidate_queue` to exist** without anyone visiting the new
@@ -362,9 +342,9 @@ Precondition: O done, plugin network-active.
       domain, no secret. Load its wp-admin and expect the unconfigured notice. A
       newly created site starting unconfigured is by design.
 
-## R. Settings are per site
+## Q. Settings are per site
 
-Precondition: O done, main site configured, `second` not.
+Precondition: N done, main site configured, `second` not.
 
 - [ ] **Configure `second`** with the same domain and secret, through its own
       Settings screen at `http://localhost:8080/second/wp-admin`.
@@ -378,9 +358,9 @@ Precondition: O done, main site configured, `second` not.
       notice on the main site and **not** on `second` — the failure window is per
       site. Restore the main site's secret.
 
-## S. An update migrates every site, without visiting any
+## R. An update migrates every site, without visiting any
 
-Precondition: P done, plugin network-active, at least two sites. The update is
+Precondition: O done, plugin network-active, at least two sites. The update is
 faked rather than performed: what triggers the sweep is the swept version
 differing from the running one, so a Composer or git deploy that never runs
 WordPress's updater reaches this the same way a real update does.
@@ -423,9 +403,9 @@ WordPress's updater reaches this the same way a real update does.
       and reload wp-admin as a super admin. Expect the notice gone and the swept
       version stamped.
 
-## T. A large network declines rather than truncates
+## S. A large network declines rather than truncates
 
-Precondition: O done. This simulates a large network with a filter; it cannot be
+Precondition: N done. This simulates a large network with a filter; it cannot be
 reached otherwise without ten thousand sites.
 
 - [ ] **Network-deactivate the plugin**, then install the filter:
@@ -444,9 +424,9 @@ reached otherwise without ten thousand sites.
       Expect it to succeed — the refusal exists to leave that door open. Then
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-large-network.php`.
 
-## U. Network deactivation and uninstallation
+## T. Network deactivation and uninstallation
 
-Precondition: O done, plugin network-active, all sites set up.
+Precondition: N done, plugin network-active, all sites set up.
 
 - [ ] **Network Deactivate.** Expect the queue cron gone on **every** site, the
       settings kept on every site, and the failure window cleared on every site.
@@ -459,7 +439,7 @@ Precondition: O done, plugin network-active, all sites set up.
       returns "could not be found". Left behind, a reinstall would read it and
       sweep nothing.
 
-## V. Teardown
+## U. Teardown
 
 - [ ] **`npm run stop`.**
 - [ ] **`rm .wp-env.override.json`.** Not optional: wp-env merges it over
@@ -475,7 +455,7 @@ The only stack that can exercise the migration ledger's backfill. A fresh instal
 never can: it is stamped with the current DB version at setup, which is precisely
 what the backfill exists to avoid needing.
 
-## W. Raise a real 1.6.9 site
+## V. Raise a real 1.6.9 site
 
 - [ ] **Confirm the release asset URL.** Open the v1.6.9 release on GitHub and
       copy the zip's download URL. Do not assume the filename.
@@ -494,7 +474,7 @@ what the backfill exists to avoid needing.
       screen shows **1.6.9**. If it shows anything else the working tree is still
       mounted and nothing below tests an upgrade. Activate it.
 
-## X. A 1.6.9 site, configured the old way
+## W. A 1.6.9 site, configured the old way
 
 - [ ] **Set the legacy single URL option** — the shape 1.6.9 stores:
       ```sh
@@ -510,7 +490,7 @@ what the backfill exists to avoid needing.
       `= Revalidating: /…/` in the dev server console. Enter the upgrade from a
       *working* site, so that a broken one afterwards means something.
 
-## Y. The upgrade
+## X. The upgrade
 
 - [ ] **`npm run stop`, `rm .wp-env.override.json`, `npm start`.** The working
       tree is now mounted into the same plugin directory over the same database.
@@ -549,9 +529,9 @@ what the backfill exists to avoid needing.
       `= Invalidating: the FSE snapshot`. The operator opting in is the whole
       of the upgrade path.
 
-## Z. Backfill from an older shape
+## Y. Backfill from an older shape
 
-Precondition: Y done. This rewinds the ledger to fake a site that predates it.
+Precondition: X done. This rewinds the ledger to fake a site that predates it.
 
 - [ ] **Rewind to a pre-1.5.0 shape**:
       ```sh
@@ -567,7 +547,7 @@ Precondition: Y done. This rewinds the ledger to fake a site that predates it.
       ledger, load wp-admin. Expect the option deleted — the queue lives in its
       own table now — and the ledger stamped.
 
-## AA. Teardown
+## Z. Teardown
 
 - [ ] **`npm run stop`**, then **`ls .wp-env.override.json`** and expect it
       absent.
