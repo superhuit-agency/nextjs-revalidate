@@ -264,17 +264,22 @@ composer install
 npm run test:integration
 ```
 
-wp-env installs the Redirection plugin alongside this one, in both environments,
-so the redirect integration can be exercised without assembling an install by
+wp-env installs the Redirection plugin alongside this one, on both sites, so the redirect integration can be exercised without assembling an install by
 hand. The suite's bootstrap loads it and creates its tables when it is there, and
 skips the tests that need it when it is not.
 
 The command starts wp-env itself — `wp-env start` is idempotent, so running it
-again costs seconds. It runs with `--no-scripts` and against the **tests**
-environment, so the development site keeps its database and its settings;
-wp-env does bring the development containers up alongside the tests ones, which
-means port 8080 has to be free. Docker must be running. The first run downloads
-WordPress and its PHPUnit test library and takes a few minutes.
+again costs seconds. It runs against a site of its own, described by
+`.wp-env.tests.json` and served on port 8888: wp-env gives each config file its
+own containers and database, so the development site keeps its data and its
+settings, and does not have to be running. Docker must be running. The first run
+downloads WordPress and its PHPUnit test library and takes a few minutes.
+
+To reach that site by hand, pass the same file:
+`npx wp-env run --config=.wp-env.tests.json cli wp option list`. It reads
+`.wp-env.tests.override.json`, never `.wp-env.override.json`, so an override
+made for the development site — the multisite one of the extended pass — does
+not change what the suite runs against.
 
 Write a test by extending `NextJsRevalidate\Tests\QueueTestCase`, which
 configures the site, enqueues paths and reads the queue back:
@@ -291,7 +296,7 @@ $this->assertQueueHolds( [ home_url( '/hello-world/' ) ] ); // the permalinks
 The queue **holds permalinks**, and those permalinks **revalidate paths** — the
 two are kept apart because on a network they can disagree. `assertQueueHolds()`
 takes permalinks; `assertQueueRevalidates()` takes paths and normalises against
-the site's home url, so a test survives a change of `testsPort`.
+the site's home url, so a test survives a change of the test site's port.
 
 The queue table is created once in the bootstrap and emptied around every test.
 It has to be: `RevalidateQueue::add_item()` runs its own transaction, whose

@@ -3,12 +3,11 @@
 		".",
 		"https://downloads.wordpress.org/plugin/redirection.zip"
 	],
-	"port": 8080,
+	"port": 8888,
 	"testsEnvironment": false,
 	"config": {
+		"WP_DEBUG": false,
+		"SCRIPT_DEBUG": false,
 		"WP_DEBUG_DISPLAY": true
-	},
-	"lifecycleScripts": {
-		"afterStart": "./config/afterstart.sh"
 	}
 }
