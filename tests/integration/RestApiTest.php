@@ -298,6 +298,48 @@ class RestApiTest extends QueueTestCase {
 		);
 	}
 
+	/**
+	 * A batch in which one item fails reports that item as failed and the other
+	 * as accepted, and enqueues the one it accepted.
+	 *
+	 * The refusal test above sends a single item, so a 207 there cannot tell a
+	 * per-item result from a whole batch marked failed. This can: the item
+	 * missing its path fails on its own, and the item sent after it still
+	 * reaches the queue — sent first, so a batch that stops at its first failure
+	 * fails this too.
+	 */
+	public function test_a_mixed_batch_reports_each_item_on_its_own() {
+		$this->configure_site();
+
+		$permalink = $this->permalink_of( '/accepted/' );
+
+		$response = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					[ 'priority' => 1 ],
+					[ 'path' => $permalink ],
+				],
+			]
+		);
+
+		$this->assertSame( 207, $response->get_status(), 'One item failed, so the batch is a mixed result.' );
+
+		$data = $response->get_data();
+
+		$this->assertFalse( $data['success'], 'A batch with a failed item is not reported as a success.' );
+		$this->assertCount( 2, $data['results'], 'Every item sent has a result, the failed one included.' );
+
+		$this->assertNull( $data['results'][0]['path'] );
+		$this->assertFalse( $data['results'][0]['success'] );
+
+		$this->assertSame( $permalink, $data['results'][1]['path'] );
+		$this->assertTrue( $data['results'][1]['success'], 'The failure before it does not fail this item, nor stop the batch.' );
+
+		$this->assertQueueRevalidates( [ '/accepted/' ], 'The accepted item was enqueued despite the failed one.' );
+	}
+
 	// Calling a route
 	// ====
 
