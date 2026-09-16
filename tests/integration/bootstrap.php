@@ -85,17 +85,30 @@ NextJsRevalidate::init()->queue->create_table();
 // silent no rather than a failure: no tables, and every redirect test failing
 // on a `Red_Group::create()` that returns false.
 //
-// The installer itself is reached through `Red_Database::get_latest_database()`
-// rather than by naming `Red_Latest_Database`, because that method is what
-// includes the schema file the class lives in — and it is the name upstream
-// keeps stable while it moves its classes under a namespace.
+// The installer itself is reached through `get_latest_database()` rather than
+// by naming the schema class, because that method is what includes the schema
+// file the class lives in — and it is the name upstream keeps stable while it
+// moves its classes under a namespace.
+//
+// That move has already reached the database layer. From Redirection 5.10.0 it
+// lives under `includes/database/` as `Redirection\Database\Database`, which
+// the plugin's own autoloader — covering all of `Redirection\` by then — loads
+// on demand; the files this used to require are gone. Both layouts are asked
+// for rather than one pinned, because the development environment tracks
+// Redirection's latest release (ADR 0006) and a site can be running either.
 if ( isset( $njr_redirection ) && file_exists( $njr_redirection ) ) {
 	$njr_redirection_dir = dirname( $njr_redirection );
 
-	require_once $njr_redirection_dir . '/database/database-status.php';
-	require_once $njr_redirection_dir . '/database/database-upgrade.php';
-	require_once $njr_redirection_dir . '/database/database-upgrader.php';
-	require_once $njr_redirection_dir . '/database/database.php';
+	if ( class_exists( 'Redirection\\Database\\Database' ) ) {
+		$njr_redirection_database = 'Redirection\\Database\\Database';
+	} else {
+		require_once $njr_redirection_dir . '/database/database-status.php';
+		require_once $njr_redirection_dir . '/database/database-upgrade.php';
+		require_once $njr_redirection_dir . '/database/database-upgrader.php';
+		require_once $njr_redirection_dir . '/database/database.php';
 
-	call_user_func( [ 'Red_Database', 'get_latest_database' ] )->install();
+		$njr_redirection_database = 'Red_Database';
+	}
+
+	call_user_func( [ $njr_redirection_database, 'get_latest_database' ] )->install();
 }
