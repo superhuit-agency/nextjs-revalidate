@@ -425,6 +425,175 @@ class RestApiTest extends QueueTestCase {
 		$this->assertQueueRevalidates( [ '/accepted/' ], 'The accepted item was enqueued despite the failed one.' );
 	}
 
+	// What the queue answered
+	// ====
+
+	/**
+	 * An insert that did not happen is not an enqueue, and the single route says
+	 * so — issue #93.
+	 *
+	 * `RevalidateQueue::add_item()` answers a bare `false` when its own
+	 * `$wpdb->insert()` fails, and the route used to read every answer that was
+	 * not a `WP_Error` as an acceptance: the caller was told `success: true`
+	 * with a 200, the body carrying `"data": false` as the only trace, while
+	 * nothing was queued and nothing would ever be revalidated. These routes are
+	 * how a deploy hook or a CI job asks for a revalidation, and they have no
+	 * other feedback channel — the response is the whole contract.
+	 */
+	public function test_the_single_route_reports_a_failed_insert_as_a_failure() {
+		$this->configure_site();
+
+		$permalink = $this->permalink_of( '/the-insert-fails/' );
+
+		$response = $this->with_a_failing_insert_on(
+			$permalink,
+			function () use ( $permalink ) {
+				return $this->call_route(
+					'/revalidate',
+					[
+						'secret' => self::FIXTURE_SECRET,
+						'path'   => $permalink,
+					]
+				);
+			}
+		);
+
+		$this->assertSame( 207, $response->get_status(), 'The item failed, so the route answers the same 207 it reports a refusal with, rather than a 200.' );
+
+		$data = $response->get_data();
+
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( $permalink, $data['results'][0]['path'] );
+		$this->assertFalse( $data['results'][0]['success'], 'Nothing was queued, so nothing was accepted.' );
+
+		$this->assertArrayHasKey( 'message', $data['results'][0], 'A failed item carries a message, because a bare false brings none of its own.' );
+		$this->assertNotSame( '', $data['results'][0]['message'] );
+
+		$this->assertQueueIsEmpty( 'The insert did not happen, which is the whole premise of this test.' );
+	}
+
+	/**
+	 * The batch route reads the same answers through the same
+	 * `process_items()`, and reports the item whose insert failed without
+	 * failing the item next to it — issue #93.
+	 */
+	public function test_the_batch_route_reports_a_failed_insert_on_the_item_it_happened_to() {
+		$this->configure_site();
+
+		$failing  = $this->permalink_of( '/the-insert-fails/' );
+		$accepted = $this->permalink_of( '/accepted/' );
+
+		$response = $this->with_a_failing_insert_on(
+			$failing,
+			function () use ( $failing, $accepted ) {
+				return $this->call_route(
+					'/revalidate/batch',
+					[
+						'secret' => self::FIXTURE_SECRET,
+						'items'  => [
+							[ 'path' => $failing ],
+							[ 'path' => $accepted ],
+						],
+					]
+				);
+			}
+		);
+
+		$this->assertSame( 207, $response->get_status(), 'One item failed, so the batch is a mixed result.' );
+
+		$data = $response->get_data();
+
+		$this->assertFalse( $data['success'] );
+
+		$this->assertSame( $failing, $data['results'][0]['path'] );
+		$this->assertFalse( $data['results'][0]['success'] );
+		$this->assertArrayHasKey( 'message', $data['results'][0] );
+
+		$this->assertSame( $accepted, $data['results'][1]['path'] );
+		$this->assertTrue( $data['results'][1]['success'], 'The failed insert before it does not fail this item, nor stop the batch.' );
+
+		$this->assertQueueRevalidates( [ '/accepted/' ], 'Only the item whose insert happened is in the queue.' );
+	}
+
+	/**
+	 * A permalink already waiting in the queue is an acceptance, and stays
+	 * reported as one.
+	 *
+	 * The queue answers `1` for a row it inserted and `true` for one already
+	 * there, and both mean it holds the permalink — #50 settled that for the
+	 * public API and it is the same answer here. The pair of calls is what keeps
+	 * the failed-insert tests above from being read as "any answer but `1` is a
+	 * failure".
+	 */
+	public function test_a_permalink_already_waiting_is_still_reported_as_a_success() {
+		$this->configure_site();
+
+		$permalink = $this->permalink_of( '/asked-for-twice/' );
+
+		$params = [
+			'secret' => self::FIXTURE_SECRET,
+			'path'   => $permalink,
+		];
+
+		$first  = $this->call_route( '/revalidate', $params );
+		$second = $this->call_route( '/revalidate', $params );
+
+		$this->assertSame( 200, $first->get_status() );
+		$this->assertTrue( $first->get_data()['results'][0]['success'] );
+
+		$this->assertSame( 200, $second->get_status(), 'Already queued is not a mixed result.' );
+		$this->assertTrue( $second->get_data()['success'] );
+		$this->assertTrue( $second->get_data()['results'][0]['success'], 'The revalidation the caller asked for is queued; that another call queued it is not the caller\'s failure.' );
+
+		$this->assertQueueRevalidates( [ '/asked-for-twice/' ], 'The queue holds the permalink once — its column is UNIQUE.' );
+	}
+
+	// Taking an insert away
+	// ====
+
+	/**
+	 * Call something with the queue's insert of one permalink made not to
+	 * happen, and hand back what it returned.
+	 *
+	 * There is no way to make the real `$wpdb->insert()` fail from a test that
+	 * is not also a way to break the queue table for the rest of the suite —
+	 * the wall `PublicApiTest::test_a_scheduled_purge_whose_write_fails_is_not_registered()`
+	 * hit with `update_option()`. So the write is taken away instead: the
+	 * `query` filter rewrites that one insert into a `SELECT` matching no rows,
+	 * which writes nothing, touches no table and hands `$wpdb->insert()` back
+	 * the same falsy answer a failed insert gives it.
+	 *
+	 * Narrow on purpose, and by permalink rather than by table: an insert
+	 * naming this permalink is the only statement touched — the queue's own
+	 * transaction statements, its duplicate check and any insert of another
+	 * item run untouched — and nothing here spells out the queue's table name,
+	 * which `QueueTestCase` explains is the one expression this suite must not
+	 * own. The filter is removed before the assertions read the queue back.
+	 *
+	 * @param string   $permalink The permalink whose insert must not happen.
+	 * @param callable $call      Called with the insert taken away.
+	 *
+	 * @return mixed Whatever $call returned.
+	 */
+	private function with_a_failing_insert_on( $permalink, callable $call ) {
+		$take_the_write_away = function ( $query ) use ( $permalink ) {
+			$is_the_insert = stripos( $query, 'INSERT INTO' ) !== false
+				&& strpos( $query, $permalink ) !== false;
+
+			return $is_the_insert
+				? 'SELECT 1 FROM DUAL WHERE 1 = 0'
+				: $query;
+		};
+
+		add_filter( 'query', $take_the_write_away );
+
+		try {
+			return $call();
+		} finally {
+			remove_filter( 'query', $take_the_write_away );
+		}
+	}
+
 	// Calling a route
 	// ====
 
