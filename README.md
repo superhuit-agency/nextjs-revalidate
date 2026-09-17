@@ -249,6 +249,12 @@ Scripts under `tests/` that stub the handful of WordPress functions their
 subject touches. No framework, no database, no Docker; they run anywhere PHP
 does, including a sandbox with neither.
 
+The command globs `tests/*.php` — every script at the top level, in one
+interpreter each, stopping at the first one to exit non-zero. Top level only:
+`tests/integration/` is the other suite's, and needs Docker. **Adding a script
+needs no wiring** — drop it in `tests/` and the next run picks it up. Each
+script runs under `php`, or under `PHP_BIN` when that is set.
+
 ### `npm run test:integration` — the integration suite
 
 PHPUnit tests under `tests/integration/` that boot WordPress with this plugin
