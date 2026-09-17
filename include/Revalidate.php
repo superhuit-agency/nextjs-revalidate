@@ -11,6 +11,7 @@ use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 use WP_Error;
 use WP_Post;
+use WP_Term;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -497,6 +498,64 @@ class Revalidate extends Base implements Hookable {
 		$permalink = get_permalink( $post_id_for_permalink );
 
 		if ( $this->is_uploaded_file_url( $permalink ) ) return false;
+
+		return $permalink;
+	}
+
+	/**
+	 * Determine if the given term is revalidatable, i.e. a term the front-end
+	 * could hold an archive page for.
+	 *
+	 * One axis rather than the two a post has, because a term has no status:
+	 * its taxonomy is viewable — WordPress's own `publicly_queryable` test, via
+	 * `is_term_publicly_viewable()`. A term of a taxonomy the front-end holds no
+	 * archive for produces no revalidation at all; it is not refused, it was
+	 * never a candidate.
+	 *
+	 * The site has the last word, as it does for a post: the filter is applied
+	 * after the axis and can admit any term, which is how a headless site whose
+	 * taxonomies are not `publicly_queryable` keeps its archives revalidating.
+	 *
+	 * See `docs/adr/0020-term-viewability-gates-revalidation.md`.
+	 *
+	 * @param int|WP_Term $term The term, or its ID.
+	 *
+	 * @return bool Whether the term should be revalidated.
+	 */
+	public function should_revalidate_term( $term ) {
+
+		$should_revalidate_term = is_term_publicly_viewable( $term );
+
+		/**
+		 * Filters whether to revalidate the given term.
+		 *
+		 * @param bool        $should_revalidate_term Whether to revalidate the term.
+		 * @param int|WP_Term $term                   The term, or its ID, as it was given.
+		 */
+		return apply_filters( 'nextjs_revalidate_should_revalidate_term', $should_revalidate_term, $term );
+	}
+
+	/**
+	 * Get the permalink of the archive page the front-end holds for a term.
+	 *
+	 * @param int|WP_Term $term            The term, or its ID.
+	 * @param bool        $check_if_public Optional. Whether to check that the term
+	 *                                     is revalidatable first. Default true.
+	 *
+	 * @return string|false The term archive permalink. False when the term is not
+	 *                      revalidatable, and when WordPress could compose no
+	 *                      permalink for it.
+	 */
+	public function get_term_permalink( $term, $check_if_public = true ) {
+
+		if ( $check_if_public && ! $this->should_revalidate_term( $term ) ) return false;
+
+		$permalink = get_term_link( $term );
+
+		// A term that has gone away since it was selected yields a WP_Error
+		// rather than a url, and an empty permalink is a queue row nothing
+		// could ever revalidate.
+		if ( is_wp_error( $permalink ) || empty( $permalink ) ) return false;
 
 		return $permalink;
 	}

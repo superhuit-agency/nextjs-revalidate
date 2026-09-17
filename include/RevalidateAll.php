@@ -158,6 +158,10 @@ class RevalidateAll extends Base implements Hookable {
 			return false;
 		}
 
+		// Both loops below ask the same object for the permalink of what they
+		// enumerate.
+		$revalidate = $this->revalidate;
+
 		$count = 0;
 		if ( $type === 'all' ) {
 			// retrieve all public post types except attachments
@@ -176,7 +180,7 @@ class RevalidateAll extends Base implements Hookable {
 			]);
 
 			foreach ($posts as $post_id) {
-				$permalink = $this->revalidate->get_post_permalink( $post_id );
+				$permalink = $revalidate->get_post_permalink( $post_id );
 
 				// A post that is not revalidatable yields no permalink, and no queue item.
 				if ( empty($permalink) ) continue;
@@ -186,25 +190,55 @@ class RevalidateAll extends Base implements Hookable {
 			}
 		}
 
-		// retrieve all public taxonomies
-		$args = [
-			'public' => true,
-		];
-		if ( $type !== 'all' ) $args['object_type'] = [ $type ];
-		$taxonomies = get_taxonomies($args);
-		foreach ($taxonomies as $taxonomy) {
+		foreach ($this->revalidatable_taxonomies( $type ) as $taxonomy) {
 			$terms = get_terms([
 				'taxonomy'   => $taxonomy,
 				'hide_empty' => false,
 				'fields'     => 'ids',
 			]);
 
+			if ( is_wp_error( $terms ) ) continue;
+
 			foreach ($terms as $term_id) {
-				$this->queue->add_item( get_term_link( $term_id ) );
+				$permalink = $revalidate->get_term_permalink( $term_id );
+
+				// A term that is not revalidatable yields no permalink, and no queue item.
+				if ( empty($permalink) ) continue;
+
+				$this->queue->add_item( $permalink );
 				$count++;
 			}
 		}
 
 		return $count;
+	}
+
+	/**
+	 * The taxonomies whose terms revalidate-all enumerates.
+	 *
+	 * Selected by viewability — WordPress's own `publicly_queryable` test, via
+	 * `is_taxonomy_viewable()` — rather than by `public`, which the two settings
+	 * can disagree on completely. A `public` taxonomy that is not
+	 * `publicly_queryable` had every one of its terms enqueued, ungated; a
+	 * `publicly_queryable` one that is not `public` was missed entirely, archive
+	 * page and all, with nothing enqueued and nothing logged to say so.
+	 *
+	 * Each term selected here is still asked the gate — `Revalidate::should_revalidate_term()`
+	 * — which is where the site gets its last word.
+	 *
+	 * See `docs/adr/0020-term-viewability-gates-revalidation.md`.
+	 *
+	 * @param string $type Optional. The post type being revalidated, or 'all'.
+	 *                     Anything else narrows the selection to the taxonomies
+	 *                     registered for that post type. Default 'all'.
+	 *
+	 * @return string[] The taxonomy names, keyed by themselves.
+	 */
+	public function revalidatable_taxonomies( $type = 'all' ) {
+
+		$args = [];
+		if ( $type !== 'all' ) $args['object_type'] = [ $type ];
+
+		return array_filter( get_taxonomies( $args ), 'is_taxonomy_viewable' );
 	}
 }

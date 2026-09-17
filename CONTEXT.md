@@ -17,7 +17,8 @@ _Avoid_: Purge, cache clear, invalidation
 
 **Revalidate all**:
 A bulk operation that enqueues a revalidation for every publicly reachable page
-of one or more post types.
+of one or more post types, and for the archive of every **revalidatable term** of
+the taxonomies registered for them.
 _Avoid_: Purge all
 
 **Revalidation queue**:
@@ -87,6 +88,23 @@ revalidatable is a question every entry point asks — a save, a row action, a b
 action, the admin bar — never one that only save-time code consults.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
+
+**Revalidatable term**:
+A term whose archive page the front-end could hold. One axis rather than the two
+a **revalidatable post** has, because a term has no status: its taxonomy is
+viewable — WordPress's own `publicly_queryable` test, which for a taxonomy is
+that setting and nothing else, with none of the `_builtin && public` fallback the
+post type test applies. A term that is not revalidatable produces no revalidation
+at all; it was never a candidate.
+
+The site has the last word here too, through a filter of its own rather than the
+post one — the same escape hatch, for the same headless reason.
+
+Only **revalidate all** asks the question today: nothing in this plugin reacts to
+a term being created, edited or deleted, so a term archive goes stale until
+somebody purges all. That gap is an enhancement, not a property of the term.
+_Avoid_: Public term, category — the taxonomies are more than the built-in ones,
+and a term of a non-public taxonomy can still be revalidatable.
 
 ### Full site editing
 
