@@ -264,9 +264,13 @@ composer install
 npm run test:integration
 ```
 
-wp-env installs the Redirection plugin alongside this one, on both sites, so the redirect integration can be exercised without assembling an install by
-hand. The suite's bootstrap loads it and creates its tables when it is there, and
-skips the tests that need it when it is not.
+wp-env installs the Redirection plugin alongside this one, on the development
+site and on the test site, so the redirect integration can be exercised without
+assembling an install by hand. The suite's bootstrap loads it and creates its
+tables when it is there, and skips the tests that need it when it is not. The two
+sites are two config files, `.wp-env.json` and `.wp-env.tests.json`, and wp-env
+has no way for one to extend the other: a plugin added to one has to be added to
+both.
 
 The command starts wp-env itself — `wp-env start` is idempotent, so running it
 again costs seconds. It runs against a site of its own, described by
@@ -279,7 +283,8 @@ To reach that site by hand, pass the same file:
 `npx wp-env run --config=.wp-env.tests.json cli wp option list`. It reads
 `.wp-env.tests.override.json`, never `.wp-env.override.json`, so an override
 made for the development site — the multisite one of the extended pass — does
-not change what the suite runs against.
+not change what the suite runs against. Nor does `npm run stop` stop it: the test
+site stays up after a run until `npx wp-env stop --config=.wp-env.tests.json`.
 
 Write a test by extending `NextJsRevalidate\Tests\QueueTestCase`, which
 configures the site, enqueues paths and reads the queue back:
