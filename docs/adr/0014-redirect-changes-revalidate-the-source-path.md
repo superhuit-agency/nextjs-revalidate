@@ -120,3 +120,45 @@ and enqueue a path the front-end has nothing behind — a revalidation ADR 0004
 does not retry. On a site at the root of its domain, which is most of them, the
 two are the same string, which is why the difference went unnoticed until the
 integration was read against upstream's matching.
+
+## Amended when Redirection moved its database layer
+
+**The pin was reopened and declined a second time.** Redirection 5.10.0 moved its
+database classes — `database/database-status.php` and its siblings became
+namespaced files under `includes/database/` — and the integration suite's
+bootstrap, which requires them by path to create Redirection's tables, died
+before the first test on any fresh wp-env install (#115). Pinning the version in
+`.wp-env.json` and `.wp-env.tests.json` was the obvious fix and is the one this
+record already rules out. Nothing about the second occurrence changes the
+argument: pinning 5.9.0 would freeze the integration's only automated exercise on
+a release its users are leaving, and pinning 5.10.0 would buy reproducibility
+with the same blindness — the move after this one would go unnoticed until
+somebody bumped the number, which is precisely what tracking latest exists to
+prevent. Both configs still install `redirection.zip`, as does the upgraded
+stack's override in `docs/manual-tests-extended.md`.
+
+**What changed instead is that the bootstrap knows both layouts.**
+`tests/integration/redirection-database.php` answers which files to require and
+which class to reach `get_latest_database()` on, for the flat `database/` layout
+up to 5.9.0 and the namespaced one from 5.10.0 — which needs no requires at all,
+because that release autoloads the whole `Redirection\` namespace. Both are
+supported rather than just the current one, because an existing wp-env keeps the
+copy it downloaded until `wp-env start --update`: the release on disk is a
+property of when the developer first started their environment, not of what
+upstream ships today. That is the same reason the handler branches on the update
+action's first argument.
+
+**A third move will still turn the suite red, and it now says so.** The lookup
+answers `null` when it recognises neither layout and the bootstrap reports that
+and exits, rather than running every redirect test against tables that were never
+created — which is how this class of failure reads if the installer is merely
+skipped. Red on a release nobody announced is the cost of noticing, and it is
+paid by whoever runs the suite next.
+
+**The lookup is a function with a standalone test, because the bootstrap is not
+in the gate.** `tests/redirection-database-layout-test.php` pins that both
+layouts resolve, that 5.9.0's requires stay in dependency order, and that an
+unknown one answers `null`. It cannot catch upstream moving the files again —
+its fixtures are ours — but the integration suite runs only under Docker, so
+logic left inside `bootstrap.php` is checked by nothing an unattended agent can
+run. ADR 0008's rule put it in `npm run test:php` for that reason.

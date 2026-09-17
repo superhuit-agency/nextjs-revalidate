@@ -76,26 +76,53 @@ NextJsRevalidate::init()->queue->create_table();
 // Redirection's tables, for the same reason and in the same place. The test
 // library activates no plugin, so nothing has run Redirection's installer.
 //
-// Its database classes are required by hand because Redirection does not load
-// them on its own: `redirection.php` requires its models at boot and nothing
-// else, autoloading only its `Redirection\ImportExport\` namespace, and the
-// database layer is pulled in later by the admin, api and CLI entry points —
-// none of which this suite loads. Asking `class_exists()` about the installer
-// therefore answers no on a site that is running Redirection, which is a
-// silent no rather than a failure: no tables, and every redirect test failing
-// on a `Red_Group::create()` that returns false.
-//
-// The installer itself is reached through `Red_Database::get_latest_database()`
-// rather than by naming `Red_Latest_Database`, because that method is what
-// includes the schema file the class lives in — and it is the name upstream
-// keeps stable while it moves its classes under a namespace.
+// Which files that takes depends on the Redirection release installed, and
+// `redirection-database.php` is where that question is answered — both layouts,
+// with the reasoning, in a function the gate can run. wp-env tracks Redirection's
+// latest release rather than pinning one (ADR 0014), so this suite has to boot
+// against whatever it downloaded, and against the older copy an install made
+// before that release keeps until `wp-env start --update`.
 if ( isset( $njr_redirection ) && file_exists( $njr_redirection ) ) {
-	$njr_redirection_dir = dirname( $njr_redirection );
+	require_once __DIR__ . '/redirection-database.php';
 
-	require_once $njr_redirection_dir . '/database/database-status.php';
-	require_once $njr_redirection_dir . '/database/database-upgrade.php';
-	require_once $njr_redirection_dir . '/database/database-upgrader.php';
-	require_once $njr_redirection_dir . '/database/database.php';
+	$njr_redirection_database = njr_redirection_database_layout( dirname( $njr_redirection ) );
 
-	call_user_func( [ 'Red_Database', 'get_latest_database' ] )->install();
+	// Neither layout is there, which means upstream has moved these files again.
+	// Said here rather than carried: without the installer there are no tables,
+	// and every redirect test fails instead on a `Red_Group::create()` that
+	// returns false — a silent no, three layers from its cause.
+	if ( null === $njr_redirection_database ) {
+		echo 'Redirection is installed, but neither database layout this suite knows is in' . PHP_EOL
+			. dirname( $njr_redirection ) . '. Upstream has moved its database classes again:' . PHP_EOL
+			. 'teach tests/integration/redirection-database.php the new layout.' . PHP_EOL;
+		exit( 1 );
+	}
+
+	foreach ( $njr_redirection_database['requires'] as $njr_redirection_file ) {
+		require_once $njr_redirection_file;
+	}
+
+	// The files are where the layout says, but the class they declared is not —
+	// the same conclusion as above, one step later. Said here because
+	// `call_user_func()` on a class that is gone warns and returns null on PHP
+	// 7.4, and the fatal that follows names `install()` rather than the class.
+	if ( ! class_exists( $njr_redirection_database['database_class'] ) ) {
+		echo 'Redirection is installed, but its ' . $njr_redirection_database['database_class']
+			. ' class was not found.' . PHP_EOL
+			. 'Upstream has changed its database layer: teach' . PHP_EOL
+			. 'tests/integration/redirection-database.php what it looks like now.' . PHP_EOL;
+		exit( 1 );
+	}
+
+	$njr_redirection_installed = call_user_func(
+		[ $njr_redirection_database['database_class'], 'get_latest_database' ]
+	)->install();
+
+	// The installer answers with a WP_Error rather than throwing, and a run that
+	// ignored it would fail later and elsewhere, for the same reason as above.
+	if ( is_wp_error( $njr_redirection_installed ) ) {
+		echo 'Redirection\'s installer could not create its tables: '
+			. $njr_redirection_installed->get_error_message() . PHP_EOL;
+		exit( 1 );
+	}
 }
