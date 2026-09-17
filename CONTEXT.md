@@ -107,6 +107,14 @@ _Avoid_: Redirection, which is the plugin the rule belongs to; and reserve
 A redirect the front-end could resolve for a single path: its source is a literal
 path rather than a regex, and it is enabled. A redirect that is not revalidatable
 produces no revalidation at all; it was never a candidate.
+
+The site has the last word here too, but downward only: a filter is applied after
+those axes, over the source path that would be enqueued, and can decline any of
+them — the escape hatch for a site whose front-end resolves redirects some other
+way. Unlike the **revalidatable post** filter it cannot admit what the axes
+declined, because a redirect they declined has no single path to hand it. Every
+event that enqueues a source path asks it, and an update that changes the source
+asks about the old path and the new one separately.
 _Avoid_: Valid redirect — a regex redirect is perfectly valid, just not a single
 path.
 

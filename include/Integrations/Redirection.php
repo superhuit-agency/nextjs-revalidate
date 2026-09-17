@@ -192,7 +192,22 @@ class Redirection extends Base implements Hookable {
 		 * Filters whether the given redirect source path is revalidated.
 		 *
 		 * The escape hatch for a site whose front-end resolves redirects some
-		 * other way: return false and the path is left alone.
+		 * other way — from build time configuration, from middleware, from
+		 * anywhere a per path revalidation does not reach: return false and the
+		 * path is left alone, without the site giving up the revalidations it
+		 * does want.
+		 *
+		 * Applied last, and to every event that enqueues a source path —
+		 * create, update, delete, enable and disable alike, because all five
+		 * arrive here. It is asked once per path rather than once per event, so
+		 * an update that changes a redirect's source puts the path that stops
+		 * redirecting and the one that starts to it independently.
+		 *
+		 * It declines where the post save filter also admits: a redirect the
+		 * rules above turned away has already returned, so returning true
+		 * cannot resurrect it. A regular expression source names no single path
+		 * — there is nothing to hand the filter, and nothing it could be right
+		 * about. See ADR 0006.
 		 *
 		 * @param bool   $should_revalidate Whether to revalidate the source path.
 		 * @param string $path              The source path, normalised.
