@@ -40,7 +40,7 @@ class RestApi extends Base implements Hookable {
 						'required'          => false,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-						'default'           => 10,
+						'default'           => RevalidateQueue::DEFAULT_PRIORITY,
 					],
 				],
 			]
@@ -89,10 +89,8 @@ class RestApi extends Base implements Hookable {
 	public function handle_revalidate(WP_REST_Request $request) {
 		// Single-item handler: build the single-item array and delegate
 		$path = $request->get_param('path');
-		// `0` is a priority — the most urgent one there is — and not an absence,
-		// so it must not be read as one. The route declares both a `default` and
-		// an `absint` sanitiser, which have already settled absence and type by
-		// the time this runs; all that is left here is to take what they left.
+		// REST dispatch has already applied the route's `default` and `absint`, so
+		// read it as given: a truthiness check would turn an explicit `0` into 10.
 		$priority = absint($request->get_param('priority'));
 		if (empty($path)) {
 			return new WP_REST_Response([
@@ -131,7 +129,7 @@ class RestApi extends Base implements Hookable {
 			}
 			$items[] = [
 				'path'     => isset($it['path']) ? sanitize_text_field($it['path']) : null,
-				'priority' => isset($it['priority']) ? absint($it['priority']) : 10,
+				'priority' => isset($it['priority']) ? absint($it['priority']) : RevalidateQueue::DEFAULT_PRIORITY,
 			];
 		}
 

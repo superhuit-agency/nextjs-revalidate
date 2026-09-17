@@ -364,6 +364,26 @@ class RestApiTest extends QueueTestCase {
 	}
 
 	/**
+	 * A batch item that asks for no priority is enqueued at 10, the same default
+	 * the single route declares.
+	 */
+	public function test_the_batch_route_enqueues_an_item_without_a_priority_at_the_default() {
+		$this->configure_site();
+
+		$this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					[ 'path' => $this->permalink_of( '/ordinary/' ) ],
+				],
+			]
+		);
+
+		$this->assertQueueRevalidatesAtPriorities( [ '/ordinary/' => 10 ] );
+	}
+
+	/**
 	 * A batch in which one item fails reports that item as failed and the other
 	 * as accepted, and enqueues the one it accepted.
 	 *

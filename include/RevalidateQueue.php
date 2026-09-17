@@ -17,6 +17,12 @@ class RevalidateQueue extends Base implements Hookable {
 
 	const MAX_NB_RUNNING_CRON = 4;
 
+	/**
+	 * The priority an item is queued at when nobody asked for one. Lower is
+	 * sooner, and `0` is a priority like any other — not an absence of one.
+	 */
+	const DEFAULT_PRIORITY = 10;
+
 	public function register_hooks(): void {
 		add_action( 'admin_init', [$this, 'action_reset_queue'] );
 		add_action( 'admin_init', [$this, 'ajax_queue_progress'] );
@@ -105,7 +111,7 @@ class RevalidateQueue extends Base implements Hookable {
 	 *                       A `not_configured` WP_Error when the site is
 	 *                       unconfigured and the revalidation is refused.
 	 */
-	public function add_item( $permalink, $priority = 10 ) {
+	public function add_item( $permalink, $priority = self::DEFAULT_PRIORITY ) {
 		global $wpdb;
 
 		// Refuse rather than accept a revalidation which could never be
