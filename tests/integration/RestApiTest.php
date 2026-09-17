@@ -144,6 +144,68 @@ class RestApiTest extends QueueTestCase {
 	}
 
 	/**
+	 * A caller escalating a path it needs fresh now re-submits it at a more
+	 * urgent priority, and the entry it already had is promoted — issue #119.
+	 *
+	 * The route answers 200 with `success: true` on both sides of that fix,
+	 * and honestly so: the permalink is in the queue, which is all an
+	 * acceptance claims (ADR 0010). Only the queue can say whether the priority
+	 * the caller sent took, so that is what this asserts on.
+	 *
+	 * The queue-level cases — the demotion that must not happen, the `id` order
+	 * a promotion keeps — are in `QueuePriorityTest`. This one is the reach:
+	 * the priority survives REST dispatch, the handler and `add_item()`'s dedup
+	 * branch together.
+	 */
+	public function test_re_submitting_a_queued_path_at_a_more_urgent_priority_promotes_it() {
+		$this->configure_site();
+
+		$permalink = $this->permalink_of( '/needed-fresh-now/' );
+
+		$this->call_route(
+			'/revalidate',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'path'   => $permalink,
+			]
+		);
+
+		$this->call_route(
+			'/revalidate',
+			[
+				'secret'   => self::FIXTURE_SECRET,
+				'path'     => $this->permalink_of( '/bulk-work/' ),
+				'priority' => 5,
+			]
+		);
+
+		$response = $this->call_route(
+			'/revalidate',
+			[
+				'secret'   => self::FIXTURE_SECRET,
+				'path'     => $permalink,
+				'priority' => 1,
+			]
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertTrue( $response->get_data()['success'] );
+
+		$this->assertQueueRevalidates(
+			[ '/needed-fresh-now/', '/bulk-work/' ],
+			'The re-submitted path drains first, and the route did not queue it twice.'
+		);
+
+		$this->assertQueueRevalidatesAtPriorities(
+			[
+				'/needed-fresh-now/' => 1,
+				'/bulk-work/'        => 5,
+			],
+			'The priority sent with the second call reached the entry the queue already held.'
+		);
+	}
+
+	/**
 	 * The queue holds the string the caller sent, and the route composes nothing
 	 * around it — a bare path is stored as a bare path.
 	 *
