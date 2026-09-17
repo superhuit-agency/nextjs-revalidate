@@ -77,7 +77,9 @@ foreach ( $claimed as $number => $documents ) {
 		"FAIL — %s names %d documents: %s\n",
 		$number,
 		count( $documents ),
-		implode( ', ', $documents )
+		implode( ', ', array_map( function ( $document ) use ( $directory ) {
+			return "$directory/$document";
+		}, $documents ) )
 	);
 }
 
