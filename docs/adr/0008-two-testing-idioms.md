@@ -161,3 +161,15 @@ Both leaks are now guarded by an isolation pair in `QueueHarnessTest`, for the
 reason the first pair exists: the failure appears on the *second* test and is
 invisible in a source review. Each guard was checked by reverting its fix
 separately and watching it fail.
+
+## Amended when wp-env retired its tests environment
+
+**"wp-env's tests environment" now means a site of its own.** wp-env 11
+deprecated the tests environment every `.wp-env.json` used to get, so the suite
+moved (#114) to the replacement wp-env recommends: a second config file,
+`.wp-env.tests.json`, started and run with `--config`. The rule above is
+unchanged — the PHPUnit suite still runs inside wp-env, under its own command,
+against a database the development site does not share. Only the mechanism
+moved: the suite runs in that site's `cli` container rather than `tests-cli`,
+and the development site no longer has to be up, or its port free, for it to
+run.

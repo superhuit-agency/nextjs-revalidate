@@ -18,8 +18,8 @@ $njr_plugin_dir = dirname( __DIR__, 2 );
 
 $njr_tests_dir = getenv( 'WP_TESTS_DIR' );
 if ( ! $njr_tests_dir ) {
-	echo 'WP_TESTS_DIR is not set. This suite runs inside wp-env\'s tests environment,' . PHP_EOL
-		. 'which sets it: run `npm run test:integration` rather than phpunit directly.' . PHP_EOL;
+	echo 'WP_TESTS_DIR is not set. This suite runs inside wp-env\'s test site, which' . PHP_EOL
+		. 'sets it: run `npm run test:integration` rather than phpunit directly.' . PHP_EOL;
 	exit( 1 );
 }
 $njr_tests_dir = rtrim( $njr_tests_dir, '/\\' );
@@ -48,7 +48,7 @@ tests_add_filter(
 	}
 );
 
-// The Redirection plugin, which `.wp-env.json` installs alongside this one, so
+// The Redirection plugin, which `.wp-env.tests.json` installs alongside this one, so
 // the integration that listens to its redirects can be exercised. Loaded after
 // this plugin, as WordPress would load it, and only if it is there: an
 // integration is supported, never required, and this suite has to be able to

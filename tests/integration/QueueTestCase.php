@@ -270,7 +270,7 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 *
 	 * The everyday assertion. A revalidation is of a path, so this is the one
 	 * that reads like the domain; it normalises against the site's home url so
-	 * a test does not break when `testsPort` changes.
+	 * a test does not break when the test site's port changes.
 	 *
 	 * @param string[] $paths   The expected paths, drain order first.
 	 * @param string   $message Optional.

@@ -130,3 +130,8 @@ dist
 # wp-env merges it over .wp-env.json, so a stale one silently changes every
 # subsequent `wp-env start`.
 .wp-env.override.json
+
+# The test site's override: wp-env reads it over .wp-env.tests.json, and a stale
+# one — a pinned plugin version, say — silently changes what every subsequent
+# `npm run test:integration` runs against.
+.wp-env.tests.override.json
