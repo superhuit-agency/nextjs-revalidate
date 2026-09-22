@@ -8,6 +8,9 @@ use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
+/**
+ * @property Revalidate $revalidate
+ */
 class RevalidateAll extends Base implements Hookable {
 	use AdminBarMenu;
 	use SendbackUrl;
@@ -186,13 +189,7 @@ class RevalidateAll extends Base implements Hookable {
 			}
 		}
 
-		// retrieve all public taxonomies
-		$args = [
-			'public' => true,
-		];
-		if ( $type !== 'all' ) $args['object_type'] = [ $type ];
-		$taxonomies = get_taxonomies($args);
-		foreach ($taxonomies as $taxonomy) {
+		foreach ($this->revalidatable_taxonomies( $type ) as $taxonomy) {
 			$terms = get_terms([
 				'taxonomy'   => $taxonomy,
 				'hide_empty' => false,
@@ -206,5 +203,42 @@ class RevalidateAll extends Base implements Hookable {
 		}
 
 		return $count;
+	}
+
+	/**
+	 * The taxonomies whose terms revalidate-all enumerates.
+	 *
+	 * Every registered taxonomy is offered to the gate, and the gate alone
+	 * decides. Pre-selecting by `public` — which is what this did before #54 —
+	 * put a second, unfilterable authority in front of a filterable one: a site
+	 * could hook `nextjs_revalidate_should_revalidate_taxonomy` to admit its
+	 * headless taxonomy and still get nothing, with no way to see why. That is
+	 * worse than no gate, and it is the shape ADR 0005 dismantled on the post
+	 * side.
+	 *
+	 * `public` and `publicly_queryable` are independent settings, so the old
+	 * selector disagreed with viewability in both directions: a `public`
+	 * taxonomy that is not `publicly_queryable` had every one of its terms
+	 * enqueued, ungated; a `publicly_queryable` one that is not `public` was
+	 * missed entirely, archive page and all, with nothing enqueued and nothing
+	 * logged to say so.
+	 *
+	 * See `docs/adr/0022-taxonomy-viewability-gates-term-revalidation.md`.
+	 *
+	 * @param string $type Optional. The post type being revalidated, or 'all'.
+	 *                     Anything else narrows the selection to the taxonomies
+	 *                     registered for that post type. Default 'all'.
+	 *
+	 * @return string[] The taxonomy names, keyed by themselves.
+	 */
+	public function revalidatable_taxonomies( $type = 'all' ) {
+
+		$args = [];
+		if ( $type !== 'all' ) $args['object_type'] = [ $type ];
+
+		return array_filter(
+			get_taxonomies( $args ),
+			[ $this->revalidate, 'should_revalidate_taxonomy' ]
+		);
 	}
 }

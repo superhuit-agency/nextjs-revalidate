@@ -11,6 +11,7 @@ use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 use WP_Error;
 use WP_Post;
+use WP_Taxonomy;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -499,6 +500,52 @@ class Revalidate extends Base implements Hookable {
 		if ( $this->is_uploaded_file_url( $permalink ) ) return false;
 
 		return $permalink;
+	}
+
+	/**
+	 * Determine if the given taxonomy is revalidatable, i.e. one whose terms the
+	 * front-end could hold archive pages for.
+	 *
+	 * One axis rather than the two a post has, because this asks about the
+	 * taxonomy and not about any one term: a term has no status, and core gives
+	 * it no second axis either — `is_term_publicly_viewable()` is, in full, a
+	 * term-existence check plus this same question about its taxonomy. Asking it
+	 * once per taxonomy rather than once per term is the difference between one
+	 * call and tens of thousands of them on a purge all.
+	 *
+	 * The axis is `is_taxonomy_viewable()`, which for a taxonomy is a bare
+	 * `publicly_queryable` with none of the `_builtin && public` fallback
+	 * `is_post_type_viewable()` applies. Terms of a taxonomy that is not
+	 * revalidatable produce no revalidation at all; they are not refused, they
+	 * were never candidates.
+	 *
+	 * The site has the last word, as it does for a post: the filter is applied
+	 * after the axis and can admit any taxonomy, which is how a headless site
+	 * whose taxonomies are not `publicly_queryable` keeps its archives
+	 * revalidating.
+	 *
+	 * See `docs/adr/0022-taxonomy-viewability-gates-term-revalidation.md`.
+	 *
+	 * @param string|WP_Taxonomy $taxonomy The taxonomy, or its name.
+	 *
+	 * @return bool Whether the taxonomy's terms should be revalidated.
+	 */
+	public function should_revalidate_taxonomy( $taxonomy ) {
+
+		$taxonomy_object = ( $taxonomy instanceof WP_Taxonomy ? $taxonomy : get_taxonomy( $taxonomy ) );
+		$taxonomy_name   = ( $taxonomy_object instanceof WP_Taxonomy ? $taxonomy_object->name : (string) $taxonomy );
+
+		// A taxonomy nothing registered has no archive, and nothing to ask about.
+		$should_revalidate_taxonomy = ( $taxonomy_object instanceof WP_Taxonomy && is_taxonomy_viewable( $taxonomy_object ) );
+
+		/**
+		 * Filters whether to revalidate the given taxonomy's terms.
+		 *
+		 * @param bool                $should_revalidate_taxonomy Whether to revalidate the taxonomy's terms.
+		 * @param string              $taxonomy_name              The taxonomy name.
+		 * @param WP_Taxonomy|false   $taxonomy_object            The taxonomy, or false when none is registered under that name.
+		 */
+		return apply_filters( 'nextjs_revalidate_should_revalidate_taxonomy', $should_revalidate_taxonomy, $taxonomy_name, $taxonomy_object );
 	}
 
 	/**

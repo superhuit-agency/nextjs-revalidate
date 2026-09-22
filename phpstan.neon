@@ -18,6 +18,18 @@
 # The test suite here covers a handful of behaviours, so this and the lint are
 # still the only nets an incompatibility can fall into. Both of them run on every
 # pull request — `.github/workflows/ci.yml`.
+#
+# `npm run analyse:php` passes `--memory-limit=2G` rather than inheriting
+# `php.ini`. The stubs below are one 5.3 MB file, and holding its syntax tree
+# peaks a parallel worker somewhere between 832M and 896M — so on PHP's default
+# 128M the analysis does not report findings at all: it dies in a worker, and
+# what comes back is a crash notice naming the limit, or a bare exit code that
+# mentions no such thing (#96). It only reproduces on a cold result cache, which
+# is why it went unnoticed: `vendor/bin/phpstan clear-result-cache` is what
+# makes it deterministic. Pinning the number is also what makes this gate's
+# verdict independent of the ini it runs under — a CI runner's and a
+# developer's disagreed until it did. ADR 0020; override it for one run with
+# `npm run analyse:php -- --memory-limit=…`.
 
 includes:
 	# WordPress core's functions, classes, constants and hooks, as stubs. Without
@@ -27,8 +39,13 @@ includes:
 	# What the files in include/ were already carrying the day they were first
 	# analysed. Read phpstan-baseline.neon as a to-do list, never as settings:
 	# fix a finding and the gate asks you to regenerate the file
-	# (`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`),
-	# so the list can only get shorter. Nothing new belongs in it.
+	# (`vendor/bin/phpstan analyse --memory-limit=-1 --generate-baseline
+	# phpstan-baseline.neon`), so the list can only get shorter. Nothing new
+	# belongs in it. The limit is there for the same reason `analyse:php` pins
+	# one — a regeneration re-parses the stubs, so on a default `php.ini` it
+	# fatals rather than writing a baseline (#96) — and it is `-1` rather than
+	# the gate's `2G` because this is a one-off run by hand, where the point is
+	# to finish. ADR 0009 has the full sequence.
 	#
 	# Regenerate it only where every extension the code uses is loaded. PHPStan
 	# cannot report on a function whose extension is absent, so a baseline
