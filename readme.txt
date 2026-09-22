@@ -66,10 +66,13 @@ redirect's previous state. Redirection 5.9.0 and later pass the redirect's id
 instead, where only the new source path is revalidated and the old one keeps
 redirecting until its own cache entry expires.
 
-Only a redirect the front-end could resolve for a single path is revalidated: its
-source is a literal path rather than a regular expression, and it is enabled —
-except when it is being disabled, which is itself the change the front-end has
-not heard about yet.
+Only a **revalidatable redirect** is revalidated — one the front-end could
+resolve for a single path, which means its source is a literal path rather than
+a regular expression, and it is enabled. One that is not revalidatable produces
+no revalidation at all: it is not refused, it was never a candidate. Disabling
+one is the single exception that does not ask whether it is enabled, because
+that it stopped being enabled is itself the change the front-end has not heard
+about yet.
 
 **A redirect whose source is a regular expression is skipped entirely.** It
 matches an unbounded set of paths, so there is no single path to rebuild and
@@ -92,6 +95,12 @@ file and nowhere else:
    revalidate domain or the secret is missing, nothing is queued, and nothing
    will be until both are filled in.
 
+Each of them is one line of the same shape, so the whole set is one grep away:
+
+```
+[2026-04-28 11:04:07]	[INFO]	[Redirection.php] ↪️ Redirect #12 not revalidated (source: ^/blog/(.*)) — its source is a regular expression, which names no single path
+```
+
 A redirect that *is* revalidated writes no line at that point. Its source path
 waits under the **Queue** tab of *Settings → Next.js revalidate* until cron
 drains it, and the log line — revalidated, or failed — comes from the drain.
@@ -101,7 +110,11 @@ import creating them — reaches this plugin once per redirect, and enqueues one
 revalidation per **distinct** source path: redirects sharing a source cost a
 single queue entry. Nothing is capped. The queue is drained by cron rather than
 in the request that filled it, so a large import reaches the front-end over the
-following cron runs rather than immediately.
+following cron runs rather than immediately. A drain is scheduled as soon as
+something is enqueued, works through the queue until PHP's max execution time is
+nearly up, then schedules the next one while anything is left. WordPress fires
+its cron on site traffic unless a real system cron is wired up, so a quiet site
+drains when somebody visits it.
 
 == Filters ==
 

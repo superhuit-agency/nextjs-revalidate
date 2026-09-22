@@ -198,7 +198,16 @@ site on a network), and only while **Enable logs** is switched on under the
 nothing to read anywhere, which is why switching it on is the first step for a
 redirect that "did nothing".
 
-| What the log line says | What happened |
+Every one of them is a single line of the same shape, so the whole set is one
+grep away:
+
+```
+[2026-04-28 11:04:07]	[INFO]	[Redirection.php] ↪️ Redirect #12 not revalidated (source: ^/blog/(.*)) — its source is a regular expression, which names no single path
+```
+
+What follows the dash is the reason, and there are five of them:
+
+| How the line ends | What happened |
 | --- | --- |
 | `its source is a regular expression, which names no single path` | The redirect was never a candidate, as above. |
 | `it is disabled, so the front-end resolves nothing for it` | The redirect was created, edited, deleted or enabled while stored as disabled, so what the front-end holds for its source is already the right answer. Disabling one is the exception, and does revalidate. |
@@ -227,6 +236,14 @@ The queue is durable and drained by cron rather than in the request that filled
 it, so a large import is delivered to the front-end **over the following cron
 runs** rather than immediately. The redirects it created keep resolving from
 whatever the front-end has cached until their paths' turn comes.
+
+A drain is scheduled the moment something is enqueued; it works through the
+queue until PHP's `max_execution_time` is nearly up, then schedules the next
+one while anything is left, and up to four can be running at once. Three hundred
+paths therefore arrive over several runs rather than in one. WordPress fires its
+cron on site traffic unless a real system cron is wired up, so a quiet site
+drains when somebody visits it — the **Queue** tab is where to watch the count
+fall.
 
 #### Declining a revalidation
 
