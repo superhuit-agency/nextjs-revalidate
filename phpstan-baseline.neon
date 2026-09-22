@@ -1,6 +1,36 @@
 parameters:
 	ignoreErrors:
 		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$queue\.$#'
+			identifier: property.private
+			count: 1
+			path: include/Abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$restApi\.$#'
+			identifier: property.private
+			count: 1
+			path: include/Abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$revalidate\.$#'
+			identifier: property.private
+			count: 1
+			path: include/Abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$revalidateAll\.$#'
+			identifier: property.private
+			count: 1
+			path: include/Abstracts/Base.php
+
+		-
+			message: '#^Access to private property NextJsRevalidate\:\:\$settings\.$#'
+			identifier: property.private
+			count: 1
+			path: include/Abstracts/Base.php
+
+		-
 			message: '#^Access to private property NextJsRevalidate\:\:\$revalidate\.$#'
 			identifier: property.private
 			count: 1
@@ -43,12 +73,6 @@ parameters:
 			path: include/Revalidate.php
 
 		-
-			message: '#^Access to an undefined property NextJsRevalidate\\Revalidate\:\:\$settings\.$#'
-			identifier: property.notFound
-			count: 7
-			path: include/Revalidate.php
-
-		-
 			message: '#^Call to function method_exists\(\) with WP_Screen and ''is_block_editor'' will always evaluate to true\.$#'
 			identifier: function.alreadyNarrowedType
 			count: 1
@@ -58,12 +82,6 @@ parameters:
 			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateAll\:\:\$queue\.$#'
 			identifier: property.notFound
 			count: 2
-			path: include/RevalidateAll.php
-
-		-
-			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateAll\:\:\$revalidate\.$#'
-			identifier: property.notFound
-			count: 1
 			path: include/RevalidateAll.php
 
 		-
@@ -113,36 +131,6 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: include/Settings.php
-
-		-
-			message: '#^Access to private property NextJsRevalidate\:\:\$queue\.$#'
-			identifier: property.private
-			count: 1
-			path: include/Abstracts/Base.php
-
-		-
-			message: '#^Access to private property NextJsRevalidate\:\:\$restApi\.$#'
-			identifier: property.private
-			count: 1
-			path: include/Abstracts/Base.php
-
-		-
-			message: '#^Access to private property NextJsRevalidate\:\:\$revalidate\.$#'
-			identifier: property.private
-			count: 1
-			path: include/Abstracts/Base.php
-
-		-
-			message: '#^Access to private property NextJsRevalidate\:\:\$revalidateAll\.$#'
-			identifier: property.private
-			count: 1
-			path: include/Abstracts/Base.php
-
-		-
-			message: '#^Access to private property NextJsRevalidate\:\:\$settings\.$#'
-			identifier: property.private
-			count: 1
-			path: include/Abstracts/Base.php
 
 		-
 			message: '#^Access to private property NextJsRevalidate\:\:\$cronScheduledPurges\.$#'

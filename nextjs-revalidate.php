@@ -416,8 +416,9 @@ NextJsRevalidate::init();
  *
  * @return bool        Whether the revalidation was accepted into the queue.
  *                     False on a refusal — the site is unconfigured, and nothing
- *                     it accepted could be delivered — and false when the insert
- *                     itself failed.
+ *                     it accepted could be delivered — and false when the write
+ *                     itself failed, whether that was the insert or the
+ *                     promotion of a permalink the queue already held.
  */
 function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
 	$njr = NextJsRevalidate::init();
