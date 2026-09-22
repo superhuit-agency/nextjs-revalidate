@@ -79,6 +79,23 @@ log file (`wp-content/uploads/nextjs-revalidate.log`) and nowhere else, and only
 while **Enable logs** is switched on under the **Debug** tab of *Settings →
 Next.js revalidate*.
 
+Other reasons a redirect change enqueues nothing, each recorded in that same log
+file and nowhere else:
+
+1. The redirect is disabled. Creating, editing, deleting or enabling one that is
+   stored as disabled changes nothing the front-end resolves for its source;
+   disabling one is the exception, and does revalidate.
+2. Its source names no path to rebuild — it is empty, it is not a URL a path can
+   be read out of, or it is the bare site root.
+3. A filter declined that path. See below.
+4. The site is unconfigured, so the queue refuses the revalidation: the
+   revalidate domain or the secret is missing, nothing is queued, and nothing
+   will be until both are filled in.
+
+A redirect that *is* revalidated writes no line at that point. Its source path
+waits under the **Queue** tab of *Settings → Next.js revalidate* until cron
+drains it, and the log line — revalidated, or failed — comes from the drain.
+
 A bulk operation — deleting, enabling or disabling many redirects at once, or an
 import creating them — reaches this plugin once per redirect, and enqueues one
 revalidation per **distinct** source path: redirects sharing a source cost a

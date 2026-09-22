@@ -171,12 +171,12 @@ has not heard about yet.
 matches an unbounded set of paths, so there is no single path to rebuild, and
 nothing is enqueued for it — the front-end simply keeps serving the page it
 already holds, with nothing on screen to say why. The skip is recorded in the
-plugin's log file (`wp-content/uploads/nextjs-revalidate.log`) and nowhere else,
-and only while **Enable logs** is switched on under the **Debug** tab of
-*Settings → Next.js revalidate*; with logging off, a regex redirect is silent.
-It deliberately does not escalate to a **revalidate all**: the regex box is a
-per-rule checkbox an editor can tick casually, and turning one tick into a
-site-wide rebuild is worse than the staleness it would cure.
+plugin's log file and nowhere else, and only while logging is switched on; with
+logging off, a regex redirect is silent. The line it writes, and the other
+reasons a redirect gets one, are below. It deliberately does not escalate to a
+**revalidate all**: the regex box is a per-rule checkbox an editor can tick
+casually, and turning one tick into a site-wide rebuild is worse than the
+staleness it would cure.
 
 Source paths are reduced to their path component, dropping any query string or
 domain the source was stored with, and given the site's trailing slash
@@ -184,6 +184,33 @@ convention, so they match the form post permalinks are enqueued in. A source
 names a path from the domain root rather than from the site, which is how
 Redirection matches them, so on a site served from a subdirectory that directory
 is already part of the source.
+
+#### Why a redirect did not revalidate
+
+Nothing about a redirect change is reported on screen. Redirects are saved
+through Redirection's own REST routes, from an admin that never reloads the
+page, so a revalidation that did not happen is answered by the plugin's **log
+file** or by nothing at all. Every case in the table writes one line to
+`nextjs-revalidate.log` in the site's uploads directory
+(`wp-content/uploads/nextjs-revalidate.log` on a standard install, one file per
+site on a network), and only while **Enable logs** is switched on under the
+**Debug** tab of *Settings → Next.js revalidate*. With logging off there is
+nothing to read anywhere, which is why switching it on is the first step for a
+redirect that "did nothing".
+
+| What the log line says | What happened |
+| --- | --- |
+| `its source is a regular expression, which names no single path` | The redirect was never a candidate, as above. |
+| `it is disabled, so the front-end resolves nothing for it` | The redirect was created, edited, deleted or enabled while stored as disabled, so what the front-end holds for its source is already the right answer. Disabling one is the exception, and does revalidate. |
+| `it names no path of this site to rebuild` | The source names no path to rebuild — it is empty, it is not a URL this plugin can read a path out of, or it is the bare site root. |
+| `a filter declined the revalidation of …` | [`nextjs_revalidate_should_revalidate_redirect`](#nextjs_revalidate_should_revalidate_redirect) returned `false` for that path. |
+| `⛔ Refused … — site not configured` | The path was a candidate and reached the queue, which **refused** it: the revalidate domain or the secret is missing. Nothing was queued, and nothing will be until the site is configured. |
+
+A redirect that *is* revalidated writes no line of its own here — its source
+path is simply in the queue, visible under the **Queue** tab of the same
+settings screen until cron drains it. The line arrives then, as
+`✅ Revalidated` or `❌ Failed to revalidate` for the permalink, written by the
+drain rather than by this integration.
 
 #### Bulk operations and imports
 
