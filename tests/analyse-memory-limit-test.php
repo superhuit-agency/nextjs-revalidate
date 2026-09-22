@@ -8,14 +8,19 @@
  * exit code rather than a verdict about the code. The reason it survived so
  * long is the result cache: once one run has completed, every later run reads
  * the cache instead of re-parsing and passes on 128M, so the failure only
- * reproduces behind `vendor/bin/phpstan clear-result-cache`. A regression here is invisible to whoever introduces it
- * and lands on whoever next analyses a cold tree. That is what this holds.
+ * reproduces behind `vendor/bin/phpstan clear-result-cache`. A regression here
+ * is invisible to whoever introduces it and lands on whoever next analyses a
+ * cold tree. That is what this holds.
  *
- * It asserts the flag is there and that the number is a finite one with room
- * above the analysis's measured need — 896M green, 832M red on PHP 7.4 against
- * php-stubs/wordpress-stubs v6.9.4, and that file grows with every WordPress
- * release. `--memory-limit=-1` fails here too: an unlimited gate cannot stop an
- * analysis that genuinely runs away. See ADR 0020.
+ * It asserts the flag is there and that the number is a finite one at or above
+ * the 2G ADR 0020 settled on. The measured need is 896M green, 832M red on PHP
+ * 7.4 against php-stubs/wordpress-stubs v6.9.4, but the floor here is the
+ * decision rather than that measurement: a limit chosen to just clear today's
+ * parse is one that brings #96 back on a routine `composer update`, because
+ * that stub file grows with every WordPress release. `--memory-limit=-1` fails
+ * here too: an unlimited gate cannot stop an analysis that genuinely runs away.
+ * Where the script passes the flag more than once, the last one is what PHPStan
+ * uses, so that is the one read. See ADR 0020.
  *
  * A standalone script per ADR 0008 — it reads one file and needs no WordPress,
  * no autoloader and no framework, so it runs in the gate rather than beside it.
@@ -26,18 +31,15 @@
 $root     = dirname( __DIR__ );
 $failures = 0;
 
-/** The floor a pinned limit has to clear. Below this the analysis is a coin toss. */
-const MEMORY_LIMIT_FLOOR = 1073741824; // 1G
+/** The limit ADR 0020 pinned. Below this there is no margin over a growing stub file. */
+const NJR_MEMORY_LIMIT_FLOOR = 2147483648; // 2G
 
 /**
  * A PHP shorthand byte value — `2G`, `512M`, `1024` — as bytes, or null when it
  * is not one. `-1` is not: it is the absence of a limit, which is the thing
  * this test is against.
- *
- * @param string $value
- * @return int|null
  */
-function shorthand_bytes( $value ) {
+function njr_shorthand_bytes( string $value ): ?int {
 	if ( ! preg_match( '/^(\d+)([KMG]?)$/i', $value, $matches ) ) return null;
 
 	$bytes  = (int) $matches[1];
@@ -71,31 +73,33 @@ if ( ! is_string( $script ) ) {
 // The expectations
 // ====
 
-if ( ! preg_match( '/--memory-limit=(\S+)/', $script, $matches ) ) {
+if ( ! preg_match_all( '/--memory-limit=(\S+)/', $script, $matches ) ) {
 	$failures++;
 	printf(
 		"FAIL — `analyse:php` passes no --memory-limit, so the analysis inherits php.ini and fatals in a parallel worker on the 128M default (#96)\n"
 	);
 }
 else {
-	$limit = shorthand_bytes( $matches[1] );
+	// The last occurrence is the one PHPStan honours, so it is the one that counts.
+	$pinned = end( $matches[1] );
+	$limit  = njr_shorthand_bytes( $pinned );
 
 	if ( null === $limit ) {
 		$failures++;
 		printf(
 			"FAIL — `analyse:php` passes --memory-limit=%s, which is not a finite byte size; an unlimited gate cannot stop a runaway analysis\n",
-			$matches[1]
+			$pinned
 		);
 	}
-	elseif ( $limit < MEMORY_LIMIT_FLOOR ) {
+	elseif ( $limit < NJR_MEMORY_LIMIT_FLOOR ) {
 		$failures++;
 		printf(
-			"FAIL — `analyse:php` passes --memory-limit=%s; the analysis needs more than 832M on a cold result cache, so anything under 1G is back to #96\n",
-			$matches[1]
+			"FAIL — `analyse:php` passes --memory-limit=%s; the analysis needs more than 832M on a cold result cache and the stubs grow with every WordPress release, so ADR 0020 pinned 2G and anything under it is on its way back to #96\n",
+			$pinned
 		);
 	}
 	else {
-		printf( "ok   — `analyse:php` pins --memory-limit=%s\n", $matches[1] );
+		printf( "ok   — `analyse:php` pins --memory-limit=%s\n", $pinned );
 	}
 }
 
