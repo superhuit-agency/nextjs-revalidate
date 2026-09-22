@@ -67,3 +67,14 @@ longer decide whether anything is *enqueued* — `should_revalidate()` is the on
 gate — but they still offer bulk actions and settings toggles for types that will
 now decline every post. That inconsistency is left open here and tracked
 separately.
+
+## Amended once the taxonomy line was closed
+
+Of the four selection sites left open above, the taxonomy one is no longer among
+them: [ADR 0020](0020-term-viewability-gates-revalidation.md) gives terms a gate
+of their own and has revalidate-all select taxonomies by `is_taxonomy_viewable()`.
+It was never the same kind of inconsistency as the other three — with no term
+gate downstream, that selector *was* the decision, so it enqueued and missed
+whole taxonomies rather than merely over-offering a menu.
+
+The three post-type sites are unchanged and still cosmetic, tracked in #53.

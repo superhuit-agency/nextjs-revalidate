@@ -72,7 +72,7 @@ file when logging is on, marked `🔎 Probe`.
 ## Requirements
 
 - Requires PHP 7.4+
-- Requires WordPress 5.0+
+- Requires WordPress 5.7+
 
 ## API functions
 
