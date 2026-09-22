@@ -85,12 +85,6 @@ parameters:
 			path: include/RevalidateAll.php
 
 		-
-			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateAll\:\:\$revalidate\.$#'
-			identifier: property.notFound
-			count: 1
-			path: include/RevalidateAll.php
-
-		-
 			message: '#^Access to an undefined property NextJsRevalidate\\RevalidateAll\:\:\$settings\.$#'
 			identifier: property.notFound
 			count: 5

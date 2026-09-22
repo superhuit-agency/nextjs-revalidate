@@ -17,7 +17,8 @@ _Avoid_: Purge, cache clear, invalidation
 
 **Revalidate all**:
 A bulk operation that enqueues a revalidation for every publicly reachable page
-of one or more post types.
+of one or more post types, and for the archive of every term of every
+**revalidatable taxonomy** registered for them.
 _Avoid_: Purge all
 
 **Revalidation queue**:
@@ -31,6 +32,21 @@ the permalink written into it resolves against whichever site is current, so the
 two can disagree on a network. Say "the queue holds permalinks"; reserve "path"
 for the thing being revalidated.
 _Avoid_: Job list, backlog
+
+**Queue priority**:
+The number deciding when one queue entry drains relative to the others. Lower is
+sooner, entries sharing a priority drain oldest first, and `0` is a priority like
+any other — the most urgent there is, never an absence of one.
+
+It belongs to the entry rather than to the revalidation that produced it. A
+permalink is queued once, so a second submission of one already waiting has no
+entry of its own to carry a priority: it **promotes** the existing entry when it
+asks for a more urgent one, and changes nothing when it does not. Nothing demotes
+an entry — the rule is the minimum of the two, so a caller asking for a path to
+be revalidated can never slow down work something else deemed urgent.
+_Avoid_: Weight, rank, order — the drain order is what a priority produces, not
+another word for it. Distinct from a WordPress **hook priority**, which orders
+callbacks on one hook and has nothing to do with the queue.
 
 **Scheduled purge**:
 A revalidation registered to happen at a future time rather than immediately,
@@ -87,6 +103,30 @@ revalidatable is a question every entry point asks — a save, a row action, a b
 action, the admin bar — never one that only save-time code consults.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
+
+**Revalidatable taxonomy**:
+A taxonomy whose terms' archive pages the front-end could hold, and whose terms
+this plugin may therefore revalidate. One axis — the taxonomy is viewable,
+WordPress's own `publicly_queryable` test, which for a taxonomy is that setting
+and nothing else, with none of the `_builtin && public` fallback the post type
+test applies.
+
+One axis, where **revalidatable post** names two (type *and* status). The names
+are siblings; the shapes are not, and the difference is why this is not called a
+revalidatable *term*: a term has no status and no viewability of its own, so the
+question is only ever asked about its taxonomy. Terms of a taxonomy that is not
+revalidatable produce no revalidation at all; they are not refused, they were
+never candidates.
+
+The site has the last word here too, through a filter of its own rather than the
+post one — the same escape hatch, for the same headless reason, and it can admit
+a whole taxonomy as readily as decline one.
+
+Only **revalidate all** asks the question today: nothing in this plugin reacts to
+a term being created, edited or deleted, so a term archive goes stale until
+somebody purges all. That gap is an enhancement, not a property of the taxonomy.
+_Avoid_: Public taxonomy — `public` is a different setting and the two disagree
+in both directions, which is the whole of the bug this names the fix for.
 
 ### Full site editing
 

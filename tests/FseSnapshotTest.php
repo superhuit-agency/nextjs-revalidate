@@ -335,7 +335,7 @@ foreach ( $outcomes as [ $response, $expected, $description ] ) {
 // And so is the redaction: this endpoint's URL carries the same secret, and the
 // snapshot's outcome goes straight to the log file. The rule is
 // `tests/transport-redaction-test.php`; this pins that the FSE path is not the
-// one that forgot. See `docs/adr/0020-the-transport-redacts-the-secret.md`.
+// one that forgot. See `docs/adr/0023-the-transport-redacts-the-secret.md`.
 $fse = njr_test_subject();
 $GLOBALS['njr_test_response'] = new WP_Error( 'http_request_failed', 'Failed to open stream: https://front-end.test/api/revalidate-fse?secret=s3cret' );
 

@@ -10,7 +10,7 @@
  * admin notice, a REST response and a log file in `wp-content/uploads` that
  * most hosts serve directly over HTTP — so a transport that quoted the request
  * URL back would publish the one value this plugin exists to hold.
- * See `docs/adr/0020-the-transport-redacts-the-secret.md`.
+ * See `docs/adr/0023-the-transport-redacts-the-secret.md`.
  *
  * Two halves, because the decision has two halves:
  *
@@ -412,7 +412,7 @@ foreach ( array_merge( njr_php_files( $root, 'include' ), [ 'nextjs-revalidate.p
 		printf(
 			"FAIL — %s:%d mints a WP_Error carrying a message of foreign origin without redact_secret(): %s\n"
 				. "       Every request this plugin makes holds the secret in a query arg, and this message\n"
-				. "       reaches the log file in wp-content/uploads. See docs/adr/0020-the-transport-redacts-the-secret.md.\n",
+				. "       reaches the log file in wp-content/uploads. See docs/adr/0023-the-transport-redacts-the-secret.md.\n",
 			$file,
 			$line,
 			$message

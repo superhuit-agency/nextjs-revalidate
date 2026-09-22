@@ -21,7 +21,7 @@ use WP_Error;
  *
  * This is also the one place in the plugin where a string of *arbitrary origin*
  * meets a URL holding the secret, so it is where the secret is redacted out of
- * one again — see `docs/adr/0020-the-transport-redacts-the-secret.md`, and
+ * one again — see `docs/adr/0023-the-transport-redacts-the-secret.md`, and
  * `redact_secret()` below.
  *
  * @property \NextJsRevalidate\Settings $settings

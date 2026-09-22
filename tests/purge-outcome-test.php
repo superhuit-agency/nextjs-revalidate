@@ -233,7 +233,7 @@ njr_test_assert(
 // every request carries is taken back out of it first. The rule itself, and the
 // shapes it covers, are `tests/transport-redaction-test.php`; this pins that a
 // real purge reading a real setting goes through it at all.
-// See `docs/adr/0020-the-transport-redacts-the-secret.md`.
+// See `docs/adr/0023-the-transport-redacts-the-secret.md`.
 $outcome = njr_test_purge( $configured, new WP_Error( 'http_request_failed', 'Failed to open stream: https://front-end.test/api/revalidate?path=%2F&secret=s3cret' ) );
 njr_test_assert(
 	false === strpos( $outcome->get_error_message(), 's3cret' ),
