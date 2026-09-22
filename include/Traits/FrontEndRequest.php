@@ -128,7 +128,10 @@ trait FrontEndRequest {
 	 *
 	 * **By value.** The configured secret is then replaced wherever else it
 	 * appears, because a message naming it without a URL around it is not
-	 * reachable by looking for query args.
+	 * reachable by looking for query args. In all the spellings it can reach a
+	 * message in, not only the configured one: the secret arrives at a URL
+	 * through `add_query_arg()`, which `urlencode()`s it, so a secret holding a
+	 * space or a `/` is never quoted back the way it was typed.
 	 *
 	 * There is deliberately **no minimum-length guard**. A secret's only
 	 * validation in this plugin is that it is non-empty, so a one-character
@@ -160,6 +163,23 @@ trait FrontEndRequest {
 		// but saying so out loud is cheaper than making the next reader check.
 		if ( '' === $secret ) return $blanked;
 
-		return str_replace( $secret, self::$redaction, $blanked );
+		// Every spelling the configured value can appear in. `add_query_arg()`
+		// urlencodes what it puts in a URL, so the encoded form is the one a
+		// message quoting a request actually holds; the by-shape pass covers
+		// that only while it is still sitting in a `secret=` arg, and a
+		// transport is free to quote a bare URL-encoded fragment instead.
+		// rawurlencode() differs only on the space — `%20` against `+` — and
+		// which one comes back is the transport's choice, not ours.
+		$needles = array_unique( [ $secret, urlencode( $secret ), rawurlencode( $secret ) ] );
+
+		// Longest first: str_replace() walks the needles in order and rescans
+		// what earlier ones left behind, so a shorter spelling that is part of
+		// a longer one would otherwise strand the remainder in the message.
+		usort(
+			$needles,
+			function ( $a, $b ) { return strlen( $b ) - strlen( $a ); }
+		);
+
+		return str_replace( $needles, self::$redaction, $blanked );
 	}
 }

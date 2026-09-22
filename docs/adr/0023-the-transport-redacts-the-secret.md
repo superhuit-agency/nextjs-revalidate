@@ -53,6 +53,18 @@ of redaction. The configured secret is then also replaced **by value**, because 
 message that names the secret without a URL around it is not reachable by parsing
 query args.
 
+**By value means every spelling, not the configured one.** The secret reaches a
+URL through `add_query_arg()`, which `urlencode()`s it, so a secret holding a
+space or a `/` is never quoted back the way an operator typed it — `two words`
+travels as `two+words`. While that sits in a `secret=` arg the by-shape pass
+covers it, but a transport is free to quote a bare fragment instead, and a
+by-value pass that knew only the configured spelling would walk past it. So the
+configured value, its `urlencode()` and its `rawurlencode()` are all replaced;
+the last two differ only on the space (`%20` against `+`) and which one comes
+back is the transport's choice. The spellings are applied longest-first, because
+`str_replace()` rescans what earlier needles left behind and a shorter spelling
+that is part of a longer one would otherwise strand the remainder in the message.
+
 **There is deliberately no minimum-length guard.** A secret's only validation in
 this plugin is that it is non-empty (`Settings::missing_settings()`), so a
 one-character secret is a legal configuration, and a `strlen() >= 8` guard would

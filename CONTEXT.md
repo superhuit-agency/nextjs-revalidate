@@ -276,7 +276,9 @@ this repository.
 
 Two passes, and neither covers the other: a `secret=` query arg is blanked **by
 shape**, with the configured value never consulted, and the configured secret is
-then replaced **by value** wherever else it appears. Deliberately unguarded by
+then replaced **by value** wherever else it appears — in every spelling it can
+travel in, since a URL carries it `urlencode()`d rather than as it was typed.
+Deliberately unguarded by
 any minimum length — a one-character secret is a legal configuration, so it is
 redacted like any other and the surrounding diagnostic is allowed to come out
 garbled.

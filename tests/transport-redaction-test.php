@@ -192,6 +192,40 @@ $message = njr_test_message( 'sup3r-s3cret-v4lue', njr_test_transport_error( 'th
 njr_test_assert( false === strpos( $message, 'sup3r-s3cret-v4lue' ), 'the configured secret is replaced wherever else it appears' );
 njr_test_assert( false !== strpos( $message, 'X-Njr-Secret: ***' ), 'replacing it by value leaves the rest of the message legible' );
 
+// And by value in the spelling the secret actually travels in. `add_query_arg()`
+// urlencodes what it puts in a URL, so a secret holding a space or a `/` is
+// never quoted back the way it was typed — a by-value pass that only knew the
+// configured spelling would walk straight past it. The by-shape pass covers
+// these only while they sit in a `secret=` arg, so each one here is quoted
+// somewhere else in the message.
+foreach (
+	[
+		'a space, which add_query_arg() writes as `+`' => [ 'two words', 'two+words' ],
+		'a space, which a transport may re-encode as `%20`' => [ 'two words', 'two%20words' ],
+		'a slash, which is percent-encoded either way' => [ 'a/b', 'a%2Fb' ],
+	] as $what => list( $configured, $encoded )
+) {
+	$message = njr_test_message( $configured, njr_test_transport_error( "rejected token $encoded at the edge" ) );
+
+	njr_test_assert(
+		false === strpos( $message, $encoded ),
+		"the secret is redacted when it is quoted with $what"
+	);
+	njr_test_assert(
+		false !== strpos( $message, 'rejected token *** at the edge' ),
+		"redacting $what leaves the rest of the message legible"
+	);
+}
+
+// The configured spelling still wins where both could match, which is what the
+// longest-first ordering buys: a needle that is part of a longer one must not
+// consume it and strand the remainder.
+$message = njr_test_message( 'a b', njr_test_transport_error( 'saw a%20b here' ) );
+njr_test_assert(
+	'saw *** here' === $message,
+	'a shorter spelling does not pre-empt a longer one and leave the tail behind'
+);
+
 // An arg named `api_secret` or `client_secret` is blanked too. The match
 // over-reaches at the front on purpose: every direction it reaches in is one
 // where blanking a value nobody needed is cheaper than printing one somebody
