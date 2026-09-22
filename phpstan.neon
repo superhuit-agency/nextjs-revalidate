@@ -39,8 +39,13 @@ includes:
 	# What the files in include/ were already carrying the day they were first
 	# analysed. Read phpstan-baseline.neon as a to-do list, never as settings:
 	# fix a finding and the gate asks you to regenerate the file
-	# (`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`),
-	# so the list can only get shorter. Nothing new belongs in it.
+	# (`vendor/bin/phpstan analyse --memory-limit=-1 --generate-baseline
+	# phpstan-baseline.neon`), so the list can only get shorter. Nothing new
+	# belongs in it. The limit is there for the same reason `analyse:php` pins
+	# one — a regeneration re-parses the stubs, so on a default `php.ini` it
+	# fatals rather than writing a baseline (#96) — and it is `-1` rather than
+	# the gate's `2G` because this is a one-off run by hand, where the point is
+	# to finish. ADR 0009 has the full sequence.
 	#
 	# Regenerate it only where every extension the code uses is loaded. PHPStan
 	# cannot report on a function whose extension is absent, so a baseline

@@ -123,6 +123,14 @@ anyone bisecting a runaway or pinning down a new peak.
 worth a test at all is the result cache: dropping the flag is invisible to
 whoever does it and fatals for whoever next analyses a cold tree.
 
+**The baseline regeneration carries a limit too, and a different one.**
+`phpstan.neon`'s own instructions for regenerating `phpstan-baseline.neon` named
+the command without one, so the run the gate sends you to when it goes red hit
+#96 exactly as the gate did — it re-parses the same stubs. It now reads
+`--memory-limit=-1`, matching the sequence in
+[ADR 0009](0009-checks-run-on-pull-requests.md): by hand, once, and the point is
+to finish. The ceiling is the standing gate's job, not that run's.
+
 **Nothing else in the gate takes a memory limit.** `npm run lint:php` parses one
 file at a time and `npm run test:php` boots no framework; both are comfortable
 inside 128M. This is PHPStan's problem alone, and the flag stays where the
