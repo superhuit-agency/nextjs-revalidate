@@ -207,7 +207,7 @@ class Redirection extends Base implements Hookable {
 		 * rules above turned away has already returned, so returning true
 		 * cannot resurrect it. A regular expression source names no single path
 		 * — there is nothing to hand the filter, and nothing it could be right
-		 * about. See ADR 0006.
+		 * about. See ADR 0014.
 		 *
 		 * @param bool   $should_revalidate Whether to revalidate the source path.
 		 * @param string $path              The source path, normalised.

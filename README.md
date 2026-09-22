@@ -212,7 +212,7 @@ versions whose update action carries the redirect's previous state. Redirection
 5.9.0 and later pass the redirect's id instead, so nothing hands over the source
 it had: only the new path is revalidated, and the old one keeps redirecting until
 its own cache entry expires. See
-[ADR 0006](docs/adr/0006-redirect-changes-revalidate-the-source-path.md).
+[ADR 0014](docs/adr/0014-redirect-changes-revalidate-the-source-path.md).
 
 #### Which redirects are candidates
 

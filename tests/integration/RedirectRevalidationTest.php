@@ -436,7 +436,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 	 * the queue directly, because this is the one place a single click in
 	 * wp-admin can produce unbounded queue growth. The integration hands the
 	 * same permalink over once per redirect on purpose — it keeps no memory of
-	 * what it has seen, see ADR 0006 — so what collapses them is
+	 * what it has seen, see ADR 0014 — so what collapses them is
 	 * `RevalidateQueue::add_item()`, which enqueues a permalink it already
 	 * holds exactly once. That is a claim about MySQL as much as about PHP,
 	 * which is why it lives in this suite and not in a standalone script.
@@ -465,7 +465,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 	 * The number is deliberately larger than any round figure someone would
 	 * reach for as a limit. A cap would silently drop revalidations ADR 0004
 	 * guarantees no retry for, and collapsing above a threshold would
-	 * reintroduce the site-wide stampede ADR 0006 rejected — neither failure
+	 * reintroduce the site-wide stampede ADR 0014 rejected — neither failure
 	 * shows up in a batch of three.
 	 */
 	public function test_a_bulk_delete_over_distinct_sources_is_not_capped() {

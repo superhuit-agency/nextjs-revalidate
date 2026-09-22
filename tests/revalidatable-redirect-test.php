@@ -656,7 +656,7 @@ namespace {
 	// permalink it already has exactly once, which is asserted against the real
 	// queue in `tests/integration/RedirectRevalidationTest.php`; what this file
 	// pins is that the integration keeps no set of its own to collapse the two.
-	// See `docs/adr/0006-redirect-changes-revalidate-the-source-path.md`.
+	// See `docs/adr/0014-redirect-changes-revalidate-the-source-path.md`.
 	njr_test_redirect_edited(
 		[ 'url' => '/moved-target' ],
 		[ 'url' => '/moved-target' ]
@@ -820,7 +820,7 @@ namespace {
 	// cron drained, revalidate all routinely enqueues far more, and the count
 	// is bounded by rules an operator actually created. Capping would silently
 	// drop revalidations ADR 0004 guarantees no retry for, and collapsing above
-	// a threshold would reintroduce the site wide stampede ADR 0006 rejected.
+	// a threshold would reintroduce the site wide stampede ADR 0014 rejected.
 	//
 	// So what is pinned here is the absence of both, and the absence of a third
 	// thing: any memory of which paths this integration has already seen. A
