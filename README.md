@@ -300,6 +300,14 @@ interpreter each, stopping at the first one to exit non-zero. Top level only:
 needs no wiring** — drop it in `tests/` and the next run picks it up. Each
 script runs under `php`, or under `PHP_BIN` when that is set.
 
+The rule runs both ways: **every top-level `.php` under `tests/` is a test and
+will be executed as one.** There is no shared helper to drop beside them — ADR
+0008 gives each script its own stubs and no autoload precisely so that none is
+needed. Order is not a contract either: the glob is walked in whatever order
+the shell's locale collates, which is neither the order they were written in
+nor the same on every machine — **no script may depend on another having run
+first.** A failing script's own exit code is the command's.
+
 ### `npm run test:integration` — the integration suite
 
 PHPUnit tests under `tests/integration/` that boot WordPress with this plugin
