@@ -266,6 +266,29 @@ there is no second channel that logs regardless.
 _Avoid_: Debug mode — the plugin has a setting that enables logging, not a mode
 it runs in.
 
+**Redaction**:
+Taking the secret out of a message the plugin did not write itself, at the moment
+that message becomes an outcome. Applied to exactly two of them — what the HTTP
+transport said about a request it could not complete, and what anything in the
+request path threw — because every request this plugin makes carries the secret
+in a query arg, and those two messages are the only ones whose author is outside
+this repository.
+
+Two passes, and neither covers the other: a `secret=` query arg is blanked **by
+shape**, with the configured value never consulted, and the configured secret is
+then replaced **by value** wherever else it appears — in every spelling it can
+travel in, since a URL carries it `urlencode()`d rather than as it was typed.
+Deliberately unguarded by
+any minimum length — a one-character secret is a legal configuration, so it is
+redacted like any other and the surrounding diagnostic is allowed to come out
+garbled.
+
+A property of messages *leaving the transport*, never a property of the **log
+file**: a redaction says nothing about what a file already holds, or about who
+can read it.
+_Avoid_: Sanitising — reserved for WordPress's own input functions; masking,
+scrubbing, filtering.
+
 ### Versioning and migration
 
 **Plugin version**:
