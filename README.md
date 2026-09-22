@@ -109,8 +109,11 @@ nextjs_revalidate_purge_url( $url );
 `bool` — whether the revalidation was accepted into the queue. It is `false`
 when the site is unconfigured, which is a **refusal**: the revalidate domain or
 the secret is missing, nothing has been queued, and nothing will be. It is also
-`false` if the queue insert failed. A URL already waiting in the queue is
-accepted (`true`) without being queued twice.
+`false` if the queue write failed — the insert, or the promotion of an entry
+already waiting. A URL already waiting in the queue is
+accepted (`true`) without being queued twice; calling again with a lower
+priority number moves the entry it already has to that priority, and a higher
+one leaves it where it is.
 
 It is never a statement about the front-end. A `true` says the plugin will try.
 
@@ -149,6 +152,26 @@ revalidated, whatever their status.
 
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
+
+## Which terms are revalidated
+
+Revalidate all also enqueues the archive page of every term of every taxonomy
+registered for the post types it covers — provided the taxonomy is viewable,
+which is WordPress's own `publicly_queryable` test, via
+[`is_taxonomy_viewable()`](https://developer.wordpress.org/reference/functions/is_taxonomy_viewable/).
+The question is asked once per taxonomy rather than once per term: a term has no
+status and no viewability of its own.
+
+Note that for a taxonomy `publicly_queryable` is that setting and nothing else,
+with none of the `public` fallback the post type test applies — so a taxonomy
+registered `public => true, publicly_queryable => false` has no term revalidated,
+and one registered the other way round has all of them. A headless site can say
+otherwise with the filter below, which is consulted for every registered
+taxonomy and can admit one WordPress would never route.
+
+Nothing else revalidates a term: this plugin does not react to a term being
+created, edited or deleted, so a term archive goes stale until somebody
+revalidates all.
 
 ## Integrations
 
@@ -223,6 +246,28 @@ add_filter( 'nextjs_revalidate_purge_should_revalidate_post_on_save', function( 
 | --- | --- | --- |
 | should_revalidate | bool | Whether the post is revalidated |
 | post_id | int | The post ID |
+
+### nextjs_revalidate_should_revalidate_taxonomy
+
+Filters whether the archive pages of the given taxonomy's terms are revalidated.
+Applied last, and consulted for every registered taxonomy, so it can admit a
+taxonomy that is not `publicly_queryable` as readily as decline one that is.
+
+#### Usage
+```php
+add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_revalidate, $taxonomy_name, $taxonomy ) {
+	if ( 'my-headless-taxonomy' === $taxonomy_name ) return true;
+	return $should_revalidate;
+}, 10, 3 );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| should_revalidate | bool | Whether the taxonomy's terms are revalidated |
+| taxonomy_name | string | The taxonomy name |
+| taxonomy | WP_Taxonomy\|false | The taxonomy, or false when none is registered under that name |
 
 ### nextjs_revalidate_purge_action_permalink
 

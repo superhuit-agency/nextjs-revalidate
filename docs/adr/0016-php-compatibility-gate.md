@@ -94,7 +94,9 @@ A gated item now pays for a Composer install it did not before. It sits behind
 both parsers, so an item that fails on syntax or types never reaches it.
 
 Fixing baselined debt fails the gate until the baseline is regenerated
-(`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`): PHPStan
+(`vendor/bin/phpstan analyse --memory-limit=-1 --generate-baseline phpstan-baseline.neon`,
+the limit for the reason [ADR 0020](0020-the-analysis-pins-its-own-memory-limit.md)
+gives): PHPStan
 reports an ignore pattern that no longer matches as an error of its own, naming
 the pattern and the file. That is `reportUnmatchedIgnoredErrors` at its default,
 and it is kept there deliberately — the alternative lets a fixed entry sit in the
