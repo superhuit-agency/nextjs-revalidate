@@ -22,7 +22,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * Supported, never required: when the Redirection plugin is not there, this
  * registers no hooks at all and the plugin behaves exactly as it did before.
  *
- * See `docs/adr/0006-redirect-changes-revalidate-the-source-path.md`.
+ * See `docs/adr/0014-redirect-changes-revalidate-the-source-path.md`.
  *
  * @property-read \NextJsRevalidate\RevalidateQueue $queue The revalidation
  *                queue of the site being served, reached through `Base`.

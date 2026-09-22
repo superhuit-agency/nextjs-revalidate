@@ -17,7 +17,8 @@ _Avoid_: Purge, cache clear, invalidation
 
 **Revalidate all**:
 A bulk operation that enqueues a revalidation for every publicly reachable page
-of one or more post types.
+of one or more post types, and for the archive of every term of every
+**revalidatable taxonomy** registered for them.
 _Avoid_: Purge all
 
 **Revalidation queue**:
@@ -31,6 +32,21 @@ the permalink written into it resolves against whichever site is current, so the
 two can disagree on a network. Say "the queue holds permalinks"; reserve "path"
 for the thing being revalidated.
 _Avoid_: Job list, backlog
+
+**Queue priority**:
+The number deciding when one queue entry drains relative to the others. Lower is
+sooner, entries sharing a priority drain oldest first, and `0` is a priority like
+any other — the most urgent there is, never an absence of one.
+
+It belongs to the entry rather than to the revalidation that produced it. A
+permalink is queued once, so a second submission of one already waiting has no
+entry of its own to carry a priority: it **promotes** the existing entry when it
+asks for a more urgent one, and changes nothing when it does not. Nothing demotes
+an entry — the rule is the minimum of the two, so a caller asking for a path to
+be revalidated can never slow down work something else deemed urgent.
+_Avoid_: Weight, rank, order — the drain order is what a priority produces, not
+another word for it. Distinct from a WordPress **hook priority**, which orders
+callbacks on one hook and has nothing to do with the queue.
 
 **Scheduled purge**:
 A revalidation registered to happen at a future time rather than immediately,
@@ -88,6 +104,56 @@ action, the admin bar — never one that only save-time code consults.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
 
+**Revalidatable taxonomy**:
+A taxonomy whose terms' archive pages the front-end could hold, and whose terms
+this plugin may therefore revalidate. One axis — the taxonomy is viewable,
+WordPress's own `publicly_queryable` test, which for a taxonomy is that setting
+and nothing else, with none of the `_builtin && public` fallback the post type
+test applies.
+
+One axis, where **revalidatable post** names two (type *and* status). The names
+are siblings; the shapes are not, and the difference is why this is not called a
+revalidatable *term*: a term has no status and no viewability of its own, so the
+question is only ever asked about its taxonomy. Terms of a taxonomy that is not
+revalidatable produce no revalidation at all; they are not refused, they were
+never candidates.
+
+The site has the last word here too, through a filter of its own rather than the
+post one — the same escape hatch, for the same headless reason, and it can admit
+a whole taxonomy as readily as decline one.
+
+Only **revalidate all** asks the question today: nothing in this plugin reacts to
+a term being created, edited or deleted, so a term archive goes stale until
+somebody purges all. That gap is an enhancement, not a property of the taxonomy.
+_Avoid_: Public taxonomy — `public` is a different setting and the two disagree
+in both directions, which is the whole of the bug this names the fix for.
+
+### Full site editing
+
+**FSE snapshot**:
+The whole WordPress template structure, as one derived value the front-end holds:
+every template, with `core/template-part` blocks inlined and Polylang's
+translation variants attached. Not this plugin's data and never assembled here —
+the front-end builds it over WPGraphQL and caches it behind a cache tag. What
+this plugin knows about it is only which WordPress changes make it stale: a
+`wp_template` or `wp_template_part` saved or deleted, or a theme switched.
+_Avoid_: Template cache, templates — the snapshot is one value covering all of
+them, and a page holds no part of it separately.
+
+**Snapshot invalidation**:
+Telling the front-end, in one request to the **FSE endpoint**, that its **FSE
+snapshot** is stale. Not a **revalidation** and not a bulk one: nothing is
+enqueued, no permalink is composed, and no page is named — the front-end drops a
+cache tag and its pages rebuild lazily as they are asked for. So it never
+produces a **failure** in the sense the **failure window** holds, because it was
+never in the **revalidation queue** to be attempted from.
+
+The one exception to "invalidation" being a word this project avoids, and the
+exception is what the term is for: it names the act that is genuinely not a
+revalidation of a path.
+_Avoid_: FSE revalidation, revalidating the templates — both suggest a path is
+being rebuilt, which is the distinction this term exists to keep.
+
 ### Integrations
 
 **Integration**:
@@ -135,6 +201,16 @@ for the scalar ones — never `false`. A read is therefore always safe to iterat
 or compare without the caller guarding the type first.
 _Avoid_: Default — the value is what *absence* means, not a preference a site
 would sensibly keep.
+
+> What absence *resolves to* is a separate question, answered by whoever reads
+> the setting rather than by the table: an **endpoint path**'s `''` resolves to
+> its **default path**, which is not the empty value having an opinion.
+>
+> A setting whose default differs between a new install and an existing site
+> cannot be answered that way at all — the two hold the same empty row. The FSE
+> gate is the one such setting: `''` reads as off, and the `on` a new install
+> starts with is written into the row at setup, by `define_settings()`, on the
+> evidence that the site held none of this plugin's rows.
 
 > The option table is authoritative for **reads**, registration, seeding and
 > teardown alike: each enumerates the same declaration, so a setting cannot be
@@ -198,6 +274,29 @@ there is no second channel that logs regardless.
 _Avoid_: Debug mode — the plugin has a setting that enables logging, not a mode
 it runs in.
 
+**Redaction**:
+Taking the secret out of a message the plugin did not write itself, at the moment
+that message becomes an outcome. Applied to exactly two of them — what the HTTP
+transport said about a request it could not complete, and what anything in the
+request path threw — because every request this plugin makes carries the secret
+in a query arg, and those two messages are the only ones whose author is outside
+this repository.
+
+Two passes, and neither covers the other: a `secret=` query arg is blanked **by
+shape**, with the configured value never consulted, and the configured secret is
+then replaced **by value** wherever else it appears — in every spelling it can
+travel in, since a URL carries it `urlencode()`d rather than as it was typed.
+Deliberately unguarded by
+any minimum length — a one-character secret is a legal configuration, so it is
+redacted like any other and the surrounding diagnostic is allowed to come out
+garbled.
+
+A property of messages *leaving the transport*, never a property of the **log
+file**: a redaction says nothing about what a file already holds, or about who
+can read it.
+_Avoid_: Sanitising — reserved for WordPress's own input functions; masking,
+scrubbing, filtering.
+
 ### Versioning and migration
 
 **Plugin version**:
@@ -223,6 +322,20 @@ Establishing a DB version for a site that predates the migration ledger, by
 inferring it from which legacy options are present in the site's data.
 _Avoid_: Bootstrapping, seeding
 
+**Swept version**:
+The record of the release every site of a **network** was last asked to migrate
+at. Network-scoped rather than per-site — the one piece of this plugin's state
+that is — and compared against the **plugin version** on admin requests: when the
+running code is newer, every site is swept and the record is then stamped.
+
+Not a second ledger. It says nothing about any site's data shape, only whether
+every site has been *asked* this release; the **migration ledger** remains the
+authority on which migrations a given site runs, and a site that has nothing to
+do answers the sweep with one option read. That split is what lets the sweep fire
+once per network per release while migrations stay a per-site decision.
+_Avoid_: Network DB version — it describes no data shape; last migrated version —
+a site the sweep reached may have had nothing to migrate.
+
 ### Network and sites
 
 **Site**:
@@ -235,7 +348,7 @@ only where core's API forces it.
 
 **Network**:
 The set of sites sharing one WordPress install. Owns nothing of this plugin's
-state except the record of which sites have been swept.
+state except the **swept version**.
 _Avoid_: Multisite as a noun — it is a mode the install is in, not a thing.
 
 **Site setup**:
@@ -284,7 +397,7 @@ returns the already-built root, not the thing that builds it.
 Attaching a class's callbacks to WordPress actions and filters. A separate act
 from constructing that class, performed once, by the composition root. The order
 is load-bearing: WordPress runs same-hook, same-priority callbacks in
-registration order, and eight of this plugin's callbacks sit on `admin_init` at
+registration order, and nine of this plugin's callbacks sit on `admin_init` at
 priority 10.
 _Avoid_: Wiring, binding, hooking up
 

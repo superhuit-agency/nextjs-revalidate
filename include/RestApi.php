@@ -40,7 +40,7 @@ class RestApi extends Base implements Hookable {
 						'required'          => false,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-						'default'           => 10,
+						'default'           => RevalidateQueue::DEFAULT_PRIORITY,
 					],
 				],
 			]
@@ -89,7 +89,9 @@ class RestApi extends Base implements Hookable {
 	public function handle_revalidate(WP_REST_Request $request) {
 		// Single-item handler: build the single-item array and delegate
 		$path = $request->get_param('path');
-		$priority = $request->get_param('priority') ? absint($request->get_param('priority')) : 10;
+		// REST dispatch has already applied the route's `default` and `absint`, so
+		// read it as given: a truthiness check would turn an explicit `0` into 10.
+		$priority = absint($request->get_param('priority'));
 		if (empty($path)) {
 			return new WP_REST_Response([
 				'success' => false,
@@ -127,7 +129,7 @@ class RestApi extends Base implements Hookable {
 			}
 			$items[] = [
 				'path'     => isset($it['path']) ? sanitize_text_field($it['path']) : null,
-				'priority' => isset($it['priority']) ? absint($it['priority']) : 10,
+				'priority' => isset($it['priority']) ? absint($it['priority']) : RevalidateQueue::DEFAULT_PRIORITY,
 			];
 		}
 

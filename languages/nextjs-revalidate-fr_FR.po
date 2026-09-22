@@ -371,6 +371,12 @@ msgstr ""
 msgid "Configure Next.js revalidate"
 msgstr "Configurer Next.js revalidate"
 
+#. translators: %s: number of sites on the network.
+#: include/Settings.php:711
+#, php-format
+msgid "Next.js revalidate cannot migrate the %s sites of this network in a single request, and it does not migrate some of them and leave the rest running new code over old data. Open the admin of each site once instead — a site migrates itself the first time somebody does."
+msgstr ""
+
 #: include/Traits/AdminBarMenu.php:24
 msgctxt "Admin top bar menu"
 msgid "Purge caches"

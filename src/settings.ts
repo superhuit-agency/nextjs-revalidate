@@ -2,7 +2,6 @@ import "./settings.css";
 
 function changeTabs(target: HTMLElement) {
 	const nav = target.parentNode;
-	const form = document.querySelector(".njr-settings__form");
 
 	const newAtiveTabId = target.getAttribute("aria-controls");
 
@@ -14,9 +13,11 @@ function changeTabs(target: HTMLElement) {
 		)
 	);
 
-	// Hide all tab panels except the new active one
-	form
-		.querySelectorAll('[role="tabpanel"]')
+	// Hide all tab panels except the new active one. Queried from the settings
+	// screen rather than from the settings form: the probe panel is a form of
+	// its own, beside that one, because a form cannot be nested in another.
+	document
+		.querySelectorAll('.njr-settings [role="tabpanel"]')
 		.forEach((p) =>
 			p.setAttribute("aria-hidden", p.id !== newAtiveTabId ? "true" : "false")
 		);

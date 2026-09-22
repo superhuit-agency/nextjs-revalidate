@@ -18,8 +18,8 @@ $njr_plugin_dir = dirname( __DIR__, 2 );
 
 $njr_tests_dir = getenv( 'WP_TESTS_DIR' );
 if ( ! $njr_tests_dir ) {
-	echo 'WP_TESTS_DIR is not set. This suite runs inside wp-env\'s tests environment,' . PHP_EOL
-		. 'which sets it: run `npm run test:integration` rather than phpunit directly.' . PHP_EOL;
+	echo 'WP_TESTS_DIR is not set. This suite runs inside wp-env\'s test site, which' . PHP_EOL
+		. 'sets it: run `npm run test:integration` rather than phpunit directly.' . PHP_EOL;
 	exit( 1 );
 }
 $njr_tests_dir = rtrim( $njr_tests_dir, '/\\' );
@@ -48,7 +48,7 @@ tests_add_filter(
 	}
 );
 
-// The Redirection plugin, which `.wp-env.json` installs alongside this one, so
+// The Redirection plugin, which `.wp-env.tests.json` installs alongside this one, so
 // the integration that listens to its redirects can be exercised. Loaded after
 // this plugin, as WordPress would load it, and only if it is there: an
 // integration is supported, never required, and this suite has to be able to
@@ -76,40 +76,45 @@ NextJsRevalidate::init()->queue->create_table();
 // Redirection's tables, for the same reason and in the same place. The test
 // library activates no plugin, so nothing has run Redirection's installer.
 //
-// Its database classes are required by hand because Redirection does not load
-// them on its own: `redirection.php` requires its models at boot and nothing
-// else, autoloading only its `Redirection\ImportExport\` namespace, and the
-// database layer is pulled in later by the admin, api and CLI entry points —
-// none of which this suite loads. Asking `class_exists()` about the installer
-// therefore answers no on a site that is running Redirection, which is a
-// silent no rather than a failure: no tables, and every redirect test failing
-// on a `Red_Group::create()` that returns false.
+// The installer is reached through `get_latest_database()` rather than by
+// naming the latest schema class, because that method is what includes the
+// schema file that class lives in — and it is the name upstream keeps stable
+// across the move under a namespace.
 //
-// The installer itself is reached through `get_latest_database()` rather than
-// by naming the schema class, because that method is what includes the schema
-// file the class lives in — and it is the name upstream keeps stable while it
-// moves its classes under a namespace.
+// Two layouts are supported, because the move happened in a Redirection
+// release rather than in this repo, and a checkout can be pinned to either:
 //
-// That move has already reached the database layer. From Redirection 5.10.0 it
-// lives under `includes/database/` as `Redirection\Database\Database`, which
-// the plugin's own autoloader — covering all of `Redirection\` by then — loads
-// on demand; the files this used to require are gone. Both layouts are asked
-// for rather than one pinned, because the development environment tracks
-// Redirection's latest release (see
-// `docs/adr/0006-redirect-changes-revalidate-the-source-path.md`) and a site
-// can be running either.
+// - **5.5 and later** — `includes/database/`, class
+//   `Redirection\Database\Database`, reached through the plugin's own
+//   autoloader, which now registers the whole `Redirection\` namespace
+//   against `includes/`. Nothing needs requiring by hand.
+// - **Before that** — `database/`, class `Red_Database`, and no autoloading
+//   that reaches it: `redirection.php` required its models at boot and
+//   nothing else, leaving the database layer to the admin, api and CLI entry
+//   points, none of which this suite loads.
+//
+// Asking `class_exists()` about the installer without doing this answers no on
+// a site that *is* running Redirection, and that is a silent no rather than a
+// failure: no tables, and every redirect test failing on a
+// `Red_Group::create()` that returns false. So a Redirection that is present
+// but matches neither layout is a hard failure here, where it names itself.
 if ( isset( $njr_redirection ) && file_exists( $njr_redirection ) ) {
 	$njr_redirection_dir = dirname( $njr_redirection );
 
-	if ( class_exists( 'Redirection\\Database\\Database' ) ) {
+	if ( file_exists( $njr_redirection_dir . '/includes/database/class-database.php' ) ) {
 		$njr_redirection_database = 'Redirection\\Database\\Database';
-	} else {
+	}
+	elseif ( file_exists( $njr_redirection_dir . '/database/database.php' ) ) {
 		require_once $njr_redirection_dir . '/database/database-status.php';
 		require_once $njr_redirection_dir . '/database/database-upgrade.php';
 		require_once $njr_redirection_dir . '/database/database-upgrader.php';
 		require_once $njr_redirection_dir . '/database/database.php';
 
 		$njr_redirection_database = 'Red_Database';
+	}
+	else {
+		echo "integration bootstrap: Redirection is installed at $njr_redirection_dir, but its database layer is at neither `includes/database/` nor `database/`. Its layout has changed again; the redirect tests would otherwise run against tables nothing created.\n";
+		exit( 1 );
 	}
 
 	call_user_func( [ $njr_redirection_database, 'get_latest_database' ] )->install();

@@ -90,3 +90,33 @@ ADR 0010 rejected synchronous delivery for `nextjs_revalidate_purge_url()`
 because it put a front-end round trip in the request that saved a post; that
 reasoning does not reach here, where the round trip *is* what the operator asked
 for.
+
+## As built
+
+Three things the implementation settled that this record did not.
+
+**The probe has its own form, beside the settings form rather than inside it.**
+The settings screen's form posts to `options.php`, and the way to put a button
+into it is the one the queue reset uses: intercept the submit on `admin_init`
+before core saves anything, then redirect. That is exactly wrong here. A probe
+answers about the *saved* settings, so intercepting the settings form's own
+submit would answer about them while silently discarding whatever the operator
+had just typed into the fields — and the operator most likely to press this
+button is one who has been editing the secret. So the panel is a second form on
+the same screen, on a tab of its own, and the settings form is left alone. A
+form cannot be nested in another, which is why the panel is rendered beside it
+rather than through `do_settings_sections()`, and why the tab script now looks
+for panels across the settings screen rather than inside the settings form.
+
+**The answer travels through a redirect.** Post/redirect/get, as every other
+action of this plugin is: a probe rebuilds a real page on a live front-end, and
+a refresh of the answer must not quietly ask for another one. The outcome waits
+for that one request in a per-user transient, consumed by the read that renders
+it. That is not the probe being *recorded*: it expires within the minute,
+nothing computes anything from it, and it is gone once it has been read. The
+failure window exclusion above is about what the plugin reasons from, and
+nothing reasons from this.
+
+**The outcome is an admin notice**, rather than something rendered inside the
+probe panel. It is what every other outcome in this plugin is rendered as, and
+it is legible whichever tab the settings screen happens to open on.

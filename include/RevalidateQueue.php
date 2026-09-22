@@ -17,6 +17,12 @@ class RevalidateQueue extends Base implements Hookable {
 
 	const MAX_NB_RUNNING_CRON = 4;
 
+	/**
+	 * The priority an item is queued at when nobody asked for one. Lower is
+	 * sooner, and `0` is a priority like any other — not an absence of one.
+	 */
+	const DEFAULT_PRIORITY = 10;
+
 	public function register_hooks(): void {
 		add_action( 'admin_init', [$this, 'action_reset_queue'] );
 		add_action( 'admin_init', [$this, 'ajax_queue_progress'] );
@@ -94,6 +100,12 @@ class RevalidateQueue extends Base implements Hookable {
 	/**
 	 * Add a item to the queue
 	 *
+	 * A permalink already waiting in the queue is not queued twice — the entry
+	 * it already has *is* the revalidation, and a second row would only rebuild
+	 * the same path again. Re-submitting one at a more urgent priority
+	 * **promotes** that entry instead of discarding the priority the caller
+	 * asked for; see `promote_item()` for why it can only ever move it earlier.
+	 *
 	 * @param string $permalink
 	 * @param int    $priority   Optional. Used to specify the order in which
 	 *                           the url are purged. Lower numbers correspond
@@ -101,11 +113,12 @@ class RevalidateQueue extends Base implements Hookable {
 	 *                           priority are executed in the order in which
 	 *                           they were added. Default 10.
 	 *
-	 * @return bool|WP_Error Whether the permalink was added to the queue.
+	 * @return bool|WP_Error Whether the queue holds the permalink at the
+	 *                       priority asked for, or at a more urgent one.
 	 *                       A `not_configured` WP_Error when the site is
 	 *                       unconfigured and the revalidation is refused.
 	 */
-	public function add_item( $permalink, $priority = 10 ) {
+	public function add_item( $permalink, $priority = self::DEFAULT_PRIORITY ) {
 		global $wpdb;
 
 		// Refuse rather than accept a revalidation which could never be
@@ -124,23 +137,32 @@ class RevalidateQueue extends Base implements Hookable {
 
 		$table_name = $this->get_table_name();
 
-		$inserted = false;
+		$accepted = false;
 
 		$wpdb->query("START TRANSACTION");
 
+		// The priority the permalink is already queued at, and `null` when it is
+		// not queued at all — which is the question this used to ask with a
+		// `COUNT(*)`. The answer is now needed either way: a re-submission is
+		// only discarded once it is known not to be an escalation.
+		//
 		// Prepared rather than interpolated: a permalink is not this plugin's own
 		// string. It arrives from the REST route, which sanitises with
 		// `sanitize_text_field()` — that leaves a quote intact — and from the
 		// Redirection integration, whose source paths are whatever an editor typed.
 		// A quote in either would break this statement and reach past it. The
 		// insert below was always escaped by `$wpdb->insert()`; this was the one
-		// raw statement in the queue that carried anything but a table name.
-		$already_queued = $wpdb->get_var(
-			$wpdb->prepare( "SELECT COUNT(*) FROM `$table_name` WHERE `permalink` = %s", $permalink )
+		// raw statement in the queue that carried anything but a table name. The
+		// promotion's `UPDATE` carries the permalink too, and is prepared for the
+		// same reason.
+		$queued_priority = $wpdb->get_var(
+			$wpdb->prepare( "SELECT `priority` FROM `$table_name` WHERE `permalink` = %s ORDER BY `priority` ASC LIMIT 1", $permalink )
 		);
 
-		if (intval($already_queued) === 0) {
-			$inserted = $wpdb->insert(
+		// Read for `null` rather than for falsiness: `0` is a priority like any
+		// other, and the most urgent one there is.
+		if (null === $queued_priority) {
+			$accepted = $wpdb->insert(
 				$table_name,
 				[
 					'permalink' => $permalink,
@@ -149,14 +171,77 @@ class RevalidateQueue extends Base implements Hookable {
 			);
 		}
 		else {
-			$inserted = true;
+			$accepted = $this->promote_item( $permalink, intval($priority), intval($queued_priority) );
 		}
 
 		$wpdb->query("COMMIT");
 
 		$this->schedule_next_cron();
 
-		return $inserted;
+		return $accepted;
+	}
+
+	/**
+	 * Move a permalink the queue already holds to a more urgent priority.
+	 *
+	 * Priority is what orders the drain, so a caller re-submitting a permalink
+	 * at a lower number is asking it to jump the queue. Deduplication used to
+	 * answer that with the entry it already had, at the priority it was first
+	 * queued at, and report success — the queue was then not in the state the
+	 * caller had been told it was in.
+	 *
+	 * It promotes and never demotes. The minimum of the two priorities is what
+	 * the caller most plausibly expects, and it is the only rule under which a
+	 * second, less urgent caller — an editor saving a post already escalated by
+	 * an external system — cannot slow down work something else deemed urgent.
+	 *
+	 * The entry keeps its `id`, so insertion order still decides between entries
+	 * sitting at the same priority: a promoted entry drains ahead of everything
+	 * queued after it, and behind what was already waiting there. Nothing
+	 * re-queues it at the back of its new priority, which would move it behind
+	 * work it predates.
+	 *
+	 * @param string $permalink       A permalink the queue holds.
+	 * @param int    $priority        The priority the caller asked for.
+	 * @param int    $queued_priority The priority the entry is queued at.
+	 *
+	 * @return bool Whether the queue holds the permalink at the priority asked
+	 *              for, or at a more urgent one.
+	 */
+	private function promote_item( $permalink, $priority, $queued_priority ) {
+		global $wpdb;
+
+		// Nothing to do, and nothing failed: the entry is already draining at
+		// least as soon as the caller asked for.
+		if ( $priority >= $queued_priority ) return true;
+
+		$table_name = $this->get_table_name();
+
+		// The comparison is repeated in the `WHERE` rather than left to the read
+		// above: two callers escalating the same permalink at once would
+		// otherwise be able to write the less urgent of the two priorities last.
+		$promoted = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `$table_name` SET `priority` = %d WHERE `permalink` = %s AND `priority` > %d",
+				$priority,
+				$permalink,
+				$priority
+			)
+		);
+
+		if ( false === $promoted ) return false;
+
+		// Matching no row is not a failure: another caller promoted the entry to
+		// at least this priority between the read and the write, which is the
+		// state this asked for. Nothing moved, so nothing is logged.
+		if ( $promoted > 0 ) {
+			Logger::log(
+				sprintf( '🔼 Promoted %s from priority %d to %d', $permalink, $queued_priority, $priority ),
+				__FILE__
+			);
+		}
+
+		return true;
 	}
 
 	/**

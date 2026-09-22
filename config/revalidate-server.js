@@ -19,6 +19,21 @@ app.get('/revalidate', (req, res) => {
 	}
 });
 
+// The FSE endpoint, at the path the plugin composes when the setting is left
+// empty — so a seeded site reaches it without configuring anything. It takes no
+// `path`: an FSE change invalidates the whole template snapshot, and the pages
+// holding it rebuild lazily. A real Next.js app invalidates a cache tag here.
+app.get('/api/revalidate-fse', (req, res) => {
+	const secret = req.query.secret;
+
+	if (secret !== 'my-super-secret') {
+		res.status(401).json({ message: 'Invalid token' });
+	} else {
+		console.log(`= Invalidating: ${startGreen}the FSE snapshot${endGreen}`);
+		res.status(200).json({ revalidated: true });
+	}
+});
+
 app.listen(port, () => {
 	console.log(`Revalidate dev server is running on port ${port}`);
 });

@@ -18,10 +18,32 @@ The revalidation request is sent to an endpoint composed from the settings — t
 | Revalidate path | no | `/api/revalidate` |
 | FSE revalidate path | no | `/api/revalidate-fse` |
 | Revalidate secret | yes | — |
+| Revalidate on FSE update | no | on for a new install, off for an upgrade |
 
 A standard install fills in the domain and the secret. The paths exist for apps
 that route these endpoints somewhere else; each falls back to the default shown
 in its placeholder when left empty.
+
+### FSE templates
+
+Next.js renders its pages inside WordPress FSE templates, and holds the whole
+template structure as one cached value. Saving a template or a template part in
+the site editor, resetting one to its theme default, or switching themes
+therefore changes every page at once — so the plugin sends **one** request to the
+FSE endpoint, with the secret and no path, and the front-end's pages rebuild
+lazily from there. Nothing is enqueued and nothing is rebuilt page by page.
+
+```
+https://example.com/api/revalidate-fse?secret=my-super-secret-string
+```
+
+Menu changes do **not** trigger this: menu items are fetched at request time by
+the front-end and are not part of the template snapshot.
+
+**Revalidate on FSE update** starts on for a new install and **off for a site
+upgrading from an earlier release** — an existing front-end may not serve that
+endpoint yet, and every template save would otherwise ask it for a route it does
+not have. Switch it on once the front-end is serving it.
 
 Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
 split into a domain and a path automatically on the first admin request after the
@@ -33,6 +55,19 @@ https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-str
 ```
 
 > Based on the Next.js [On-demand revalidation](https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration#on-demand-revalidation) documentation
+
+### Probing the front-end
+
+The **Probe** tab of the settings screen asks the front-end to rebuild one path
+straight away, and shows what it answered — including the error message and its
+code when it did not work. It is a real revalidation and not a dry run: the page
+is rebuilt exactly as it would be after an edit, using the *saved* settings, so
+it answers "does this site revalidate right now" rather than "would these values
+work".
+
+A probe is never counted towards the "not keeping this site up to date" warning:
+pressing it can neither raise that warning nor clear it. It is written to the log
+file when logging is on, marked `🔎 Probe`.
 
 ## Requirements
 
@@ -74,8 +109,11 @@ nextjs_revalidate_purge_url( $url );
 `bool` — whether the revalidation was accepted into the queue. It is `false`
 when the site is unconfigured, which is a **refusal**: the revalidate domain or
 the secret is missing, nothing has been queued, and nothing will be. It is also
-`false` if the queue insert failed. A URL already waiting in the queue is
-accepted (`true`) without being queued twice.
+`false` if the queue write failed — the insert, or the promotion of an entry
+already waiting. A URL already waiting in the queue is
+accepted (`true`) without being queued twice; calling again with a lower
+priority number moves the entry it already has to that priority, and a higher
+one leaves it where it is.
 
 It is never a statement about the front-end. A `true` says the plugin will try.
 
@@ -114,6 +152,26 @@ revalidated, whatever their status.
 
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
+
+## Which terms are revalidated
+
+Revalidate all also enqueues the archive page of every term of every taxonomy
+registered for the post types it covers — provided the taxonomy is viewable,
+which is WordPress's own `publicly_queryable` test, via
+[`is_taxonomy_viewable()`](https://developer.wordpress.org/reference/functions/is_taxonomy_viewable/).
+The question is asked once per taxonomy rather than once per term: a term has no
+status and no viewability of its own.
+
+Note that for a taxonomy `publicly_queryable` is that setting and nothing else,
+with none of the `public` fallback the post type test applies — so a taxonomy
+registered `public => true, publicly_queryable => false` has no term revalidated,
+and one registered the other way round has all of them. A headless site can say
+otherwise with the filter below, which is consulted for every registered
+taxonomy and can admit one WordPress would never route.
+
+Nothing else revalidates a term: this plugin does not react to a term being
+created, edited or deleted, so a term archive goes stale until somebody
+revalidates all.
 
 ## Integrations
 
@@ -308,6 +366,28 @@ add_filter( 'nextjs_revalidate_purge_should_revalidate_post_on_save', function( 
 | should_revalidate | bool | Whether the post is revalidated |
 | post_id | int | The post ID |
 
+### nextjs_revalidate_should_revalidate_taxonomy
+
+Filters whether the archive pages of the given taxonomy's terms are revalidated.
+Applied last, and consulted for every registered taxonomy, so it can admit a
+taxonomy that is not `publicly_queryable` as readily as decline one that is.
+
+#### Usage
+```php
+add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_revalidate, $taxonomy_name, $taxonomy ) {
+	if ( 'my-headless-taxonomy' === $taxonomy_name ) return true;
+	return $should_revalidate;
+}, 10, 3 );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| should_revalidate | bool | Whether the taxonomy's terms are revalidated |
+| taxonomy_name | string | The taxonomy name |
+| taxonomy | WP_Taxonomy\|false | The taxonomy, or false when none is registered under that name |
+
 ### nextjs_revalidate_purge_action_permalink
 
 Filters the permalink added to the purge queue by the "Purge cache" row and bulk
@@ -348,17 +428,27 @@ composer install
 npm run test:integration
 ```
 
-wp-env installs the Redirection plugin alongside this one, in both environments,
-so the redirect integration can be exercised without assembling an install by
-hand. The suite's bootstrap loads it and creates its tables when it is there, and
-skips the tests that need it when it is not.
+wp-env installs the Redirection plugin alongside this one, on the development
+site and on the test site, so the redirect integration can be exercised without
+assembling an install by hand. The suite's bootstrap loads it and creates its
+tables when it is there, and skips the tests that need it when it is not. The two
+sites are two config files, `.wp-env.json` and `.wp-env.tests.json`, and wp-env
+has no way for one to extend the other: a plugin added to one has to be added to
+both.
 
 The command starts wp-env itself — `wp-env start` is idempotent, so running it
-again costs seconds. It runs with `--no-scripts` and against the **tests**
-environment, so the development site keeps its database and its settings;
-wp-env does bring the development containers up alongside the tests ones, which
-means port 8080 has to be free. Docker must be running. The first run downloads
-WordPress and its PHPUnit test library and takes a few minutes.
+again costs seconds. It runs against a site of its own, described by
+`.wp-env.tests.json` and served on port 8888: wp-env gives each config file its
+own containers and database, so the development site keeps its data and its
+settings, and does not have to be running. Docker must be running. The first run
+downloads WordPress and its PHPUnit test library and takes a few minutes.
+
+To reach that site by hand, pass the same file:
+`npx wp-env run --config=.wp-env.tests.json cli wp option list`. It reads
+`.wp-env.tests.override.json`, never `.wp-env.override.json`, so an override
+made for the development site — the multisite one of the extended pass — does
+not change what the suite runs against. Nor does `npm run stop` stop it: the test
+site stays up after a run until `npx wp-env stop --config=.wp-env.tests.json`.
 
 Write a test by extending `NextJsRevalidate\Tests\QueueTestCase`, which
 configures the site, enqueues paths and reads the queue back:
@@ -375,7 +465,7 @@ $this->assertQueueHolds( [ home_url( '/hello-world/' ) ] ); // the permalinks
 The queue **holds permalinks**, and those permalinks **revalidate paths** — the
 two are kept apart because on a network they can disagree. `assertQueueHolds()`
 takes permalinks; `assertQueueRevalidates()` takes paths and normalises against
-the site's home url, so a test survives a change of `testsPort`.
+the site's home url, so a test survives a change of the test site's port.
 
 The queue table is created once in the bootstrap and emptied around every test.
 It has to be: `RevalidateQueue::add_item()` runs its own transaction, whose

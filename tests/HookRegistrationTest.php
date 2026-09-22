@@ -6,7 +6,7 @@
  * Two things are asserted, and they are the two halves of ADR-0003:
  *
  *  1. **Constructing a Hookable touches no global state.** Every one of the
- *     nine classes is constructed with the recorder watching, and the recorder
+ *     ten classes is constructed with the recorder watching, and the recorder
  *     stays empty. This is the property the whole convention exists for: an
  *     instance can be obtained for a single method call without paying for the
  *     hooks.
@@ -103,21 +103,26 @@ require_once __DIR__ . '/../include/Abstracts/Base.php';
 require_once __DIR__ . '/../include/Traits/AdminBarMenu.php';
 require_once __DIR__ . '/../include/Traits/SendbackUrl.php';
 require_once __DIR__ . '/../include/Traits/BlockEditorScreen.php';
+require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
 require_once __DIR__ . '/../include/I18n.php';
 require_once __DIR__ . '/../include/Assets.php';
 require_once __DIR__ . '/../include/Settings.php';
 require_once __DIR__ . '/../include/FailureWindow.php';
 require_once __DIR__ . '/../include/Revalidate.php';
+require_once __DIR__ . '/../include/Probe.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
+require_once __DIR__ . '/../include/FseSnapshot.php';
 require_once __DIR__ . '/../include/RevalidateQueue.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\Assets;
 use NextJsRevalidate\Cron\ScheduledPurges;
 use NextJsRevalidate\FailureWindow;
+use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\Probe;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\RevalidateAll;
@@ -147,10 +152,13 @@ $expected_per_class = [
 	],
 
 	Settings::class => [
-		[ 'admin_menu',    'add_page',            10, 1 ],
-		[ 'admin_init',    'register_fields',     10, 1 ],
-		[ 'admin_init',    'migrate_db',          10, 1 ],
-		[ 'admin_notices', 'unconfigured_notice', 10, 1 ],
+		[ 'admin_menu',             'add_page',              10, 1 ],
+		[ 'admin_init',             'register_fields',       10, 1 ],
+		[ 'admin_init',             'migrate_db',            10, 1 ],
+		[ 'admin_init',             'sweep_migrations',      10, 1 ],
+		[ 'admin_notices',          'unconfigured_notice',   10, 1 ],
+		[ 'admin_notices',          'sweep_declined_notice', 10, 1 ],
+		[ 'network_admin_notices',  'sweep_declined_notice', 10, 1 ],
 	],
 
 	FailureWindow::class => [
@@ -169,6 +177,11 @@ $expected_per_class = [
 		[ 'admin_notices',        'purged_notice',                   10, 1 ],
 	],
 
+	Probe::class => [
+		[ 'admin_init',    'probe_action', 10, 1 ],
+		[ 'admin_notices', 'probe_notice', 10, 1 ],
+	],
+
 	ScheduledPurges::class => [
 		[ ScheduledPurges::CRON_HOOK_NAME, 'run_cron_hook', 10, 1 ],
 	],
@@ -178,6 +191,13 @@ $expected_per_class = [
 		[ 'admin_notices',       'revalidated_notice',                 10, 1 ],
 		[ 'admin_init',          'revalidate_all_pages_action',        10, 1 ],
 		[ 'wp_update_nav_menu',  'revalidate_all_after_menu_update',   10, 1 ],
+	],
+
+	FseSnapshot::class => [
+		[ 'save_post_wp_template',      'on_template_save', 10, 1 ],
+		[ 'save_post_wp_template_part', 'on_template_save', 10, 1 ],
+		[ 'deleted_post',               'on_post_delete',   10, 2 ],
+		[ 'switch_theme',               'on_theme_switch',  10, 1 ],
 	],
 
 	RevalidateQueue::class => [

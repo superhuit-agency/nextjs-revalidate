@@ -41,7 +41,10 @@ carried when it was first analysed. That file is a to-do list, not settings: add
 nothing to it. A finding your change introduces is yours to fix. If you *fix* one
 that is already in there, the gate says the pattern no longer matches — regenerate
 the file with
-`vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`.
+`vendor/bin/phpstan analyse --memory-limit=-1 --generate-baseline phpstan-baseline.neon`.
+The limit is not optional: that run re-parses 5.3 MB of WordPress stubs, and on a
+default `php.ini` it fatals in a worker instead of writing a baseline (#96,
+ADR 0020).
 
 It does **not** run the asset build, and it has no tests to run. Nothing here
 checks that what you wrote works.

@@ -143,6 +143,7 @@ require_once __DIR__ . '/../include/Abstracts/Base.php';
 require_once __DIR__ . '/../include/Traits/AdminBarMenu.php';
 require_once __DIR__ . '/../include/Traits/SendbackUrl.php';
 require_once __DIR__ . '/../include/Traits/BlockEditorScreen.php';
+require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
 require_once __DIR__ . '/../include/Revalidate.php';
 
 // The harness
@@ -226,6 +227,17 @@ njr_test_assert( 'unreachable' === njr_test_code( $outcome ), 'a transport error
 njr_test_assert(
 	false !== strpos( $outcome->get_error_message(), 'cURL error 28' ),
 	'the transport keeps its say in the message'
+);
+
+// …and what it says goes into a log file in wp-content/uploads, so the secret
+// every request carries is taken back out of it first. The rule itself, and the
+// shapes it covers, are `tests/transport-redaction-test.php`; this pins that a
+// real purge reading a real setting goes through it at all.
+// See `docs/adr/0023-the-transport-redacts-the-secret.md`.
+$outcome = njr_test_purge( $configured, new WP_Error( 'http_request_failed', 'Failed to open stream: https://front-end.test/api/revalidate?path=%2F&secret=s3cret' ) );
+njr_test_assert(
+	false === strpos( $outcome->get_error_message(), 's3cret' ),
+	'a transport message quoting the request URL does not carry the secret out of purge()'
 );
 
 // The front-end answered, and refused. The status is in the code because 401
