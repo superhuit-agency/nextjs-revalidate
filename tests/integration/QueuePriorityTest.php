@@ -40,7 +40,10 @@ class QueuePriorityTest extends QueueTestCase {
 			'Before the escalation, the path sits behind the work queued more urgently than it.'
 		);
 
-		$this->assertNotWPError( $this->enqueue( '/needed-fresh-now/', 1 ) );
+		$this->assertTrue(
+			$this->enqueue( '/needed-fresh-now/', 1 ),
+			'The promotion reports success.'
+		);
 
 		$this->assertQueueRevalidates(
 			[ '/needed-fresh-now/', '/bulk-work/' ],
@@ -68,7 +71,10 @@ class QueuePriorityTest extends QueueTestCase {
 
 		$this->enqueue( '/most-urgent/', 10 );
 
-		$this->assertNotWPError( $this->enqueue( '/most-urgent/', 0 ) );
+		$this->assertTrue(
+			$this->enqueue( '/most-urgent/', 0 ),
+			'The promotion reports success.'
+		);
 
 		$this->assertQueueRevalidatesAtPriorities(
 			[ '/most-urgent/' => 0 ],
@@ -90,9 +96,10 @@ class QueuePriorityTest extends QueueTestCase {
 
 		$this->enqueue( '/escalated/', 1 );
 
-		$this->assertNotWPError(
+		$this->assertTrue(
 			$this->enqueue( '/escalated/', 20 ),
-			'The permalink is queued afterwards, which is what an acceptance means — see ADR 0010.'
+			'The permalink is queued afterwards, which is what an acceptance means — see ADR 0010. '
+			. 'Declining to demote is not a failure, so the answer is truthy.'
 		);
 
 		$this->assertQueueRevalidates( [ '/escalated/' ] );
@@ -106,13 +113,25 @@ class QueuePriorityTest extends QueueTestCase {
 	/**
 	 * Re-submitting at the priority the entry already sits at changes nothing
 	 * and queues nothing — the dedup case as it always behaved.
+	 *
+	 * The return is asserted for truth rather than merely for not being a
+	 * `WP_Error`, and directly on `add_item()` rather than through the route,
+	 * because the regression it guards against is a falsy *success*. A dedup
+	 * branch answering with the affected-row count would return `0` here — the
+	 * `UPDATE` matches nothing when the new priority equals the old — and #93
+	 * reads any falsy answer as `success: false`. That reports failure for the
+	 * idempotent case: the second identical request a retrying deploy hook
+	 * sends. See ADR 0021.
 	 */
 	public function test_re_submitting_at_the_same_priority_changes_nothing() {
 		$this->configure_site();
 
 		$this->enqueue( '/queued-twice/', 5 );
 
-		$this->assertNotWPError( $this->enqueue( '/queued-twice/', 5 ) );
+		$this->assertTrue(
+			$this->enqueue( '/queued-twice/', 5 ),
+			'The idempotent re-submission reports success, not a falsy affected-row count.'
+		);
 
 		$this->assertQueueRevalidates( [ '/queued-twice/' ], 'The permalink is held once, not twice.' );
 
