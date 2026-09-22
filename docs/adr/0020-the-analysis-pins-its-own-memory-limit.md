@@ -54,15 +54,23 @@ developer who got one successful run in never sees it again and has no reason to
 believe the report. `vendor/bin/phpstan clear-result-cache` in front of the run
 is what makes it deterministic; anyone reproducing this must do that first.
 
-CI never went red on it: `shivammathur/setup-php` writes `memory_limit=-1` into
-the ini it installs. That could not be confirmed from inside the implementation
-sandbox, which has no network — but it is consistent with what is on the record
-here, a local 7.4 run hitting the limit where the runner's ini does not
-([ADR 0009](0009-checks-run-on-pull-requests.md), noting the same exhaustion
-against the baseline-regeneration command as #82). Either way the pin settles
-it, because the gate now names its own ceiling instead of asking the host: the
-number is the same on a runner, in the harness sandbox and on a laptop, which is
-the agreement [ADR 0009](0009-checks-run-on-pull-requests.md) exists to hold.
+CI never went red on it, and this is read off the action rather than inferred:
+`shivammathur/setup-php` ships `src/configs/ini/php.ini`, the ini it installs,
+and the whole file is two lines — `date.timezone=UTC` and `memory_limit=-1`.
+That is its content on `main` and on the `v2` tag `.github/workflows/ci.yml`
+pins, so the runner has never had a ceiling to hit. (#96 and
+[ADR 0009](0009-checks-run-on-pull-requests.md) both carried this as a
+suspicion, ADR 0009 in the parenthetical under its baseline-regeneration
+snippet. It is now confirmed, and that parenthetical can be read as fact.)
+
+So the gap was real and it was the expensive kind: the gate's verdict depended
+on an ini nobody had declared, which is why the same tree analysed clean on a
+runner and fatally on a laptop. [ADR 0009](0009-checks-run-on-pull-requests.md)
+asks that "a green CI run means exactly what a green local run means, and no
+more" — an undeclared host setting is precisely what breaks that, and the pin is
+what restores it. The number is now the same on a runner, in the harness sandbox
+and on a laptop because the gate names it, not because three hosts happen to
+agree.
 
 ## 2G
 
@@ -118,18 +126,31 @@ anyone bisecting a runaway or pinning down a new peak.
 
 **`tests/analyse-memory-limit-test.php` holds the flag.** It reads
 `package.json` and fails if `analyse:php` drops `--memory-limit`, sets it to
-`-1`, or sets it under 1G. A standalone script per
+`-1`, or sets it under the 2G pinned here. It holds the decision rather than the
+896M measurement on purpose: a test that passed at 1G would wave through exactly
+the just-clears-today's-parse number this ADR argues against. Where the flag
+appears more than once it reads the last, matching PHPStan's own precedence and
+the override above. A standalone script per
 [ADR 0008](0008-two-testing-idioms.md), so it runs in the gate. The reason it is
 worth a test at all is the result cache: dropping the flag is invisible to
 whoever does it and fatals for whoever next analyses a cold tree.
 
 **The baseline regeneration carries a limit too, and a different one.**
-`phpstan.neon`'s own instructions for regenerating `phpstan-baseline.neon` named
-the command without one, so the run the gate sends you to when it goes red hit
-#96 exactly as the gate did — it re-parses the same stubs. It now reads
-`--memory-limit=-1`, matching the sequence in
-[ADR 0009](0009-checks-run-on-pull-requests.md): by hand, once, and the point is
-to finish. The ceiling is the standing gate's job, not that run's.
+Regenerating `phpstan-baseline.neon` re-parses the same stubs, so the run the
+gate sends you to when it goes red hit #96 exactly as the gate did. The command
+is written out in three places and none of them named a limit; all three now
+read `--memory-limit=-1` — `phpstan.neon`'s own instructions,
+[ADR 0016](0016-php-compatibility-gate.md), and `.sandcastle/prompts/implement.md`,
+which is the one an unattended agent reads when the gate goes red over a stale
+baseline and therefore the one where the fatal had nobody to interpret it.
+[ADR 0009](0009-checks-run-on-pull-requests.md)'s sequence already carried the
+flag and is what the other three now match: by hand, once, and the point is to
+finish. The ceiling is the standing gate's job, not that run's.
+
+That the command is spelled out in four places at all is the standing risk here
+— this fix had to touch three of them — but they are four different audiences
+(the config, two ADRs and the harness prompt) and none is a place the others
+could link to without losing the explanation around it.
 
 **Nothing else in the gate takes a memory limit.** `npm run lint:php` parses one
 file at a time and `npm run test:php` boots no framework; both are comfortable
