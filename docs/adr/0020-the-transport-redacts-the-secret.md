@@ -80,3 +80,14 @@ A structural test pins the seam, on the model of `tests/psr4-autoload-test.php`:
 a new transport call site that carries a transport or exception message into a
 `WP_Error` without redacting it fails the gate rather than shipping. Without it
 this decision survives only as long as everybody has read this file.
+
+That test is `tests/transport-redaction-test.php`, and it holds both halves of
+this record. The behaviour — including the cases the redaction is allowed to be
+clumsy about — is driven through a bare class using the trait, because the whole
+claim is that a caller cannot opt out. The seam is a token scan over `include/`
+for every `new WP_Error(...)` whose message argument mentions
+`get_error_message()` or `getMessage()`, each of which must also mention
+`redact_secret()`. `purge-outcome-test.php` and `FseSnapshotTest.php` each pin
+one end-to-end trip through a real caller reading a real setting, which is what
+would catch the redaction going through a `settings` the trait's own fixture
+supplies and no real class does.
