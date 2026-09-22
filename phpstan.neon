@@ -22,13 +22,14 @@
 # `npm run analyse:php` passes `--memory-limit=2G` rather than inheriting
 # `php.ini`. The stubs below are one 5.3 MB file, and holding its syntax tree
 # peaks a parallel worker somewhere between 832M and 896M — so on PHP's default
-# 128M the analysis does not report findings, it fatals in a worker with a stack
-# trace that never mentions memory (#96). It only reproduces on a cold result
-# cache, which is why it went unnoticed: `vendor/bin/phpstan
-# clear-result-cache` is what makes it deterministic. Pinning the number is also
-# what makes this gate's verdict independent of the ini it runs under — a CI
-# runner's and a developer's disagreed until it did. ADR 0020; override it for
-# one run with `npm run analyse:php -- --memory-limit=…`.
+# 128M the analysis does not report findings at all: it dies in a worker, and
+# what comes back is a crash notice naming the limit, or a bare exit code that
+# mentions no such thing (#96). It only reproduces on a cold result cache, which
+# is why it went unnoticed: `vendor/bin/phpstan clear-result-cache` is what
+# makes it deterministic. Pinning the number is also what makes this gate's
+# verdict independent of the ini it runs under — a CI runner's and a
+# developer's disagreed until it did. ADR 0020; override it for one run with
+# `npm run analyse:php -- --memory-limit=…`.
 
 includes:
 	# WordPress core's functions, classes, constants and hooks, as stubs. Without

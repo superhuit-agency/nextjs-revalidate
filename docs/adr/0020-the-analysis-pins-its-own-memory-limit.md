@@ -17,11 +17,11 @@ Child process error (exit code 255): PHP Fatal error: Allowed memory size of
 That is a fatal in a parallel worker, not a verdict about the code. Someone who
 hits it while checking their own change has every reason to read it as damage
 they did, and what it says about the memory limit — when the worker's output
-surfaces at all; in the harness sandbox it did not, leaving only
-`Child process error (exit code 255)` — is buried in a stack trace from inside a
-PHAR. A gate that `phpstan.neon` explains at this length
-([ADR 0016](0016-php-compatibility-gate.md)) cannot also be one that fatals on a
-default PHP install.
+surfaces at all; at some limits it does not, leaving only
+`Child process error (exit code 255)` and no mention of memory anywhere — is
+buried in a stack trace from inside a PHAR. A gate that `phpstan.neon` explains
+at this length ([ADR 0016](0016-php-compatibility-gate.md)) cannot also be one
+that fatals on a default PHP install.
 
 ## What it actually costs, and why nobody saw it
 
@@ -32,13 +32,21 @@ against `wordpress-stubs` v6.9.4, cold cache, this tree:
 
 | `memory_limit` | Result |
 | --- | --- |
-| 128M, 160M | fatal in a worker; the report is an exit code, not a diagnosis |
-| 192M – 832M | `PHPStan process crashed because it reached configured PHP memory limit` |
+| 128M – 832M | the analysis does not complete: `PHPStan process crashed because it reached configured PHP memory limit`, or — at some limits — a bare `Child process error (exit code 255)` with the worker's fatal lost |
 | 896M and up | `[OK] No errors` |
 
-Below ~192M PHPStan does not get its own diagnosis out — reporting the crash
-costs memory too — which is why the default is the one limit that produces the
-least legible failure of any.
+Which of those two failures a given limit produces is not fixed, and knowing
+that is what stops the next person re-measuring and concluding the report was
+wrong. #96 was reported against 128M producing the raw `Allowed memory size …
+exhausted` above; re-measured here on eight workers, 128M names the limit
+legibly three runs out of three and it is **160M** that dies as a bare exit code
+with nothing about memory in the output at all. Reporting a crash costs memory
+too, so near the bottom of the range PHPStan's own diagnosis is what runs out of
+room — and where that line falls depends on the host as much as on the number.
+
+The distinction changes nothing about the decision. Every limit below 896M fails
+to analyse this tree, and some of them fail illegibly; the floor is the floor
+either way.
 
 It went unnoticed because of the result cache. Once a run completes, later runs
 read `/tmp/phpstan` instead of re-parsing and pass on 128M happily, so a

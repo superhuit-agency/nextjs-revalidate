@@ -4,11 +4,11 @@
  *
  * #96: the script used to inherit whatever the developer's `php.ini` said, and
  * on a stock 128M it does not report findings — it dies in a parallel worker
- * parsing the WordPress stubs, with a stack trace that never says "memory".
- * The reason it survived so long is the result cache: once one run has
- * completed, every later run reads the cache instead of re-parsing and passes
- * on 128M, so the failure only reproduces behind `vendor/bin/phpstan
- * clear-result-cache`. A regression here is invisible to whoever introduces it
+ * parsing the WordPress stubs, and what comes back is a crash notice or a bare
+ * exit code rather than a verdict about the code. The reason it survived so
+ * long is the result cache: once one run has completed, every later run reads
+ * the cache instead of re-parsing and passes on 128M, so the failure only
+ * reproduces behind `vendor/bin/phpstan clear-result-cache`. A regression here is invisible to whoever introduces it
  * and lands on whoever next analyses a cold tree. That is what this holds.
  *
  * It asserts the flag is there and that the number is a finite one with room
