@@ -1,14 +1,14 @@
 <?php
 /**
- * Revalidate all enqueues the archive of a revalidatable term — issue #54.
+ * Revalidate all enqueues the archives of a revalidatable taxonomy — issue #54.
  *
  * The seam is the revalidation queue's contents: each test registers a taxonomy
  * whose `public` and `publicly_queryable` say different things, gives it a term,
  * runs revalidate all, and asserts whether that term's archive is in the queue.
- * The selector and the gate are both pinned by
- * `tests/revalidatable-term-test.php`, which needs no WordPress; what only this
- * suite can see is that a real `get_term_link()` reaches the queue, and that a
- * term core would not route reaches nothing.
+ * The gate and the selector are both pinned by
+ * `tests/revalidatable-taxonomy-test.php`, which needs no WordPress; what only
+ * this suite can see is that a real `get_term_link()` reaches the queue, and
+ * that a term of a taxonomy core would not route reaches nothing.
  *
  * Assertions are on the presence of one permalink rather than on the whole
  * queue: revalidate all also enqueues every published post of the type, and
@@ -90,24 +90,32 @@ class RevalidateAllTermsTest extends QueueTestCase {
 	// ====
 
 	/**
-	 * The gate is asked per term, so the filter can keep one archive out of a
-	 * purge all without the taxonomy having to lie about being queryable.
+	 * The gate is asked about every registered taxonomy, so the filter can keep
+	 * a whole taxonomy's archives out of a purge all.
 	 */
-	public function test_the_filter_declines_a_term_of_a_viewable_taxonomy() {
-		$term_id = $this->term_of( 'njr_filtered', [ 'public' => true ] );
+	public function test_the_filter_declines_a_viewable_taxonomy() {
+		$term_id = $this->term_of( 'njr_filtered_out', [ 'public' => true ] );
 
-		$declined = function( $should_revalidate, $term ) use ( $term_id ) {
-			// The gate takes a term or its id, and revalidate all gives it an id.
-			$id = is_object( $term ) ? $term->term_id : (int) $term;
-
-			return ( $id === $term_id ? false : $should_revalidate );
-		};
-
-		add_filter( 'nextjs_revalidate_should_revalidate_term', $declined, 10, 2 );
-		$this->revalidate_all_posts();
-		remove_filter( 'nextjs_revalidate_should_revalidate_term', $declined, 10 );
+		$this->with_verdict( 'njr_filtered_out', false, function() {
+			$this->revalidate_all_posts();
+		});
 
 		$this->assertNotContains( get_term_link( $term_id ), $this->queue_permalinks() );
+	}
+
+	/**
+	 * And can admit one WordPress would never route — the headless case the
+	 * hatch exists for, and the one a `public`-shaped pre-selector would defeat
+	 * silently. See ADR 0022.
+	 */
+	public function test_the_filter_admits_a_taxonomy_that_is_not_viewable() {
+		$term_id = $this->term_of( 'njr_filtered_in', [ 'public' => false, 'publicly_queryable' => false ] );
+
+		$this->with_verdict( 'njr_filtered_in', true, function() {
+			$this->revalidate_all_posts();
+		});
+
+		$this->assertContains( get_term_link( $term_id ), $this->queue_permalinks() );
 	}
 
 	// Fixtures
@@ -126,6 +134,26 @@ class RevalidateAllTermsTest extends QueueTestCase {
 		$this->registered[] = $taxonomy;
 
 		return $this->factory()->term->create( [ 'taxonomy' => $taxonomy ] );
+	}
+
+	/**
+	 * Run $during with the gate forced to $verdict for one taxonomy, and the
+	 * filter removed again afterwards.
+	 *
+	 * @param string   $taxonomy The taxonomy to force a verdict for.
+	 * @param bool     $verdict  The verdict to force.
+	 * @param callable $during   What to run while it is forced.
+	 *
+	 * @return void
+	 */
+	private function with_verdict( $taxonomy, $verdict, callable $during ) {
+		$forced = function( $should_revalidate, $taxonomy_name ) use ( $taxonomy, $verdict ) {
+			return ( $taxonomy_name === $taxonomy ? $verdict : $should_revalidate );
+		};
+
+		add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', $forced, 10, 2 );
+		$during();
+		remove_filter( 'nextjs_revalidate_should_revalidate_taxonomy', $forced, 10 );
 	}
 
 	/**

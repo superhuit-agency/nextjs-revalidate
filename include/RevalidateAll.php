@@ -8,6 +8,9 @@ use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
+/**
+ * @property Revalidate $revalidate
+ */
 class RevalidateAll extends Base implements Hookable {
 	use AdminBarMenu;
 	use SendbackUrl;
@@ -158,10 +161,6 @@ class RevalidateAll extends Base implements Hookable {
 			return false;
 		}
 
-		// Both loops below ask the same object for the permalink of what they
-		// enumerate.
-		$revalidate = $this->revalidate;
-
 		$count = 0;
 		if ( $type === 'all' ) {
 			// retrieve all public post types except attachments
@@ -180,7 +179,7 @@ class RevalidateAll extends Base implements Hookable {
 			]);
 
 			foreach ($posts as $post_id) {
-				$permalink = $revalidate->get_post_permalink( $post_id );
+				$permalink = $this->revalidate->get_post_permalink( $post_id );
 
 				// A post that is not revalidatable yields no permalink, and no queue item.
 				if ( empty($permalink) ) continue;
@@ -197,15 +196,8 @@ class RevalidateAll extends Base implements Hookable {
 				'fields'     => 'ids',
 			]);
 
-			if ( is_wp_error( $terms ) ) continue;
-
 			foreach ($terms as $term_id) {
-				$permalink = $revalidate->get_term_permalink( $term_id );
-
-				// A term that is not revalidatable yields no permalink, and no queue item.
-				if ( empty($permalink) ) continue;
-
-				$this->queue->add_item( $permalink );
+				$this->queue->add_item( get_term_link( $term_id ) );
 				$count++;
 			}
 		}
@@ -216,17 +208,22 @@ class RevalidateAll extends Base implements Hookable {
 	/**
 	 * The taxonomies whose terms revalidate-all enumerates.
 	 *
-	 * Selected by viewability — WordPress's own `publicly_queryable` test, via
-	 * `is_taxonomy_viewable()` — rather than by `public`, which the two settings
-	 * can disagree on completely. A `public` taxonomy that is not
-	 * `publicly_queryable` had every one of its terms enqueued, ungated; a
-	 * `publicly_queryable` one that is not `public` was missed entirely, archive
-	 * page and all, with nothing enqueued and nothing logged to say so.
+	 * Every registered taxonomy is offered to the gate, and the gate alone
+	 * decides. Pre-selecting by `public` — which is what this did before #54 —
+	 * put a second, unfilterable authority in front of a filterable one: a site
+	 * could hook `nextjs_revalidate_should_revalidate_taxonomy` to admit its
+	 * headless taxonomy and still get nothing, with no way to see why. That is
+	 * worse than no gate, and it is the shape ADR 0005 dismantled on the post
+	 * side.
 	 *
-	 * Each term selected here is still asked the gate — `Revalidate::should_revalidate_term()`
-	 * — which is where the site gets its last word.
+	 * `public` and `publicly_queryable` are independent settings, so the old
+	 * selector disagreed with viewability in both directions: a `public`
+	 * taxonomy that is not `publicly_queryable` had every one of its terms
+	 * enqueued, ungated; a `publicly_queryable` one that is not `public` was
+	 * missed entirely, archive page and all, with nothing enqueued and nothing
+	 * logged to say so.
 	 *
-	 * See `docs/adr/0020-term-viewability-gates-revalidation.md`.
+	 * See `docs/adr/0022-taxonomy-viewability-gates-term-revalidation.md`.
 	 *
 	 * @param string $type Optional. The post type being revalidated, or 'all'.
 	 *                     Anything else narrows the selection to the taxonomies
@@ -239,6 +236,9 @@ class RevalidateAll extends Base implements Hookable {
 		$args = [];
 		if ( $type !== 'all' ) $args['object_type'] = [ $type ];
 
-		return array_filter( get_taxonomies( $args ), 'is_taxonomy_viewable' );
+		return array_filter(
+			get_taxonomies( $args ),
+			[ $this->revalidate, 'should_revalidate_taxonomy' ]
+		);
 	}
 }

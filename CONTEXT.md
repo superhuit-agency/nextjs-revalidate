@@ -17,8 +17,8 @@ _Avoid_: Purge, cache clear, invalidation
 
 **Revalidate all**:
 A bulk operation that enqueues a revalidation for every publicly reachable page
-of one or more post types, and for the archive of every **revalidatable term** of
-the taxonomies registered for them.
+of one or more post types, and for the archive of every term of every
+**revalidatable taxonomy** registered for them.
 _Avoid_: Purge all
 
 **Revalidation queue**:
@@ -89,22 +89,29 @@ action, the admin bar — never one that only save-time code consults.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
 
-**Revalidatable term**:
-A term whose archive page the front-end could hold. One axis rather than the two
-a **revalidatable post** has, because a term has no status: its taxonomy is
-viewable — WordPress's own `publicly_queryable` test, which for a taxonomy is
-that setting and nothing else, with none of the `_builtin && public` fallback the
-post type test applies. A term that is not revalidatable produces no revalidation
-at all; it was never a candidate.
+**Revalidatable taxonomy**:
+A taxonomy whose terms' archive pages the front-end could hold, and whose terms
+this plugin may therefore revalidate. One axis — the taxonomy is viewable,
+WordPress's own `publicly_queryable` test, which for a taxonomy is that setting
+and nothing else, with none of the `_builtin && public` fallback the post type
+test applies.
+
+One axis, where **revalidatable post** names two (type *and* status). The names
+are siblings; the shapes are not, and the difference is why this is not called a
+revalidatable *term*: a term has no status and no viewability of its own, so the
+question is only ever asked about its taxonomy. Terms of a taxonomy that is not
+revalidatable produce no revalidation at all; they are not refused, they were
+never candidates.
 
 The site has the last word here too, through a filter of its own rather than the
-post one — the same escape hatch, for the same headless reason.
+post one — the same escape hatch, for the same headless reason, and it can admit
+a whole taxonomy as readily as decline one.
 
 Only **revalidate all** asks the question today: nothing in this plugin reacts to
 a term being created, edited or deleted, so a term archive goes stale until
-somebody purges all. That gap is an enhancement, not a property of the term.
-_Avoid_: Public term, category — the taxonomies are more than the built-in ones,
-and a term of a non-public taxonomy can still be revalidatable.
+somebody purges all. That gap is an enhancement, not a property of the taxonomy.
+_Avoid_: Public taxonomy — `public` is a different setting and the two disagree
+in both directions, which is the whole of the bug this names the fix for.
 
 ### Full site editing
 

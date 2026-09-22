@@ -72,7 +72,7 @@ file when logging is on, marked `🔎 Probe`.
 ## Requirements
 
 - Requires PHP 7.4+
-- Requires WordPress 5.7+
+- Requires WordPress 5.0+
 
 ## API functions
 
@@ -152,17 +152,19 @@ its front-end still renders their permalinks can say so with the filter below.
 
 ## Which terms are revalidated
 
-Revalidate all also enqueues the archive page of every term of the taxonomies
-registered for the post types it covers. A term is revalidated when its taxonomy
-is viewable — WordPress's own `publicly_queryable` test, via
-[`is_term_publicly_viewable()`](https://developer.wordpress.org/reference/functions/is_term_publicly_viewable/).
-That is one axis rather than the two a post has: a term has no status.
+Revalidate all also enqueues the archive page of every term of every taxonomy
+registered for the post types it covers — provided the taxonomy is viewable,
+which is WordPress's own `publicly_queryable` test, via
+[`is_taxonomy_viewable()`](https://developer.wordpress.org/reference/functions/is_taxonomy_viewable/).
+The question is asked once per taxonomy rather than once per term: a term has no
+status and no viewability of its own.
 
 Note that for a taxonomy `publicly_queryable` is that setting and nothing else,
 with none of the `public` fallback the post type test applies — so a taxonomy
 registered `public => true, publicly_queryable => false` has no term revalidated,
 and one registered the other way round has all of them. A headless site can say
-otherwise with the filter below.
+otherwise with the filter below, which is consulted for every registered
+taxonomy and can admit one WordPress would never route.
 
 Nothing else revalidates a term: this plugin does not react to a term being
 created, edited or deleted, so a term archive goes stale until somebody
@@ -242,27 +244,27 @@ add_filter( 'nextjs_revalidate_purge_should_revalidate_post_on_save', function( 
 | should_revalidate | bool | Whether the post is revalidated |
 | post_id | int | The post ID |
 
-### nextjs_revalidate_should_revalidate_term
+### nextjs_revalidate_should_revalidate_taxonomy
 
-Filters whether the given term's archive page is revalidated. Applied last, so
-it can admit a term of a taxonomy that is not `publicly_queryable`, or decline
-one of a taxonomy that is.
+Filters whether the archive pages of the given taxonomy's terms are revalidated.
+Applied last, and consulted for every registered taxonomy, so it can admit a
+taxonomy that is not `publicly_queryable` as readily as decline one that is.
 
 #### Usage
 ```php
-add_filter( 'nextjs_revalidate_should_revalidate_term', function( $should_revalidate, $term ) {
-	$term = get_term( $term );
-	if ( $term && 'my-headless-taxonomy' === $term->taxonomy ) return true;
+add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_revalidate, $taxonomy_name, $taxonomy ) {
+	if ( 'my-headless-taxonomy' === $taxonomy_name ) return true;
 	return $should_revalidate;
-}, 10, 2 );
+}, 10, 3 );
 ```
 
 #### Arguments
 
 | Name | Type | Description |
 | --- | --- | --- |
-| should_revalidate | bool | Whether the term is revalidated |
-| term | int\|WP_Term | The term, or its ID, as the caller gave it |
+| should_revalidate | bool | Whether the taxonomy's terms are revalidated |
+| taxonomy_name | string | The taxonomy name |
+| taxonomy | WP_Taxonomy\|false | The taxonomy, or false when none is registered under that name |
 
 ### nextjs_revalidate_purge_action_permalink
 

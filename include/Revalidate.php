@@ -11,7 +11,7 @@ use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 use WP_Error;
 use WP_Post;
-use WP_Term;
+use WP_Taxonomy;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -503,61 +503,49 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * Determine if the given term is revalidatable, i.e. a term the front-end
-	 * could hold an archive page for.
+	 * Determine if the given taxonomy is revalidatable, i.e. one whose terms the
+	 * front-end could hold archive pages for.
 	 *
-	 * One axis rather than the two a post has, because a term has no status:
-	 * its taxonomy is viewable — WordPress's own `publicly_queryable` test, via
-	 * `is_term_publicly_viewable()`. A term of a taxonomy the front-end holds no
-	 * archive for produces no revalidation at all; it is not refused, it was
-	 * never a candidate.
+	 * One axis rather than the two a post has, because this asks about the
+	 * taxonomy and not about any one term: a term has no status, and core gives
+	 * it no second axis either — `is_term_publicly_viewable()` is, in full, a
+	 * term-existence check plus this same question about its taxonomy. Asking it
+	 * once per taxonomy rather than once per term is the difference between one
+	 * call and tens of thousands of them on a purge all.
+	 *
+	 * The axis is `is_taxonomy_viewable()`, which for a taxonomy is a bare
+	 * `publicly_queryable` with none of the `_builtin && public` fallback
+	 * `is_post_type_viewable()` applies. Terms of a taxonomy that is not
+	 * revalidatable produce no revalidation at all; they are not refused, they
+	 * were never candidates.
 	 *
 	 * The site has the last word, as it does for a post: the filter is applied
-	 * after the axis and can admit any term, which is how a headless site whose
-	 * taxonomies are not `publicly_queryable` keeps its archives revalidating.
+	 * after the axis and can admit any taxonomy, which is how a headless site
+	 * whose taxonomies are not `publicly_queryable` keeps its archives
+	 * revalidating.
 	 *
-	 * See `docs/adr/0020-term-viewability-gates-revalidation.md`.
+	 * See `docs/adr/0022-taxonomy-viewability-gates-term-revalidation.md`.
 	 *
-	 * @param int|WP_Term $term The term, or its ID.
+	 * @param string|WP_Taxonomy $taxonomy The taxonomy, or its name.
 	 *
-	 * @return bool Whether the term should be revalidated.
+	 * @return bool Whether the taxonomy's terms should be revalidated.
 	 */
-	public function should_revalidate_term( $term ) {
+	public function should_revalidate_taxonomy( $taxonomy ) {
 
-		$should_revalidate_term = is_term_publicly_viewable( $term );
+		$taxonomy_object = ( $taxonomy instanceof WP_Taxonomy ? $taxonomy : get_taxonomy( $taxonomy ) );
+		$taxonomy_name   = ( $taxonomy_object instanceof WP_Taxonomy ? $taxonomy_object->name : (string) $taxonomy );
+
+		// A taxonomy nothing registered has no archive, and nothing to ask about.
+		$should_revalidate_taxonomy = ( $taxonomy_object instanceof WP_Taxonomy && is_taxonomy_viewable( $taxonomy_object ) );
 
 		/**
-		 * Filters whether to revalidate the given term.
+		 * Filters whether to revalidate the given taxonomy's terms.
 		 *
-		 * @param bool        $should_revalidate_term Whether to revalidate the term.
-		 * @param int|WP_Term $term                   The term, or its ID, as it was given.
+		 * @param bool                $should_revalidate_taxonomy Whether to revalidate the taxonomy's terms.
+		 * @param string              $taxonomy_name              The taxonomy name.
+		 * @param WP_Taxonomy|false   $taxonomy_object            The taxonomy, or false when none is registered under that name.
 		 */
-		return apply_filters( 'nextjs_revalidate_should_revalidate_term', $should_revalidate_term, $term );
-	}
-
-	/**
-	 * Get the permalink of the archive page the front-end holds for a term.
-	 *
-	 * @param int|WP_Term $term            The term, or its ID.
-	 * @param bool        $check_if_public Optional. Whether to check that the term
-	 *                                     is revalidatable first. Default true.
-	 *
-	 * @return string|false The term archive permalink. False when the term is not
-	 *                      revalidatable, and when WordPress could compose no
-	 *                      permalink for it.
-	 */
-	public function get_term_permalink( $term, $check_if_public = true ) {
-
-		if ( $check_if_public && ! $this->should_revalidate_term( $term ) ) return false;
-
-		$permalink = get_term_link( $term );
-
-		// A term that has gone away since it was selected yields a WP_Error
-		// rather than a url, and an empty permalink is a queue row nothing
-		// could ever revalidate.
-		if ( is_wp_error( $permalink ) || empty( $permalink ) ) return false;
-
-		return $permalink;
+		return apply_filters( 'nextjs_revalidate_should_revalidate_taxonomy', $should_revalidate_taxonomy, $taxonomy_name, $taxonomy_object );
 	}
 
 	/**
