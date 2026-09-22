@@ -109,8 +109,11 @@ nextjs_revalidate_purge_url( $url );
 `bool` — whether the revalidation was accepted into the queue. It is `false`
 when the site is unconfigured, which is a **refusal**: the revalidate domain or
 the secret is missing, nothing has been queued, and nothing will be. It is also
-`false` if the queue insert failed. A URL already waiting in the queue is
-accepted (`true`) without being queued twice.
+`false` if the queue write failed — the insert, or the promotion of an entry
+already waiting. A URL already waiting in the queue is
+accepted (`true`) without being queued twice; calling again with a lower
+priority number moves the entry it already has to that priority, and a higher
+one leaves it where it is.
 
 It is never a statement about the front-end. A `true` says the plugin will try.
 

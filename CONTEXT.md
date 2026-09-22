@@ -33,6 +33,21 @@ two can disagree on a network. Say "the queue holds permalinks"; reserve "path"
 for the thing being revalidated.
 _Avoid_: Job list, backlog
 
+**Queue priority**:
+The number deciding when one queue entry drains relative to the others. Lower is
+sooner, entries sharing a priority drain oldest first, and `0` is a priority like
+any other — the most urgent there is, never an absence of one.
+
+It belongs to the entry rather than to the revalidation that produced it. A
+permalink is queued once, so a second submission of one already waiting has no
+entry of its own to carry a priority: it **promotes** the existing entry when it
+asks for a more urgent one, and changes nothing when it does not. Nothing demotes
+an entry — the rule is the minimum of the two, so a caller asking for a path to
+be revalidated can never slow down work something else deemed urgent.
+_Avoid_: Weight, rank, order — the drain order is what a priority produces, not
+another word for it. Distinct from a WordPress **hook priority**, which orders
+callbacks on one hook and has nothing to do with the queue.
+
 **Scheduled purge**:
 A revalidation registered to happen at a future time rather than immediately,
 used for content with a publication or expiry date.
