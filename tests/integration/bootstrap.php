@@ -76,26 +76,46 @@ NextJsRevalidate::init()->queue->create_table();
 // Redirection's tables, for the same reason and in the same place. The test
 // library activates no plugin, so nothing has run Redirection's installer.
 //
-// Its database classes are required by hand because Redirection does not load
-// them on its own: `redirection.php` requires its models at boot and nothing
-// else, autoloading only its `Redirection\ImportExport\` namespace, and the
-// database layer is pulled in later by the admin, api and CLI entry points —
-// none of which this suite loads. Asking `class_exists()` about the installer
-// therefore answers no on a site that is running Redirection, which is a
-// silent no rather than a failure: no tables, and every redirect test failing
-// on a `Red_Group::create()` that returns false.
+// The installer is reached through `get_latest_database()` rather than by
+// naming the latest schema class, because that method is what includes the
+// schema file that class lives in — and it is the name upstream keeps stable
+// across the move under a namespace.
 //
-// The installer itself is reached through `Red_Database::get_latest_database()`
-// rather than by naming `Red_Latest_Database`, because that method is what
-// includes the schema file the class lives in — and it is the name upstream
-// keeps stable while it moves its classes under a namespace.
+// Two layouts are supported, because the move happened in a Redirection
+// release rather than in this repo, and a checkout can be pinned to either:
+//
+// - **5.5 and later** — `includes/database/`, class
+//   `Redirection\Database\Database`, reached through the plugin's own
+//   autoloader, which now registers the whole `Redirection\` namespace
+//   against `includes/`. Nothing needs requiring by hand.
+// - **Before that** — `database/`, class `Red_Database`, and no autoloading
+//   that reaches it: `redirection.php` required its models at boot and
+//   nothing else, leaving the database layer to the admin, api and CLI entry
+//   points, none of which this suite loads.
+//
+// Asking `class_exists()` about the installer without doing this answers no on
+// a site that *is* running Redirection, and that is a silent no rather than a
+// failure: no tables, and every redirect test failing on a
+// `Red_Group::create()` that returns false. So a Redirection that is present
+// but matches neither layout is a hard failure here, where it names itself.
 if ( isset( $njr_redirection ) && file_exists( $njr_redirection ) ) {
 	$njr_redirection_dir = dirname( $njr_redirection );
 
-	require_once $njr_redirection_dir . '/database/database-status.php';
-	require_once $njr_redirection_dir . '/database/database-upgrade.php';
-	require_once $njr_redirection_dir . '/database/database-upgrader.php';
-	require_once $njr_redirection_dir . '/database/database.php';
+	if ( file_exists( $njr_redirection_dir . '/includes/database/class-database.php' ) ) {
+		$njr_redirection_database = 'Redirection\\Database\\Database';
+	}
+	elseif ( file_exists( $njr_redirection_dir . '/database/database.php' ) ) {
+		require_once $njr_redirection_dir . '/database/database-status.php';
+		require_once $njr_redirection_dir . '/database/database-upgrade.php';
+		require_once $njr_redirection_dir . '/database/database-upgrader.php';
+		require_once $njr_redirection_dir . '/database/database.php';
 
-	call_user_func( [ 'Red_Database', 'get_latest_database' ] )->install();
+		$njr_redirection_database = 'Red_Database';
+	}
+	else {
+		echo "integration bootstrap: Redirection is installed at $njr_redirection_dir, but its database layer is at neither `includes/database/` nor `database/`. Its layout has changed again; the redirect tests would otherwise run against tables nothing created.\n";
+		exit( 1 );
+	}
+
+	call_user_func( [ $njr_redirection_database, 'get_latest_database' ] )->install();
 }
