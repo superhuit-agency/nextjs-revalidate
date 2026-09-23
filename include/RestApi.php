@@ -172,15 +172,15 @@ class RestApi extends Base implements Hookable {
 				// an acceptance reported that failed insert as `success: true`
 				// with a 200, and a caller reaching these routes has no other
 				// feedback channel to find out otherwise (#93).
-				$res = $this->queue->add_item($it['path'], $it['priority']);
-				if (is_wp_error($res)) {
+				$accepted = $this->queue->add_item($it['path'], $it['priority']);
+				if (is_wp_error($accepted)) {
 					$results[] = [
 						'path'    => $it['path'],
 						'success' => false,
-						'message' => $res->get_error_message(),
+						'message' => $accepted->get_error_message(),
 					];
 					$had_error = true;
-				} elseif (!$res) {
+				} elseif (!$accepted) {
 					$results[] = [
 						'path'    => $it['path'],
 						'success' => false,
@@ -202,7 +202,7 @@ class RestApi extends Base implements Hookable {
 						// above is the whole of what this route promises, and
 						// the field can no longer be the `false` that was the
 						// only trace of a failed insert.
-						'data'    => $res,
+						'data'    => $accepted,
 					];
 				}
 			} catch (\Exception $e) {

@@ -621,9 +621,21 @@ class RestApiTest extends QueueTestCase {
 	 * is not also a way to break the queue table for the rest of the suite —
 	 * the wall `PublicApiTest::test_a_scheduled_purge_whose_write_fails_is_not_registered()`
 	 * hit with `update_option()`. So the write is taken away instead: the
-	 * `query` filter rewrites that one insert into a `SELECT` matching no rows,
-	 * which writes nothing, touches no table and hands `$wpdb->insert()` back
-	 * the same falsy answer a failed insert gives it.
+	 * `query` filter rewrites that one insert into a statement naming a table
+	 * that cannot exist, which writes nothing, touches no table of this
+	 * plugin's and errors — so `$wpdb->insert()` hands back the literal `false`
+	 * a failed insert gives it, rather than a `0` that merely reads as falsy
+	 * alongside it. The distinction is the whole of what #93 is about, and a
+	 * test that pinned falsiness would pass against code reading the answer
+	 * with `0 === $res`.
+	 *
+	 * `$wpdb` is told to suppress errors for the duration, and told again
+	 * afterwards whatever it was set to before: the statement is *meant* to
+	 * fail, and a deliberate failure has no business printing a database error
+	 * into the middle of the suite's output. Nothing outside the call is
+	 * affected — the error lives on `$wpdb->last_error` until the next
+	 * statement replaces it, and the queue's transaction commits the nothing it
+	 * wrote.
 	 *
 	 * Narrow on purpose, and by permalink rather than by table: an insert
 	 * naming this permalink is the only statement touched — the queue's own
@@ -638,20 +650,25 @@ class RestApiTest extends QueueTestCase {
 	 * @return mixed Whatever $call returned.
 	 */
 	private function with_a_failing_insert_on( $permalink, callable $call ) {
+		global $wpdb;
+
 		$take_the_write_away = function ( $query ) use ( $permalink ) {
 			$is_the_insert = stripos( $query, 'INSERT INTO' ) !== false
 				&& strpos( $query, $permalink ) !== false;
 
 			return $is_the_insert
-				? 'SELECT 1 FROM DUAL WHERE 1 = 0'
+				? 'SELECT 1 FROM `nextjs_revalidate_no_such_table`'
 				: $query;
 		};
 
 		add_filter( 'query', $take_the_write_away );
 
+		$errors_were_suppressed = $wpdb->suppress_errors( true );
+
 		try {
 			return $call();
 		} finally {
+			$wpdb->suppress_errors( $errors_were_suppressed );
 			remove_filter( 'query', $take_the_write_away );
 		}
 	}
