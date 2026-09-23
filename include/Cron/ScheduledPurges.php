@@ -15,6 +15,16 @@ class ScheduledPurges extends Base implements Hookable {
 	const CRON_HOOK_NAME = 'nextjs-revalidate-scheduled_purges';
 	const OPTION_NAME    = 'nextjs-revalidate-scheduled_purges';
 
+	/**
+	 * The queue priority a scheduled purge is enqueued at when it comes due.
+	 *
+	 * Elevated deliberately, rather than left to the queue's default: content
+	 * whose publication or expiry date has just passed is more urgent than an
+	 * ordinary save, so it drains ahead of the default 10. It stays behind
+	 * anything a caller explicitly deemed more urgent, which is why it is not 0.
+	 */
+	const QUEUE_PRIORITY = 5;
+
 	private $timezone;
 
 	public function __construct() {
@@ -36,16 +46,7 @@ class ScheduledPurges extends Base implements Hookable {
 			$next_purge_datetime = new DateTime( $datetime );
 			if ( $next_purge_datetime <= $now ) {
 				foreach ($urls as $url) {
-					// `1`, not `true`: a priority is a number, and `true` was a
-					// literal port of the `$force` flag the pre-queue
-					// `Revalidate::purge()` took here (d3a4920). It has always
-					// reached the table as `1` — `$wpdb->insert()` binds it into
-					// an int column, and `promote_item()` takes `intval()` of it
-					// — so this is the same priority spelled honestly, not a new
-					// one. The priority a scheduled purge *should* have is 5,
-					// ahead of an ordinary save — see "Scheduled purge" in
-					// CONTEXT.md — and moving it there is #63, not this.
-					$this->queue->add_item( $url, 1 );
+					$this->queue->add_item( $url, self::QUEUE_PRIORITY );
 				}
 			}
 			else {

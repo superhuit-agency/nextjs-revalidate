@@ -91,11 +91,10 @@ and `new static()` on the singleton. They are still a to-do list.
 **Declaring a type immediately found a bug, which is the argument for declaring
 types.** `Cron\ScheduledPurges` passed `true` where `RevalidateQueue::add_item()`
 takes an `int $priority` — a literal port of the `$force` flag the pre-queue
-`Revalidate::purge()` took there. It has always bound as `1`, so nothing was
-broken and nothing is fixed; it is spelled `1` now. The priority it *should*
-have — 5, ahead of an ordinary save — has since been defined under **Scheduled
-purge** in `CONTEXT.md`, and moving it there is #63.
-That finding was invisible for as long as `$this->queue` had no type, and it was
+`Revalidate::purge()` took there — so every scheduled purge was stored at
+priority 1, ahead of the whole queue. #63 fixed it first, from the other side:
+the cron now enqueues at `ScheduledPurges::QUEUE_PRIORITY` (5), as the
+**Scheduled purge** entry in `CONTEXT.md` defines. That finding was invisible for as long as `$this->queue` had no type, and it was
 invisible in a file the baseline covered.
 
 **A class that starts reading a new collaborator has to say so.** One line in a
