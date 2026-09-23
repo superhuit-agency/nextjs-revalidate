@@ -12,6 +12,18 @@ class ScheduledPurges extends Base implements Hookable {
 	const CRON_HOOK_NAME = 'nextjs-revalidate-scheduled_purges';
 	const OPTION_NAME    = 'nextjs-revalidate-scheduled_purges';
 
+	/**
+	 * The queue priority a scheduled purge is enqueued at when it comes due.
+	 *
+	 * Elevated deliberately, rather than left to the queue's default: content
+	 * whose publication or expiry date has just passed is more urgent than an
+	 * ordinary save, so it drains ahead of the default 10. It stays behind
+	 * anything a caller explicitly deemed more urgent, which is why it is not
+	 * 0 — and it is an integer, because the `true` this replaced was coerced
+	 * to 1 and put every scheduled purge in front of the whole queue.
+	 */
+	const QUEUE_PRIORITY = 5;
+
 	private $timezone;
 
 	public function __construct() {
@@ -33,7 +45,7 @@ class ScheduledPurges extends Base implements Hookable {
 			$next_purge_datetime = new DateTime( $datetime );
 			if ( $next_purge_datetime <= $now ) {
 				foreach ($urls as $url) {
-					$this->queue->add_item( $url, true );
+					$this->queue->add_item( $url, self::QUEUE_PRIORITY );
 				}
 			}
 			else {
