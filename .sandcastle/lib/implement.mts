@@ -24,6 +24,7 @@ import {
 	MAX_ITERATIONS,
 	SANDBOX_IMAGE,
 } from './config.mts';
+import { commitsAhead } from './git.mts';
 import type { PlanItem } from './plan.mts';
 
 /** Verdict of one gate run, as the harness observed it. */
@@ -68,11 +69,25 @@ export function tailOf(output: string, lines: number = GATE_TAIL_LINES): string 
  * What a finished run amounts to. Separated from the orchestration so the rule
  * — the gate decides, not the agent — is one testable expression.
  *
- * No commits outranks a green gate: the gate passing on an untouched checkout
- * says the branch was already shippable, not that the issue was worked.
+ * The question is what the **branch** carries, not what this pass added. A
+ * branch already holding finished work is shippable however many commits the
+ * agent wrote this time: an implementer that opens such a branch, finds nothing
+ * left to do and writes nothing has produced a correct run, not an empty one.
+ *
+ * Counting this pass's commits instead is what stranded #93, #115 and #117 in
+ * September 2026. A pass died between `merge()` and `finalize()`, leaving six
+ * green branches unpushed; every later pass re-ran the agent, the agent
+ * correctly declined to commit, `no-commits` dropped the item from
+ * `itemsToFinalize()`, and with no PR on the head and the label still in place
+ * `gather()` re-picked it forever. Nothing could ever break the loop, because
+ * the only escape was work that no longer needed doing.
+ *
+ * A branch level with its base is still `no-commits`: the gate passing on an
+ * untouched checkout says nothing was ever written, not that the issue was
+ * worked.
  */
-export function classifyRun(commits: number, gate: GateVerdict): ImplementOutcome['status'] {
-	if (commits === 0) return 'no-commits';
+export function classifyRun(aheadOfBase: number, gate: GateVerdict): ImplementOutcome['status'] {
+	if (aheadOfBase === 0) return 'no-commits';
 	return gate.passed ? 'implemented' : 'gate-failed';
 }
 
@@ -161,6 +176,14 @@ export type ImplementDeps = {
 	agent: unknown;
 	/** Absolute path to the prompt template. */
 	promptFile: string;
+	/**
+	 * How far the work branch is ahead of its base, read from the primary
+	 * checkout after the sandbox has synced its commits out. A seam because the
+	 * rule it feeds — a branch that already carries finished work is finalizable
+	 * — is the one this phase gets wrong when it is wrong, and it must be
+	 * assertable without a repository.
+	 */
+	commitsAhead: (branch: string, base: string) => number;
 	/** Called with progress lines; the harness's own reporting, not the agent's. */
 	log: (message: string) => void;
 };
@@ -200,14 +223,22 @@ export async function implementItem(deps: ImplementDeps, item: PlanItem, body: s
 		// about the gate, and the outcomes table only arrives once the whole
 		// batch has finished.
 		const gate = await runGate(sandbox);
+
+		// What the branch carries, not what this pass wrote: a pass that adds
+		// nothing to a branch already holding finished work is still a branch
+		// worth finalizing. Read after the run, so the commits sandcastle just
+		// synced out are counted.
+		const ahead = deps.commitsAhead(item.workBranch, item.base);
+
 		deps.log(
 			`#${item.issue}: ${result.commits.length} commit(s) over ${result.iterations.length} iteration(s), ` +
+				`${ahead} ahead of ${item.base}, ` +
 				`gate ${gate.passed ? 'passed' : `failed (exit ${gate.exitCode})`}`
 		);
 
 		return {
 			...base,
-			status: classifyRun(result.commits.length, gate),
+			status: classifyRun(ahead, gate),
 			commits: result.commits.length,
 			gate,
 			signalled,
@@ -271,6 +302,7 @@ export async function realDeps(repoRoot: string, log: (message: string) => void)
 		repoRoot,
 		agent: claudeCode(IMPLEMENTER_MODEL),
 		promptFile: join(repoRoot, '.sandcastle', 'prompts', 'implement.md'),
+		commitsAhead: (branch, base) => commitsAhead(repoRoot, branch, base),
 		log,
 		createSandbox: async ({ branch, baseBranch }) =>
 			(await createSandbox({ branch, baseBranch, sandbox: sandboxProvider, cwd: repoRoot })) as unknown as SandboxSeam,
