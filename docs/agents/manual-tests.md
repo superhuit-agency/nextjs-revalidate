@@ -75,7 +75,7 @@ One action, one oracle:
 
 ```markdown
 - [ ] **Save a published post.** Expect `✅ Revalidated` for its permalink in
-      `wp-content/uploads/nextjs-revalidate.log` within one minute.
+      the log file, at the path the Debug tab reports, within one minute.
 ```
 
 Bold the action. Name what you expect **and where it appears** — the revalidate

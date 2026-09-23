@@ -85,9 +85,9 @@ about yet.
 matches an unbounded set of paths, so there is no single path to rebuild and
 nothing is enqueued for it: the front-end keeps serving the page it already
 holds, with nothing on screen to say why. The skip is recorded in the plugin's
-log file (`wp-content/uploads/nextjs-revalidate.log`) and nowhere else, and only
-while **Enable logs** is switched on under the **Debug** tab of *Settings →
-Next.js revalidate*.
+log file and nowhere else, and only while **Enable logs** is switched on under
+the **Debug** tab of *Settings → Next.js revalidate* — the file's path is shown
+beneath that switch.
 
 Other reasons a redirect change enqueues nothing, each recorded in that same log
 file and nowhere else:

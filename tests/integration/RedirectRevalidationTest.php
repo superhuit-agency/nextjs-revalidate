@@ -680,8 +680,6 @@ class RedirectRevalidationTest extends QueueTestCase {
 	 * @return string
 	 */
 	private function log_file() {
-		$uploads = wp_upload_dir();
-
-		return trailingslashit( $uploads['basedir'] ) . Logger::FILENAME;
+		return Logger::path();
 	}
 }

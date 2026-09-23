@@ -522,7 +522,6 @@ class Settings extends Base implements Hookable {
 			]
 		);
 
-		$upload_dir = wp_upload_dir();
 		$id = "enable-logs";
 		add_settings_field(
 			$id,
@@ -537,7 +536,7 @@ class Settings extends Base implements Hookable {
 				'checked'   => $this->debug['enable-logs'] ?? false,
 				'help'      => sprintf(
 					__('Logs will be saved to file located in <code>%s</code>', 'nextjs-revalidate'),
-					trailingslashit($upload_dir['basedir']) . Logger::FILENAME
+					Logger::reported_location()
 				),
 			]
 		);
@@ -562,6 +561,10 @@ class Settings extends Base implements Hookable {
 		// later reinstall would read it, believe this site's options already
 		// have the running code's shape, and skip migrations that must run.
 		delete_option( self::DB_VERSION_OPTION_NAME );
+
+		// The log's filename suffix is internal state too, and goes with it.
+		// The log itself is left where it is: it is the operator's evidence.
+		delete_option( Logger::SUFFIX_OPTION_NAME );
 	}
 
 	/**
@@ -893,6 +896,10 @@ class Settings extends Base implements Hookable {
 		// would be read after the site had already been stamped past it, and
 		// would never fire for anybody. See `backfill_db_version()`.
 		$this->split_legacy_url();
+
+		// The log moved into a guarded directory of its own, under a per-site
+		// name (ADR-0024). Guarded on the data for the same reason as above.
+		Logger::migrate_legacy_log();
 
 		// Stamp the ledger, so none of the above is eligible to run again.
 		// A site whose data was migrated by newer code than is running now

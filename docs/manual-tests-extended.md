@@ -243,9 +243,15 @@ Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
 
 ## J. The log file
 
-- [ ] **Confirm its location**:
-      `npx wp-env run cli -- ls -l wp-content/uploads/nextjs-revalidate.log`.
-      Expect it in this site's own uploads directory.
+- [ ] **Read the path under Enable logs on the Debug tab.** Expect it to end
+      `wp-content/uploads/nextjs-revalidate/nextjs-revalidate-<suffix>.log`.
+- [ ] **Request the log over HTTP**:
+      `curl -sI http://localhost:8080/wp-content/uploads/nextjs-revalidate/<filename>`.
+      Expect `403 Forbidden` — the `.htaccess` denying it on Apache. wp-env is
+      Apache; this proves nothing about nginx, which is what the suffix is for.
+- [ ] **Request an upload beside it**: add any image to the Media Library, then
+      `curl -sI` its URL. Expect `200 OK`. A `403` means a guard landed in
+      uploads itself and the site no longer serves its own media.
 - [ ] **Turn logging off** on the Debug tab, save, update a post, run cron.
       Expect the revalidation to still happen (console) and **no new lines** in
       the file. Every line the plugin can write passes through that one setting.
@@ -329,8 +335,8 @@ Run this last in Part 1 — it destroys the site's plugin data.
       `-allow_revalidate_all`, `nextjs_revalidate-revalidate-on-menu-save`,
       `nextjs_revalidate-revalidate-on-fse-save`,
       `nextjs_revalidate-debug`, `nextjs_revalidate-db_version`,
-      `nextjs_revalidate-failure_window`, `nextjs-revalidate-scheduled_purges`.
-      Expect all "could not be found".
+      `nextjs_revalidate-log_suffix`, `nextjs_revalidate-failure_window`,
+      `nextjs-revalidate-scheduled_purges`. Expect all "could not be found".
 - [ ] **Restore the install**: `npm run stop && npm start`. Deleting the plugin
       removed its registration, not the mounted working tree.
 
@@ -389,8 +395,9 @@ Precondition: O done, main site configured, `second` not.
       secret unchanged.
 - [ ] **Publish a post on `second`.** Expect a revalidation carrying `second`'s
       permalink, landing in `second`'s queue table — not the main site's.
-- [ ] **Expect a separate log file** for `second`, at
-      `wp-content/uploads/sites/2/nextjs-revalidate.log`.
+- [ ] **Expect a separate log file** for `second`, at the path its own Debug
+      tab reports: beneath `wp-content/uploads/sites/2/nextjs-revalidate/`, and
+      under a different filename from the main site's.
 - [ ] **Break the main site's secret and fail three times.** Expect the degraded
       notice on the main site and **not** on `second` — the failure window is per
       site. Restore the main site's secret.
@@ -543,6 +550,10 @@ what the backfill exists to avoid needing.
       secret is untouched.
 - [ ] **Open the settings screen.** Expect the domain and path fields populated
       with the split values — the operator should not have to retype anything.
+- [ ] **Expect the 1.6.9 log moved, not lost**:
+      `npx wp-env run cli -- ls -a wp-content/uploads` shows no
+      `nextjs-revalidate.log`, and `tail` of the path under **Enable logs** on
+      the Debug tab shows the lines 1.6.9 wrote in X.
 - [ ] **Update the post published in U.** Expect a revalidation of its path, and
       a queue table that now exists, created by the upgrade rather than by a
       fresh activation.

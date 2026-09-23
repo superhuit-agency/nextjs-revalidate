@@ -284,11 +284,12 @@ is already part of the source.
 Nothing about a redirect change is reported on screen. Redirects are saved
 through Redirection's own REST routes, from an admin that never reloads the
 page, so a revalidation that did not happen is answered by the plugin's **log
-file** or by nothing at all. Every case in the table writes one line to
-`nextjs-revalidate.log` in the site's uploads directory
-(`wp-content/uploads/nextjs-revalidate.log` on a standard install, one file per
-site on a network), and only while **Enable logs** is switched on under the
-**Debug** tab of *Settings → Next.js revalidate*. With logging off there is
+file** or by nothing at all. Every case in the table writes one line to that
+file, and only while **Enable logs** is switched on under the **Debug** tab of
+*Settings → Next.js revalidate*; its full path is printed beneath that switch.
+It lives in a `nextjs-revalidate/` directory beneath the site's uploads
+directory, under a name unique to the site — one file per site on a network, and
+never at a path you can type from memory. With logging off there is
 nothing to read anywhere, which is why switching it on is the first step for a
 redirect that "did nothing".
 

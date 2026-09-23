@@ -72,7 +72,15 @@ function trailingslashit( $string ) {
 	return rtrim( $string, '/\\' ) . '/';
 }
 
+function wp_mkdir_p( $target ) {
+	return is_dir( $target ) || mkdir( $target, 0777, true );
+}
+
 function get_option( $name, $default = false ) {
+	// A site whose log already has its suffix, so the path is stable between
+	// the probe writing the log and this file reading it back.
+	if ( NextJsRevalidate\Logger::SUFFIX_OPTION_NAME === $name ) return 'probetest';
+
 	return $default;
 }
 
@@ -186,10 +194,14 @@ function njr_test_probe( $typed, $outcome ) {
 	$probe  = new Probe();
 	$result = $probe->send( Probe::path( $typed ) );
 
-	$logFile  = $dir . '/' . Logger::FILENAME;
+	$logFile  = Logger::path();
 	$contents = file_exists( $logFile ) ? (string) file_get_contents( $logFile ) : '';
 
-	if ( file_exists( $logFile ) ) unlink( $logFile );
+	// The log, its guards and the directory holding them.
+	foreach ( array_merge( [ $logFile ], array_map( function( $guard ) { return Logger::directory() . '/' . $guard; }, array_keys( Logger::GUARDS ) ) ) as $file ) {
+		if ( file_exists( $file ) ) unlink( $file );
+	}
+	if ( is_dir( Logger::directory() ) ) rmdir( Logger::directory() );
 	rmdir( $dir );
 
 	return [ 'result' => $result, 'log' => $contents ];
