@@ -99,12 +99,8 @@ class NextJsRevalidate {
 }
 
 require_once __DIR__ . '/../include/Logger.php';
-require_once __DIR__ . '/../include/Interfaces/Hookable.php';
-require_once __DIR__ . '/../include/Abstracts/Base.php';
-require_once __DIR__ . '/../include/Settings.php';
 
 use NextJsRevalidate\Logger;
-use NextJsRevalidate\Settings;
 
 /**
  * Test harness
@@ -113,8 +109,12 @@ use NextJsRevalidate\Settings;
 
 $failures = 0;
 
+// A warning the code under test silenced with `@` is not one: PHP still calls
+// the handler for it, with those bits masked out of error_reporting().
 set_error_handler( function( $errno, $errstr, $errfile, $errline ) {
 	global $failures;
+
+	if ( ! ( error_reporting() & $errno ) ) return true;
 
 	$failures++;
 	printf( "FAIL PHP error: %s in %s on line %d\n", $errstr, $errfile, $errline );
@@ -185,12 +185,12 @@ function njr_test_rmdir( $dir ) {
 $uploads = njr_test_site();
 Logger::log( 'hello', 'file.php' );
 $path = Logger::path();
-njr_test_assert( 0 === strpos( $path, $uploads . '/' . Logger::DIRECTORY . '/' ), 'the log path is inside the plugin-owned directory beneath uploads' );
+njr_test_assert( 0 === strpos( $path, $uploads . '/' . Logger::DIRECTORY_NAME . '/' ), 'the log path is inside the plugin-owned directory beneath uploads' );
 njr_test_assert( is_file( $path ) && false !== strpos( (string) file_get_contents( $path ), 'hello' ), 'a written line lands at that path' );
 njr_test_assert( ! file_exists( $uploads . '/' . Logger::LEGACY_FILENAME ), 'nothing is written at the legacy path' );
 
 // The guards.
-$directory = $uploads . '/' . Logger::DIRECTORY;
+$directory = $uploads . '/' . Logger::DIRECTORY_NAME;
 $htaccess  = $directory . '/.htaccess';
 njr_test_assert( is_file( $htaccess ), 'the directory holds an .htaccess' );
 njr_test_assert(
@@ -204,7 +204,7 @@ njr_test_assert( '' === trim( (string) shell_exec( escapeshellarg( PHP_BINARY ) 
 // The regression that would stop a site serving its own media.
 njr_test_assert( ! file_exists( $uploads . '/.htaccess' ), 'no .htaccess is written into uploads itself' );
 njr_test_assert( ! file_exists( $uploads . '/index.php' ), 'no index.php is written into uploads itself' );
-njr_test_assert( [ Logger::DIRECTORY ] === array_values( array_diff( scandir( $uploads ), [ '.', '..' ] ) ), 'uploads gains the one directory and nothing else' );
+njr_test_assert( [ Logger::DIRECTORY_NAME ] === array_values( array_diff( scandir( $uploads ), [ '.', '..' ] ) ), 'uploads gains the one directory and nothing else' );
 
 // The suffix.
 $name = basename( $path );
@@ -232,15 +232,24 @@ njr_test_rmdir( $uploads );
 // A directory removed by hand is repaired by the next line, which is kept.
 $uploads = njr_test_site();
 Logger::log( 'before', 'file.php' );
-njr_test_rmdir( $uploads . '/' . Logger::DIRECTORY );
+njr_test_rmdir( $uploads . '/' . Logger::DIRECTORY_NAME );
 Logger::log( 'after the directory was removed', 'file.php' );
-$expected = [ Logger::DIRECTORY, Logger::DIRECTORY . '/.htaccess', Logger::DIRECTORY . '/index.php', Logger::DIRECTORY . '/' . basename( Logger::path() ) ];
+$expected = [ Logger::DIRECTORY_NAME, Logger::DIRECTORY_NAME . '/.htaccess', Logger::DIRECTORY_NAME . '/index.php', Logger::DIRECTORY_NAME . '/' . basename( Logger::path() ) ];
 sort( $expected );
 njr_test_assert(
 	$expected === njr_test_tree( $uploads ),
 	'a line written after the directory was removed recreates it and both guards'
 );
 njr_test_assert( false !== strpos( (string) file_get_contents( Logger::path() ), 'after the directory was removed' ), 'that line is not lost' );
+njr_test_rmdir( $uploads );
+
+// A directory the guards cannot be written into gets no log either: a line
+// lost is better than a log served.
+$uploads = njr_test_site();
+mkdir( $uploads . '/' . Logger::DIRECTORY_NAME, 0555 );
+Logger::log( 'unguarded', 'file.php' );
+njr_test_assert( ! file_exists( Logger::path() ), 'no line is written into a directory that could not be guarded' );
+chmod( $uploads . '/' . Logger::DIRECTORY_NAME, 0755 );
 njr_test_rmdir( $uploads );
 
 // Logging off leaves no trace at all: not a directory, not a guard, not an option.
@@ -259,7 +268,7 @@ file_put_contents( $uploads . '/' . Logger::LEGACY_FILENAME, $legacy_contents );
 Logger::migrate_legacy_log();
 njr_test_assert( ! file_exists( $uploads . '/' . Logger::LEGACY_FILENAME ), 'the migration moves the legacy log away from the legacy path' );
 njr_test_assert( is_file( Logger::path() ) && $legacy_contents === file_get_contents( Logger::path() ), 'the migration renames it to the new path, byte-for-byte' );
-njr_test_assert( is_file( $uploads . '/' . Logger::DIRECTORY . '/.htaccess' ) && is_file( $uploads . '/' . Logger::DIRECTORY . '/index.php' ), 'the migration writes the guards' );
+njr_test_assert( is_file( $uploads . '/' . Logger::DIRECTORY_NAME . '/.htaccess' ) && is_file( $uploads . '/' . Logger::DIRECTORY_NAME . '/index.php' ), 'the migration writes the guards' );
 
 Logger::migrate_legacy_log();
 njr_test_assert( 4 === count( njr_test_tree( $uploads ) ) && $legacy_contents === file_get_contents( Logger::path() ), 'a second migration leaves exactly one log, neither truncated nor duplicated' );
@@ -276,6 +285,16 @@ njr_test_assert( $current === file_get_contents( Logger::path() ), 'the migratio
 njr_test_assert( 'restored from a backup' === @file_get_contents( $uploads . '/' . Logger::LEGACY_FILENAME ), 'nor does it delete the legacy log it did not move' );
 njr_test_rmdir( $uploads );
 
+// An upgraded site whose first line after the upgrade comes from cron or the
+// front-end, before anybody opens the admin: that line must not create the new
+// file first and so strand the old log at the guessable path for good.
+$uploads = njr_test_site();
+file_put_contents( $uploads . '/' . Logger::LEGACY_FILENAME, "an old line\n" );
+Logger::log( 'the first line since the upgrade', 'file.php' );
+njr_test_assert( ! file_exists( $uploads . '/' . Logger::LEGACY_FILENAME ), 'a line logged before any admin request moves the legacy log first' );
+njr_test_assert( 0 === strpos( (string) file_get_contents( Logger::path() ), "an old line\n" ) && false !== strpos( (string) file_get_contents( Logger::path() ), 'the first line since the upgrade' ), 'and appends to it rather than starting a new file' );
+njr_test_rmdir( $uploads );
+
 // Nothing to migrate: a site that never logged gains nothing, whatever its setting.
 $uploads = njr_test_site( false );
 Logger::migrate_legacy_log();
@@ -284,11 +303,8 @@ njr_test_rmdir( $uploads );
 
 // The settings screen reports where the logger writes — composed by the
 // logger, not rebuilt beside it.
-$log_location = new ReflectionMethod( Settings::class, 'log_location' );
-$log_location->setAccessible( true );
-
 $uploads = njr_test_site();
-$shown   = $log_location->invoke( new Settings() );
+$shown   = Logger::reported_location();
 Logger::log( 'where does this go?', 'file.php' );
 njr_test_assert( $shown === Logger::path() && is_file( $shown ), 'with logging on, the settings screen reports the path the logger writes to' );
 njr_test_rmdir( $uploads );
@@ -296,9 +312,17 @@ njr_test_rmdir( $uploads );
 // With logging off, opening the settings screen must not hand the site a
 // suffix, so it can report the directory only.
 $uploads = njr_test_site( [] );
-$shown   = $log_location->invoke( new Settings() );
-njr_test_assert( $uploads . '/' . Logger::DIRECTORY . '/' === $shown, 'with logging off, the settings screen reports the directory' );
+$shown   = Logger::reported_location();
+njr_test_assert( $uploads . '/' . Logger::DIRECTORY_NAME . '/' === $shown, 'with logging off, the settings screen reports the directory' );
 njr_test_assert( [] === $GLOBALS['njr_test_options'] && [] === njr_test_tree( $uploads ), 'and reporting it creates nothing' );
+njr_test_rmdir( $uploads );
+
+// A site that has a log already — it logged before, or its legacy log was
+// migrated — keeps being told where it is after logging is switched off.
+$uploads = njr_test_site();
+Logger::log( 'written while on', 'file.php' );
+$GLOBALS['njr_test_debug'] = [];
+njr_test_assert( Logger::path() === Logger::reported_location(), 'with logging off on a site that has a suffix, the settings screen still reports the full path' );
 njr_test_rmdir( $uploads );
 
 printf( "\n%s\n", 0 === $failures ? 'All tests passed.' : sprintf( '%d test(s) failed.', $failures ) );

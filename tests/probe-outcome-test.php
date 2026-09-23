@@ -198,7 +198,7 @@ function njr_test_probe( $typed, $outcome ) {
 	$contents = file_exists( $logFile ) ? (string) file_get_contents( $logFile ) : '';
 
 	// The log, its guards and the directory holding them.
-	foreach ( [ $logFile, Logger::directory() . '/.htaccess', Logger::directory() . '/index.php' ] as $file ) {
+	foreach ( array_merge( [ $logFile ], array_map( function( $guard ) { return Logger::directory() . '/' . $guard; }, array_keys( Logger::GUARDS ) ) ) as $file ) {
 		if ( file_exists( $file ) ) unlink( $file );
 	}
 	if ( is_dir( Logger::directory() ) ) rmdir( Logger::directory() );

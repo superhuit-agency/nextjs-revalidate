@@ -528,7 +528,7 @@ class Settings extends Base implements Hookable {
 				'checked'   => $this->debug['enable-logs'] ?? false,
 				'help'      => sprintf(
 					__('Logs will be saved to file located in <code>%s</code>', 'nextjs-revalidate'),
-					$this->log_location()
+					Logger::reported_location()
 				),
 			]
 		);
@@ -559,20 +559,6 @@ class Settings extends Base implements Hookable {
 		delete_option( Logger::SUFFIX_OPTION_NAME );
 	}
 
-	/**
-	 * Where the settings screen tells the operator the log is written.
-	 *
-	 * The full path once logging is on — composed by the logger, so it cannot
-	 * disagree with where the logger writes. While logging is off, only the
-	 * directory: the filename's suffix is generated on first use, and a site
-	 * that does not log must not acquire one because its admin was opened.
-	 * Switching logging on and saving brings the full path up on the next load.
-	 *
-	 * @return string
-	 */
-	private function log_location() {
-		return Logger::is_enabled() ? Logger::path() : trailingslashit( Logger::directory() );
-	}
 
 	/**
 	 * Register every setting of the site currently being served,

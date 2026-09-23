@@ -232,10 +232,8 @@ Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
 
 ## J. The log file
 
-- [ ] **Confirm its location**: read the path under **Enable logs** on the
-      Debug tab, then `npx wp-env run cli -- ls -la wp-content/uploads/nextjs-revalidate`.
-      Expect the path to end `wp-content/uploads/nextjs-revalidate/nextjs-revalidate-<suffix>.log`,
-      and the listing to hold that file, an `.htaccess` and an `index.php`.
+- [ ] **Read the path under Enable logs on the Debug tab.** Expect it to end
+      `wp-content/uploads/nextjs-revalidate/nextjs-revalidate-<suffix>.log`.
 - [ ] **Request the log over HTTP**:
       `curl -sI http://localhost:8080/wp-content/uploads/nextjs-revalidate/<filename>`.
       Expect `403 Forbidden` — the `.htaccess` denying it on Apache. wp-env is
@@ -246,9 +244,6 @@ Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
 - [ ] **Turn logging off** on the Debug tab, save, update a post, run cron.
       Expect the revalidation to still happen (console) and **no new lines** in
       the file. Every line the plugin can write passes through that one setting.
-- [ ] **With logging still off, read the help text under Enable logs.**
-      Expect the directory only, ending `uploads/nextjs-revalidate/` — the
-      filename's suffix is not generated for a site that does not log.
 - [ ] **Turn logging back on** and confirm new lines appear.
 - [ ] **Read a success line.** Expect
       `[timestamp]\t[INFO]\t[RevalidateQueue.php]  #id: ✅ Revalidated in Ns <permalink> (priority: N)`.

@@ -16,7 +16,19 @@ class Logger {
 	 * everything beneath it, so one in uploads itself would deny the site's
 	 * own media. See ADR-0024.
 	 */
-	public const DIRECTORY = 'nextjs-revalidate';
+	public const DIRECTORY_NAME = 'nextjs-revalidate';
+
+	/**
+	 * The files that guard that directory, by name, and what each holds.
+	 *
+	 * The `.htaccess` is a real denial on Apache and ignored by nginx;
+	 * `index.php` only suppresses a listing. Neither protects a known path on
+	 * nginx, which is what the filename's suffix is for (ADR-0024).
+	 */
+	public const GUARDS = [
+		'.htaccess' => "# Apache 2.4\n<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n\n# Apache 2.2\n<IfModule !mod_authz_core.c>\n\tOrder allow,deny\n\tDeny from all\n</IfModule>\n",
+		'index.php' => "<?php\n// Silence is golden.\n",
+	];
 
 	/**
 	 * The name the log had, directly in the uploads directory and the same on
@@ -80,6 +92,12 @@ class Logger {
 		// Never a negative repeat count: a filename longer than the column is simply not padded.
 		$alignment = str_repeat(' ', max(0, 16 - strlen($filename)));
 
+		// An upgraded site's first line may come from cron or the front-end,
+		// before any admin request has run the migration. Written first, it
+		// would create the new file and strand the old log at the legacy path
+		// for good — the migration never overwrites.
+		self::migrate_legacy_log();
+
 		// Ensured on every write, not only by the migration: a fresh install, a
 		// site created later on a network, or a directory somebody removed by
 		// hand would otherwise lose the line, or keep it unguarded.
@@ -120,8 +138,7 @@ class Logger {
 	 * @return string
 	 */
 	public static function directory() {
-		$dirs = wp_upload_dir();
-		return trailingslashit($dirs['basedir']) . self::DIRECTORY;
+		return self::uploads_dir() . self::DIRECTORY_NAME;
 	}
 
 	/**
@@ -135,6 +152,25 @@ class Logger {
 	 */
 	public static function path() {
 		return trailingslashit( self::directory() ) . 'nextjs-revalidate-' . self::suffix() . '.log';
+	}
+
+	/**
+	 * Where the settings screen tells the operator the log is written.
+	 *
+	 * The full path whenever this site has one — logging is on, or it has
+	 * logged before and been handed its suffix — so it cannot disagree with
+	 * where the logger writes, and an operator who switches logging off is
+	 * still told where the log they have is. Otherwise only the directory: the
+	 * suffix is generated on first use, and a site that does not log must not
+	 * acquire one because its admin was opened.
+	 *
+	 * @return string
+	 */
+	public static function reported_location() {
+		$suffix = get_option( self::SUFFIX_OPTION_NAME );
+		$seeded = is_string($suffix) && $suffix !== '';
+
+		return ( $seeded || self::is_enabled() ) ? self::path() : trailingslashit( self::directory() );
 	}
 
 	/**
@@ -153,8 +189,7 @@ class Logger {
 	 * @return void
 	 */
 	public static function migrate_legacy_log() {
-		$dirs   = wp_upload_dir();
-		$legacy = trailingslashit($dirs['basedir']) . self::LEGACY_FILENAME;
+		$legacy = self::uploads_dir() . self::LEGACY_FILENAME;
 
 		// Checked before `path()` is, so a site with nothing to migrate is not
 		// handed a suffix by the asking.
@@ -186,28 +221,33 @@ class Logger {
 	}
 
 	/**
-	 * Make sure the log's directory exists and holds both of its guards.
+	 * The site's uploads directory, with a trailing slash.
+	 *
+	 * @return string
+	 */
+	private static function uploads_dir() {
+		$dirs = wp_upload_dir();
+		return trailingslashit($dirs['basedir']);
+	}
+
+	/**
+	 * Make sure the log's directory exists and holds every one of its guards.
 	 *
 	 * Each guard is checked on its own, so one removed by hand is restored
-	 * rather than assumed from the directory being there. The `.htaccess` is a
-	 * real denial on Apache and ignored by nginx; `index.php` only suppresses a
-	 * listing. Neither protects a known path on nginx, which is what the
-	 * filename's suffix is for (ADR-0024).
+	 * rather than assumed from the directory being there.
 	 *
-	 * @return bool Whether the directory exists.
+	 * @return bool Whether the directory exists and is guarded. When it is not,
+	 *              nothing may be written into it: a line lost is better than
+	 *              a log served.
 	 */
 	private static function ensure_directory() {
 		$directory = self::directory();
 		if ( ! wp_mkdir_p($directory) ) return false;
 
-		$guards = [
-			'.htaccess' => "# Apache 2.4\n<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n\n# Apache 2.2\n<IfModule !mod_authz_core.c>\n\tOrder allow,deny\n\tDeny from all\n</IfModule>\n",
-			'index.php' => "<?php\n// Silence is golden.\n",
-		];
-
-		foreach ( $guards as $name => $contents ) {
+		foreach ( self::GUARDS as $name => $contents ) {
 			$guard = trailingslashit($directory) . $name;
-			if ( ! file_exists($guard) ) @file_put_contents( $guard, $contents );
+			if ( file_exists($guard) ) continue;
+			if ( false === @file_put_contents( $guard, $contents ) ) return false;
 		}
 
 		return true;

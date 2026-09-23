@@ -365,7 +365,8 @@ $legacy = $GLOBALS['njr_test_uploads_dir'] . '/' . Logger::LEGACY_FILENAME;
 file_put_contents( $legacy, "an old line\n" );
 migrate( [ LEDGER => NJR_VERSION ] );
 check( ! file_exists( $legacy ) && "an old line\n" === @file_get_contents( Logger::path() ), 'migrating moves the legacy log into the plugin directory' );
-foreach ( [ Logger::path(), Logger::directory() . '/.htaccess', Logger::directory() . '/index.php' ] as $file ) unlink( $file );
+unlink( Logger::path() );
+foreach ( array_keys( Logger::GUARDS ) as $guard ) unlink( Logger::directory() . '/' . $guard );
 rmdir( Logger::directory() );
 
 // The ledger describes this site's data, so it is torn down with it. Left
