@@ -9,7 +9,9 @@ use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
 /**
- * @property Revalidate $revalidate
+ * @property Revalidate      $revalidate
+ * @property RevalidateQueue $queue
+ * @property Settings        $settings
  */
 class RevalidateAll extends Base implements Hookable {
 	use AdminBarMenu;
@@ -149,7 +151,11 @@ class RevalidateAll extends Base implements Hookable {
 	 * and schedule the revalidate all cron to run.
 	 *
 	 * @param string $type Optional. The type of post type to revalidate. Default. 'all'.
-	 * @return int The number of nodes added to revalidate
+	 * @return int|false The number of nodes added to revalidate, or false on a
+	 *                   refusal — an unconfigured site, where nothing was
+	 *                   enqueued because nothing enqueued could be delivered.
+	 *                   Zero and false are different answers: zero is a site
+	 *                   that had nothing revalidatable to add.
 	 */
 	function revalidate_all( $type = 'all' ) {
 		if ( !$this->settings->is_configured() ) {

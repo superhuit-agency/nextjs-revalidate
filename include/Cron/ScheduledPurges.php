@@ -7,6 +7,9 @@ use DateTimeZone;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Interfaces\Hookable;
 
+/**
+ * @property \NextJsRevalidate\RevalidateQueue $queue
+ */
 class ScheduledPurges extends Base implements Hookable {
 
 	const CRON_HOOK_NAME = 'nextjs-revalidate-scheduled_purges';
@@ -33,7 +36,16 @@ class ScheduledPurges extends Base implements Hookable {
 			$next_purge_datetime = new DateTime( $datetime );
 			if ( $next_purge_datetime <= $now ) {
 				foreach ($urls as $url) {
-					$this->queue->add_item( $url, true );
+					// `1`, not `true`: a priority is a number, and `true` was a
+					// literal port of the `$force` flag the pre-queue
+					// `Revalidate::purge()` took here (d3a4920). It has always
+					// reached the table as `1` — `$wpdb->insert()` binds it into
+					// an int column, and `promote_item()` takes `intval()` of it
+					// — so this is the same priority spelled honestly, not a new
+					// one. Whether a scheduled purge deserves to drain ahead of
+					// an ordinary save is a question nobody has answered; it is
+					// not answered by an accident either way.
+					$this->queue->add_item( $url, 1 );
 				}
 			}
 			else {

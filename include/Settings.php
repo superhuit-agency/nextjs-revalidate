@@ -20,6 +20,11 @@ use NextJsRevalidate\Interfaces\Hookable;
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
  * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — '', 'on' or 'off'.
  * @property array  $debug                   Debug switches, keyed by name.
+ *
+ * @property RevalidateQueue $queue            Not a setting: the collaborator
+ *                                             `Base::__get()` shares, reached
+ *                                             the way every other class
+ *                                             reaches it.
  */
 class Settings extends Base implements Hookable {
 

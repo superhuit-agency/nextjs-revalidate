@@ -60,6 +60,15 @@ includes:
 	# red from the moment it landed. See
 	# docs/adr/0009-checks-run-on-pull-requests.md — a regeneration is what an
 	# out-of-date baseline needs, and it is not licence to bank a new finding.
+	#
+	# It shrank in #82, from 25 entries to 4. Eighteen of the twenty-one that
+	# left were one shape — the magic `__get()` accessors, whose surface
+	# `NextJsRevalidate` and each class extending `Abstracts\Base` now declare in
+	# `@property` docblocks, so the analysis can see what it used to be told to
+	# ignore; the other three were two lying docblocks and a redundant
+	# `method_exists()`. Anything still in the file is unrelated to either and
+	# still a to-do.
+	# See docs/adr/0025-the-magic-property-surface-is-declared.md.
 	- phpstan-baseline.neon
 
 parameters:
