@@ -107,10 +107,21 @@ them at its end, so run this after it or check the Next.js API tab first.
       PHP'
       ```
       Publish one from the new **Hidden** menu. Expect **no** revalidation.
+- [ ] **Look at what the admin offers for Hidden.** Expect **no** Purge caches
+      entry in the Hidden list's Bulk actions dropdown, and no **Hidden** switch
+      under either *Allow purge all options* or *On menu update options* in the
+      settings: a post type the gate declines every post of is offered nothing.
 - [ ] **Admit it with the filter.** Append to that mu-plugin
       `add_filter("nextjs_revalidate_purge_should_revalidate_post_on_save", "__return_true");`
       and publish another Hidden post. Expect a revalidation — the site has the
-      last word over the viewability gate. Then
+      last word over the viewability gate. Expect the bulk action and the two
+      switches to be **still absent**: that filter answers about one post, so it
+      widens the gate and not what the admin offers.
+- [ ] **Make the post type viewable instead.** Append to that mu-plugin
+      `add_filter("is_post_type_viewable", function($v, $pt) { return "njr_hidden" === $pt->name ? true : $v; }, 10, 2);`
+      and reload the settings page. Expect a **Hidden** switch in both lists, and
+      **Purge caches** in the Hidden list's Bulk actions — core's own filter
+      moves the offer and the gate together. Then
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-runbook-cpt.php`.
 - [ ] **Change a published post's slug and Update.** Expect a revalidation, and
       record **which** path arrives: WordPress reports the new permalink, so the

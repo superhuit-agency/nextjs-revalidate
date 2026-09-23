@@ -20,6 +20,11 @@ use NextJsRevalidate\Interfaces\Hookable;
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
  * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — '', 'on' or 'off'.
  * @property array  $debug                   Debug switches, keyed by name.
+ *
+ * The plugin's own objects are reached through the same `__get()`, off the
+ * base class rather than off the table below.
+ *
+ * @property Revalidate $revalidate The gate, asked which post types this page offers switches for.
  */
 class Settings extends Base implements Hookable {
 
@@ -375,10 +380,14 @@ class Settings extends Base implements Hookable {
 			]
 		);
 
-		$post_types = get_post_types([ 'public' => true ]);
+		// The post types this plugin offers its actions for, rather than the
+		// `public` ones this list asked for until #53 — a switch offered for a
+		// type the gate declines every post of is one an operator can turn on
+		// to no effect. A type this no longer lists keeps whatever row it has
+		// in the option until the next save of this page, which posts only the
+		// switches it rendered. See `Revalidate::offered_post_types()`.
+		$post_types = $this->revalidate->offered_post_types();
 		foreach ($post_types as $post_type) {
-			if ( $post_type === 'attachment' ) continue; // skip attachments
-
 			$post_type_object = get_post_type_object( $post_type );
 			$id = "allow_revalidate_all-$post_type";
 			add_settings_field(
@@ -428,8 +437,6 @@ class Settings extends Base implements Hookable {
 		);
 
 		foreach ($post_types as $post_type) {
-			if ( $post_type === 'attachment' ) continue; // skip attachments
-
 			$post_type_object = get_post_type_object( $post_type );
 			$id = "revalidate-on-menu-save-$post_type";
 			add_settings_field(
