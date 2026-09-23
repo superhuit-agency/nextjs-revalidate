@@ -50,7 +50,10 @@ callbacks on one hook and has nothing to do with the queue.
 
 **Scheduled purge**:
 A revalidation registered to happen at a future time rather than immediately,
-used for content with a publication or expiry date.
+used for content with a publication or expiry date. When it comes due it is
+enqueued at an elevated **queue priority** (5, ahead of the default 10): content
+whose date has just passed is more urgent than an ordinary save, but still
+below anything a caller explicitly deemed more urgent.
 
 **Probe**:
 A revalidation the operator asks for directly, in order to observe its outcome.
@@ -93,8 +96,26 @@ merely wrong.
 **Revalidatable post**:
 A post the front-end could hold a page for. Its type is viewable — WordPress's
 own `publicly_queryable` test — and its status is publish or private, or it has
-just left publish for draft or trash. A post that is not revalidatable produces
-no revalidation at all; it is not refused, it was never a candidate.
+just **left the front-end**. A post that is not revalidatable produces no
+revalidation at all; it is not refused, it was never a candidate.
+
+A post **leaves the front-end** when the save that changed it moved it from a
+status the status axis admits (publish or private) to one it does not — draft,
+pending, future, trash, or any custom status. The front-end still holds the page
+the post had, so that page is revalidated one last time, from the permalink the
+post had *before* the save, to make it a 404. Defined against the status axis
+rather than as a list of destinations, so it covers every status — including
+ones a workflow plugin registers — and follows the axis if it is ever widened.
+Private counts as on the front-end: private → trash leaves it, publish → private
+does not.
+
+Permanently deleting a post asks the same question of the post as it stands just
+before it is gone: a publish or private post is revalidatable and its page is
+revalidated, while a post already in the trash is not — trashing it already
+revalidated the page, and the front-end has had no reason to cache it since.
+
+This is deliberately not core's `is_post_status_viewable()`, which rejects
+private.
 
 The site has the last word: a filter is applied after both axes and can admit or
 decline any post, which is how a headless site whose types are not
