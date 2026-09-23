@@ -95,8 +95,9 @@ class Logger {
 		// An upgraded site's first line may come from cron or the front-end,
 		// before any admin request has run the migration. Written first, it
 		// would create the new file and strand the old log at the legacy path
-		// for good — the migration never overwrites.
-		self::migrate_legacy_log();
+		// for good — the migration never overwrites. So a move that failed
+		// drops the line too, and the next one tries again.
+		if ( ! self::migrate_legacy_log() ) return;
 
 		// Ensured on every write, not only by the migration: a fresh install, a
 		// site created later on a network, or a directory somebody removed by
@@ -151,7 +152,7 @@ class Logger {
 	 * @return string
 	 */
 	public static function path() {
-		return trailingslashit( self::directory() ) . 'nextjs-revalidate-' . self::suffix() . '.log';
+		return trailingslashit( self::directory() ) . self::DIRECTORY_NAME . '-' . self::suffix() . '.log';
 	}
 
 	/**
@@ -167,10 +168,7 @@ class Logger {
 	 * @return string
 	 */
 	public static function reported_location() {
-		$suffix = get_option( self::SUFFIX_OPTION_NAME );
-		$seeded = is_string($suffix) && $suffix !== '';
-
-		return ( $seeded || self::is_enabled() ) ? self::path() : trailingslashit( self::directory() );
+		return ( null !== self::stored_suffix() || self::is_enabled() ) ? self::path() : trailingslashit( self::directory() );
 	}
 
 	/**
@@ -186,18 +184,31 @@ class Logger {
 	 * failed revalidation leaves, and a plugin update is not a thing anybody
 	 * expects to destroy their evidence. When both exist, both are left alone.
 	 *
-	 * @return void
+	 * Runs whether or not logging is on: a site that switched logging off
+	 * still has the exposed file, and moving it is the point (ADR-0024). Such
+	 * a site gains the directory, the guards and a suffix — for the log it
+	 * already has, not as a side effect of a line.
+	 *
+	 * @return bool Whether it is safe to write to `path()`: false only when a
+	 *              legacy log is still at the legacy path after a move was
+	 *              due. A line written then would create the new file first,
+	 *              and the old log would never be moved.
 	 */
 	public static function migrate_legacy_log() {
 		$legacy = self::uploads_dir() . self::LEGACY_FILENAME;
 
 		// Checked before `path()` is, so a site with nothing to migrate is not
 		// handed a suffix by the asking.
-		if ( ! is_file($legacy) ) return;
-		if ( file_exists( self::path() ) ) return;
-		if ( ! self::ensure_directory() ) return;
+		if ( ! is_file($legacy) ) return true;
+		if ( file_exists( self::path() ) ) return true;
 
-		rename( $legacy, self::path() );
+		if ( ! self::ensure_directory() ) return false;
+
+		// Silenced: two first writes — cron and the front-end — can both pass
+		// the checks above, and the loser's rename fails for want of a file
+		// the winner has already moved. That failure is a success: the old log
+		// is gone from the legacy path either way.
+		return @rename( $legacy, self::path() ) || ! file_exists($legacy);
 	}
 
 	/**
@@ -210,14 +221,24 @@ class Logger {
 	 * @return string
 	 */
 	private static function suffix() {
-		$suffix = get_option( self::SUFFIX_OPTION_NAME );
-		if ( is_string($suffix) && $suffix !== '' ) return $suffix;
+		$suffix = self::stored_suffix();
+		if ( null !== $suffix ) return $suffix;
 
 		// Letters and digits only: it is part of a filename, and of a URL.
 		$suffix = wp_generate_password( 32, false );
 		if ( add_option( self::SUFFIX_OPTION_NAME, $suffix ) ) return $suffix;
 
 		return (string) get_option( self::SUFFIX_OPTION_NAME );
+	}
+
+	/**
+	 * This site's suffix if it has been handed one, without generating it.
+	 *
+	 * @return string|null
+	 */
+	private static function stored_suffix() {
+		$suffix = get_option( self::SUFFIX_OPTION_NAME );
+		return ( is_string($suffix) && $suffix !== '' ) ? $suffix : null;
 	}
 
 	/**
@@ -233,8 +254,10 @@ class Logger {
 	/**
 	 * Make sure the log's directory exists and holds every one of its guards.
 	 *
-	 * Each guard is checked on its own, so one removed by hand is restored
-	 * rather than assumed from the directory being there.
+	 * Each guard is checked on its own, and by its contents, so one removed
+	 * or emptied by hand is restored rather than assumed from the directory
+	 * — or the file — being there. The directory is the plugin's, so nothing
+	 * else's edits to a guard are being overwritten.
 	 *
 	 * @return bool Whether the directory exists and is guarded. When it is not,
 	 *              nothing may be written into it: a line lost is better than
@@ -246,7 +269,7 @@ class Logger {
 
 		foreach ( self::GUARDS as $name => $contents ) {
 			$guard = trailingslashit($directory) . $name;
-			if ( file_exists($guard) ) continue;
+			if ( is_file($guard) && $contents === file_get_contents($guard) ) continue;
 			if ( false === @file_put_contents( $guard, $contents ) ) return false;
 		}
 

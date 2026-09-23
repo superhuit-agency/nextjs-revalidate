@@ -567,7 +567,6 @@ class Settings extends Base implements Hookable {
 		delete_option( Logger::SUFFIX_OPTION_NAME );
 	}
 
-
 	/**
 	 * Register every setting of the site currently being served,
 	 * holding its empty value until an operator supplies one.

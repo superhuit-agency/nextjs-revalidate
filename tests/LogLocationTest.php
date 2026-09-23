@@ -243,6 +243,15 @@ njr_test_assert(
 njr_test_assert( false !== strpos( (string) file_get_contents( Logger::path() ), 'after the directory was removed' ), 'that line is not lost' );
 njr_test_rmdir( $uploads );
 
+// A guard emptied by hand is restored by the next line, not taken on trust
+// because a file of that name exists.
+$uploads = njr_test_site();
+Logger::log( 'before', 'file.php' );
+file_put_contents( $uploads . '/' . Logger::DIRECTORY_NAME . '/.htaccess', '' );
+Logger::log( 'after the guard was emptied', 'file.php' );
+njr_test_assert( Logger::GUARDS['.htaccess'] === file_get_contents( $uploads . '/' . Logger::DIRECTORY_NAME . '/.htaccess' ), 'an emptied .htaccess is rewritten' );
+njr_test_rmdir( $uploads );
+
 // A directory the guards cannot be written into gets no log either: a line
 // lost is better than a log served.
 $uploads = njr_test_site();
@@ -293,6 +302,34 @@ file_put_contents( $uploads . '/' . Logger::LEGACY_FILENAME, "an old line\n" );
 Logger::log( 'the first line since the upgrade', 'file.php' );
 njr_test_assert( ! file_exists( $uploads . '/' . Logger::LEGACY_FILENAME ), 'a line logged before any admin request moves the legacy log first' );
 njr_test_assert( 0 === strpos( (string) file_get_contents( Logger::path() ), "an old line\n" ) && false !== strpos( (string) file_get_contents( Logger::path() ), 'the first line since the upgrade' ), 'and appends to it rather than starting a new file' );
+njr_test_rmdir( $uploads );
+
+// A move that fails leaves the line unwritten rather than written first: the
+// new file would then exist, and the old log would never be moved. Here the
+// directory and its guards are in place and writable, but uploads itself is
+// not, so the log cannot be taken out of it.
+$uploads   = njr_test_site();
+$directory = $uploads . '/' . Logger::DIRECTORY_NAME;
+mkdir( $directory );
+foreach ( Logger::GUARDS as $guard => $contents ) file_put_contents( $directory . '/' . $guard, $contents );
+file_put_contents( $uploads . '/' . Logger::LEGACY_FILENAME, "an old line\n" );
+chmod( $uploads, 0555 );
+Logger::log( 'while the move fails', 'file.php' );
+njr_test_assert( "an old line\n" === @file_get_contents( $uploads . '/' . Logger::LEGACY_FILENAME ), 'a legacy log that cannot be moved stays where it is' );
+njr_test_assert( ! file_exists( Logger::path() ), 'and no line is written to the new path ahead of it' );
+chmod( $uploads, 0755 );
+Logger::log( 'once it can be moved', 'file.php' );
+njr_test_assert( ! file_exists( $uploads . '/' . Logger::LEGACY_FILENAME ) && 0 === strpos( (string) @file_get_contents( Logger::path() ), "an old line\n" ), 'the next line moves it after all' );
+njr_test_rmdir( $uploads );
+
+// Logging off is no reason to leave an existing log at the guessable path: the
+// migration moves it and guards it all the same.
+$uploads = njr_test_site( [] );
+file_put_contents( $uploads . '/' . Logger::LEGACY_FILENAME, "an old line\n" );
+Logger::migrate_legacy_log();
+njr_test_assert( ! file_exists( $uploads . '/' . Logger::LEGACY_FILENAME ) && "an old line\n" === @file_get_contents( Logger::path() ), 'with logging off, the migration still moves the legacy log' );
+njr_test_assert( is_file( $uploads . '/' . Logger::DIRECTORY_NAME . '/.htaccess' ) && is_file( $uploads . '/' . Logger::DIRECTORY_NAME . '/index.php' ), 'and guards the directory it moved it into' );
+njr_test_assert( Logger::path() === Logger::reported_location(), 'and the settings screen reports where it went' );
 njr_test_rmdir( $uploads );
 
 // Nothing to migrate: a site that never logged gains nothing, whatever its setting.
