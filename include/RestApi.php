@@ -8,6 +8,10 @@ use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
 
+/**
+ * @property RevalidateQueue $queue
+ * @property Settings        $settings
+ */
 class RestApi extends Base implements Hookable {
 
 	const NAMESPACE = 'nextjs-revalidate/v1';

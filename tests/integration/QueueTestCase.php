@@ -120,9 +120,14 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 * `switch_to_blog()`, and a copy of the expression that builds it is the
 	 * one thing this suite must not own.
 	 *
+	 * Reachable by a test as well as by the isolation above, because arranging a
+	 * fixture can enqueue: a post saved into place is a revalidation of its own,
+	 * and a test about what some *later* event enqueues has to be able to start
+	 * from an empty queue rather than assert around it.
+	 *
 	 * @return void
 	 */
-	private function reset_queue() {
+	protected function reset_queue() {
 		$reset = new ReflectionMethod( RevalidateQueue::class, 'reset_queue' );
 		$reset->setAccessible( true );
 		$reset->invoke( $this->queue() );

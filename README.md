@@ -123,6 +123,13 @@ Registers a revalidation of the given URL for a future date time. Nothing is
 enqueued until then, so a schedule registered on a configured site is still
 refused at its due time if the site is unconfigured by then.
 
+When the date time passes, the revalidation is enqueued at priority `5` rather
+than the default `10`: content whose publication or expiry date has just passed
+is more urgent than an ordinary save, and still less urgent than anything a
+caller asked for at a lower number.
+A URL already waiting in the queue at the default is promoted to `5` rather
+than queued a second time.
+
 #### Usage
 ```php
 nextjs_revalidate_schedule_purge_url( $datetime, $url );
@@ -152,6 +159,35 @@ revalidated, whatever their status.
 
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
+
+Permanently deleting a post asks the same question of the post as it stands just
+before it is gone, and revalidates its permalink so the front-end stops serving
+a page for content that no longer exists. A post already in the trash is not
+revalidated again: trashing it revalidated that page already, and the front-end
+has had no reason to cache it since — so emptying the trash, by hand or through
+WordPress's scheduled sweep, enqueues nothing. Deleting a revision revalidates
+nothing either; the post it belongs to still has its page.
+
+## Which post types the admin offers
+
+The same viewability decides what this plugin *offers* for a post type: the
+**Purge caches** bulk action on its list screen, its two switches on the
+settings page — allow purge all, and revalidate on menu update — the purge-all
+entry in the admin bar, and whether a purge all walks it at all. Attachments are
+never offered: an uploaded file is not a Next.js route.
+
+Those are offers and not gates — what is revalidated is the section above, and
+it is decided per post whatever the admin shows. The post filter below cannot
+widen them either: it answers about one post, and no list of post types can be
+derived from it. A headless site that wants the bulk surfaces for a type it
+admits with that filter overrides viewability itself, with core's own
+[`is_post_type_viewable`](https://developer.wordpress.org/reference/hooks/is_post_type_viewable/)
+filter — this plugin asks that function, so the offer and the gate move
+together.
+
+A switch already stored for a post type that is no longer offered is left as it
+is, and does nothing: no purge-all entry is offered for it, and a menu update
+does not walk it. Saving the settings page drops the stored row.
 
 ## Which terms are revalidated
 
