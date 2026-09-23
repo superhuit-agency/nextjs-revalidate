@@ -44,7 +44,7 @@ class Revalidate extends Base implements Hookable {
 	 * Two independent axes, both of which must hold:
 	 *  - its type is viewable — WordPress's own `publicly_queryable` test;
 	 *  - its status is publish or private (a private or password protected post
-	 *    still has a page), or it has just left publish for draft or trash.
+	 *    still has a page), or it has just left the front-end.
 	 *
 	 * The site has the last word: the filter is applied after both axes and can
 	 * admit any post, which is how a headless site whose types are not
@@ -97,27 +97,57 @@ class Revalidate extends Base implements Hookable {
 		if ( false === $post_type || ! is_post_type_viewable( $post_type ) ) return false;
 
 		// Status axis. Private and password protected posts do have a page.
-		if ( in_array( get_post_status( $post_id ), ['publish', 'private'], true ) ) return true;
+		if ( $this->status_axis_admits( get_post_status( $post_id ) ) ) return true;
 
-		return $this->has_just_left_publish( $post_id, $post_before );
+		return $this->has_just_left_front_end( $post_id, $post_before );
 	}
 
 	/**
-	 * Whether the post has just left publish for draft or trash.
+	 * Whether the status axis admits the given status, i.e. whether a post
+	 * holding it has a page on the front-end right now.
 	 *
-	 * The front-end still holds the page the post had while published, so that
-	 * page is revalidated one last time to make it go away.
+	 * The one place the axis is spelled out, because a post having just left the
+	 * front-end is a question asked *against* it rather than a second list of
+	 * statuses which would have to be kept in step with this one.
+	 *
+	 * Deliberately not core's `is_post_status_viewable()`, which rejects
+	 * `private`: a private post still has a page, and re-admitting it is the
+	 * status-axis exception `docs/adr/0005-post-type-viewability-gates-revalidation.md`
+	 * records.
+	 *
+	 * @param string|false $post_status The post status, or false when the post has none.
+	 *
+	 * @return bool
+	 */
+	private function status_axis_admits( $post_status ) {
+		return in_array( $post_status, ['publish', 'private'], true );
+	}
+
+	/**
+	 * Whether the post has just left the front-end.
+	 *
+	 * The save that changed it moved it from a status the status axis admits to
+	 * one it does not — draft, pending, future, trash, or any status an
+	 * editorial workflow plugin registers. The front-end still holds the page
+	 * the post had, so that page is revalidated one last time, from the
+	 * permalink the post had *before* the save, to make it a 404.
+	 *
+	 * Asked against the status axis rather than as a list of destinations: an
+	 * allowlist would have to name every custom status a site can register, and
+	 * would go out of step with the axis the day it is widened. So `publish →
+	 * private` is correctly not a leaving — the axis still admits the post and
+	 * revalidates it on its own — while `private → trash` is one.
 	 *
 	 * @param int          $post_id     The post ID.
 	 * @param WP_Post|null $post_before The post as it was before the save.
 	 *
 	 * @return bool
 	 */
-	private function has_just_left_publish( $post_id, $post_before ) {
+	private function has_just_left_front_end( $post_id, $post_before ) {
 		if ( ! $post_before instanceof WP_Post ) return false;
-		if ( 'publish' !== $post_before->post_status ) return false;
+		if ( ! $this->status_axis_admits( $post_before->post_status ) ) return false;
 
-		return in_array( get_post_status( $post_id ), ['draft', 'trash'], true );
+		return ! $this->status_axis_admits( get_post_status( $post_id ) );
 	}
 
 	function on_post_save( $post_id, $post, $update, $post_before ) {
@@ -128,9 +158,9 @@ class Revalidate extends Base implements Hookable {
 		// Bail early if current request is for saving the metaboxes. (To not duplicate the purge query)
 		if ( isset($_REQUEST['meta-box-loader']) ) return;
 
-		$post_permalink = ( $this->has_just_left_publish( $post_id, $post_before )
+		$post_permalink = ( $this->has_just_left_front_end( $post_id, $post_before )
 			// We take the permalink from the previous post, in order to get the correct permalink
-			// (otherwise it would be the draft permalink like "/?page_id=9999/" which doesn't work with the revalidate API)
+			// (otherwise it would be the unpublished permalink like "/?page_id=9999/" which doesn't work with the revalidate API)
 			? get_permalink( $post_before )
 			: $this->get_post_permalink( $post_id, false )
 		);
