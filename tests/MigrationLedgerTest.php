@@ -109,6 +109,52 @@ function delete_option( $name ) {
 	return true;
 }
 
+/**
+ * How many times the migration asked the queue to bring its table up to date.
+ *
+ * @var int
+ */
+$GLOBALS['njr_test_table_migrations'] = 0;
+
+/**
+ * The revalidation queue, as much of it as a migration reaches.
+ *
+ * `Settings::migrate_db()` asks the queue to bring its table to the shape the
+ * running code expects (ADR 0027): a site's table is its data exactly as its
+ * options are, and the same request has to carry both. There is no database
+ * here, so this records that it was asked rather than doing anything.
+ */
+class NJR_Queue_Double {
+
+	public function migrate_table() {
+		$GLOBALS['njr_test_table_migrations']++;
+	}
+}
+
+/**
+ * The composition root, as much of it as `migrate_db()` reaches: `Abstracts\Base`
+ * hands a subclass its collaborators from here, and the queue is the one this
+ * file's subject asks for.
+ */
+class NextJsRevalidate {
+
+	/** @var NextJsRevalidate|null */
+	private static $instance;
+
+	/** @var NJR_Queue_Double */
+	public $queue;
+
+	public function __construct() {
+		$this->queue = new NJR_Queue_Double();
+	}
+
+	public static function init() {
+		if ( ! isset( self::$instance ) ) self::$instance = new self();
+
+		return self::$instance;
+	}
+}
+
 // The subject
 // ====
 
@@ -137,8 +183,9 @@ $failures = 0;
  * @return Settings The instance which migrated it, for a second run.
  */
 function migrate( array $options ) {
-	$GLOBALS['njr_test_options'] = $options;
-	$GLOBALS['njr_test_writes']  = [];
+	$GLOBALS['njr_test_options']          = $options;
+	$GLOBALS['njr_test_writes']           = [];
+	$GLOBALS['njr_test_table_migrations'] = 0;
 
 	$settings = new Settings();
 	$settings->migrate_db();
@@ -189,6 +236,11 @@ function check_same( $expected, $actual, $description ) {
 migrate( [] );
 check_same( [ LEDGER => NJR_VERSION ], options(), 'a fresh install is stamped, and nothing else' );
 check_same( [ 'update:' . LEDGER ], writes(), 'a fresh install runs no migration body' );
+check_same(
+	1,
+	$GLOBALS['njr_test_table_migrations'],
+	'every site is asked to bring its queue table to the current shape, fresh install included'
+);
 
 // A 1.4.x site: both migrations run, in order, on the one request. The option
 // the 1.5.0 body carries over is the one the 1.6.0 body then drops.

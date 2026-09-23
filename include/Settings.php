@@ -853,7 +853,9 @@ class Settings extends Base implements Hookable {
 	}
 
 	/**
-	 * Migrate this site's options to the data shape the running code expects.
+	 * Migrate this site's data to the shape the running code expects — its
+	 * options, and everything else this plugin keeps per site: the log file's
+	 * location, and the queue table's own columns and keys.
 	 *
 	 * Each migration is gated on the site's DB version — read from the
 	 * migration ledger, never from the plugin version, which is always the
@@ -900,6 +902,13 @@ class Settings extends Base implements Hookable {
 		// The log moved into a guarded directory of its own, under a per-site
 		// name (ADR-0024). Guarded on the data for the same reason as above.
 		Logger::migrate_legacy_log();
+
+		// The queue's unique key moved off the `permalink` TEXT column and onto
+		// a hash of it (ADR-0027), so the dedup the queue depends on exists on
+		// standard MySQL and not only on MariaDB. Guarded on the data for the
+		// same reason as the two above, and it is also where a site whose
+		// `CREATE TABLE` MySQL refused gets a queue table at all.
+		$this->queue->migrate_table();
 
 		// Stamp the ledger, so none of the above is eligible to run again.
 		// A site whose data was migrated by newer code than is running now

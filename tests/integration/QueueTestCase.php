@@ -133,6 +133,24 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 		$reset->invoke( $this->queue() );
 	}
 
+	/**
+	 * The name of the queue table of the site currently being served.
+	 *
+	 * Reflected out of the queue for the same reason `reset_queue()` is: the
+	 * expression that builds it follows `switch_to_blog()`, and a copy of it in
+	 * test code is the one thing this suite must not own. Reachable because a
+	 * test about the table's own shape — its columns and its keys — has nothing
+	 * else to ask the question of.
+	 *
+	 * @return string
+	 */
+	protected function queue_table() {
+		$name = new ReflectionMethod( RevalidateQueue::class, 'get_table_name' );
+		$name->setAccessible( true );
+
+		return $name->invoke( $this->queue() );
+	}
+
 	// Fixtures
 	// ====
 
@@ -317,9 +335,12 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 * Assert the queue revalidates exactly these paths at these priorities, in
 	 * this order.
 	 *
-	 * Keyed by path, which is lossless only because the queue's `permalink`
-	 * column is UNIQUE: no two entries of one site can revalidate the same path,
-	 * so no key can collapse onto another. Assert with
+	 * Keyed by path, which is lossless only because the queue's
+	 * `permalink_hash` column is UNIQUE: no two entries of one site can
+	 * revalidate the same path, so no key can collapse onto another. It used to
+	 * name `permalink` — the key was declared over that `TEXT` column, which only
+	 * MariaDB accepts, so on every other engine the guarantee this sentence
+	 * rests on was simply absent (#121, ADR 0027). Assert with
 	 * `assertQueueRevalidates()` as well when the count matters to the test.
 	 *
 	 * @param int[]  $priorities The expected path => priority map, drain order first.

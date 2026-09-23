@@ -27,6 +27,22 @@ class RevalidateQueue extends Base implements Hookable {
 	 */
 	const DEFAULT_PRIORITY = 10;
 
+	/**
+	 * The digest an entry's permalink is identified by.
+	 *
+	 * The queue holds a permalink once, and that is a database constraint here
+	 * rather than a hope: a `UNIQUE KEY` over a fixed-width hash of the
+	 * permalink, because one over the `permalink` column itself is not portable.
+	 * A `TEXT` column cannot be keyed without a prefix length on standard MySQL,
+	 * and a prefix length would refuse two distinct permalinks sharing their
+	 * first n characters. See `docs/adr/0027-the-queue-dedups-on-a-hash-of-the-permalink.md`.
+	 *
+	 * Not a security boundary and never an authenticator — it names a row.
+	 * `tests/queue-schema-portability-test.php` pins it against the column's
+	 * declared width, which is a hex digest of exactly this algorithm.
+	 */
+	const PERMALINK_HASH_ALGO = 'sha256';
+
 	public function register_hooks(): void {
 		add_action( 'admin_init', [$this, 'action_reset_queue'] );
 		add_action( 'admin_init', [$this, 'ajax_queue_progress'] );
@@ -62,7 +78,32 @@ class RevalidateQueue extends Base implements Hookable {
 	}
 
 	/**
+	 * The digest the queue identifies a permalink by.
+	 *
+	 * @param string $permalink
+	 * @return string A lowercase hex digest, of the width the table declares.
+	 */
+	private static function permalink_hash( $permalink ) {
+		return hash( self::PERMALINK_HASH_ALGO, $permalink );
+	}
+
+	/**
 	 * Create the custom table to hold the queue
+	 *
+	 * The permalink is stored whole, in a `TEXT` column, and keyed through the
+	 * fixed-width `permalink_hash` beside it. Keying the `TEXT` column directly
+	 * is what this used to do, and it only ever worked on MariaDB: from 10.4 it
+	 * accepts a `UNIQUE` constraint over a `BLOB`/`TEXT` column by maintaining a
+	 * hidden hash column behind it, and standard MySQL rejects the statement
+	 * outright (error 1170) — so the `CREATE TABLE` failed there, `dbDelta()`
+	 * inspects nothing, and the site was left with no queue table at all (#121).
+	 * `permalink_hash` is that hidden column, made explicit and portable.
+	 *
+	 * A prefix length — `permalink(191)`, the conventional WordPress answer —
+	 * would also be portable and is not what this does: it keys a *prefix*, so
+	 * two distinct permalinks sharing their first 191 characters collide and the
+	 * second is refused as a duplicate of a page it is not.
+	 * See `docs/adr/0027-the-queue-dedups-on-a-hash-of-the-permalink.md`.
 	 *
 	 * @return void
 	 */
@@ -77,15 +118,181 @@ class RevalidateQueue extends Base implements Hookable {
 		$charset_collate = $wpdb->get_charset_collate();
 
 		$sql = "CREATE TABLE `{$table_name}` (
-			id         bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-			permalink  text                NOT NULL,
-			priority   int(10)             NOT NULL DEFAULT 10,
-			UNIQUE KEY permalink (permalink),
+			id              bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			permalink       text                NOT NULL,
+			permalink_hash  char(64)            NOT NULL,
+			priority        int(10)             NOT NULL DEFAULT 10,
+			UNIQUE KEY permalink_hash (permalink_hash),
 			PRIMARY KEY  (id)
 		) $charset_collate;";
 
 		require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 		dbDelta($sql);
+	}
+
+	/**
+	 * Bring this site's queue table to the shape the running code expects.
+	 *
+	 * Guarded on the table's own columns rather than on the migration ledger,
+	 * and not by preference: every site predating the ledger is backfilled to
+	 * the release that introduces this, so a version gate would be read after
+	 * the site had already been stamped past it and would never fire for
+	 * anybody. `Settings::backfill_db_version()` has the full reasoning, and
+	 * the settings split and the log move are guarded the same way.
+	 *
+	 * It has two jobs, because #121 has two populations:
+	 *
+	 *  - A site whose `CREATE TABLE` MySQL refused has **no queue table at
+	 *    all**, and every enqueue it has ever made failed. It gets one here.
+	 *  - A site on MariaDB has the table, with the unique key over the `TEXT`
+	 *    column. The key moves onto a hash of the permalink, which is the same
+	 *    constraint expressed in a way every engine can keep.
+	 *
+	 * Idempotent, and safe to interrupt: it re-derives every hash from the
+	 * permalink beside it, so a request that dies part-way leaves rows a later
+	 * one rewrites to the same values.
+	 *
+	 * @return void
+	 */
+	public function migrate_table() {
+		global $wpdb;
+
+		$table_name = $this->get_table_name();
+
+		// No table: the site is one whose CREATE TABLE was refused, or one the
+		// setup never reached. `create_table()` asks the same question again,
+		// and answering it here is what keeps this from creating a table over
+		// one that exists.
+		if ( $wpdb->get_var("SHOW TABLES LIKE '$table_name'") !== $table_name ) {
+			$this->create_table();
+			return;
+		}
+
+		// Already the current shape. The steady-state cost of this migration on
+		// every admin request, and the reason it is two metadata reads rather
+		// than ALTERs that would be no-ops.
+		//
+		// The *key* is what is read for, and not the column: the column arrives
+		// first and the key last, so a request that died between them left a
+		// table with a hash column and no constraint on it — which reads as
+		// finished to a guard on the column, and is the one state this must not
+		// declare done.
+		if ( $this->table_has_index( 'permalink_hash' ) ) return;
+
+		// Added with a default, which the final shape does not carry: a column
+		// declared NOT NULL without one has to be given a value for every row
+		// already there, and what a server does about that depends on its SQL
+		// mode. The default is dropped again once the rows are hashed.
+		if ( ! $this->table_has_permalink_hash() ) {
+			$wpdb->query( "ALTER TABLE `$table_name` ADD COLUMN `permalink_hash` char(64) NOT NULL DEFAULT '' AFTER `permalink`" );
+
+			// The ALTER did not take. Everything below would write into a column
+			// that is not there, so this stops and the next admin request retries.
+			if ( ! $this->table_has_permalink_hash() ) return;
+		}
+
+		$duplicates = $this->hash_existing_entries();
+
+		// A table whose unique key was absent — nothing this plugin creates,
+		// but the shape a hand-made table or a restored dump can have — may
+		// hold a permalink twice, and the key below would then refuse to be
+		// created at all, on every admin request, forever.
+		if ( !empty($duplicates) ) {
+			$wpdb->query( "DELETE FROM `$table_name` WHERE `id` IN (" . implode( ',', $duplicates ) . ")" );
+		}
+
+		// The key this replaces, on the sites that have it. Dropped by name:
+		// it is `permalink` on every table this plugin created, and a table
+		// that never had it is left alone rather than erroring.
+		if ( $this->table_has_index( 'permalink' ) ) {
+			$wpdb->query( "ALTER TABLE `$table_name` DROP INDEX `permalink`" );
+		}
+
+		$wpdb->query( "ALTER TABLE `$table_name` ADD UNIQUE KEY `permalink_hash` (`permalink_hash`)" );
+
+		// The shape a fresh install is created with, so a migrated table and a
+		// created one are the same table.
+		$wpdb->query( "ALTER TABLE `$table_name` MODIFY COLUMN `permalink_hash` char(64) NOT NULL" );
+	}
+
+	/**
+	 * Whether this site's queue table carries the hash column.
+	 *
+	 * Impure, and `migrate_table()` depends on it being so: it asks twice, with
+	 * an `ALTER TABLE` in between, and the second answer is the one that says
+	 * whether the ALTER took.
+	 *
+	 * @phpstan-impure
+	 *
+	 * @return bool
+	 */
+	private function table_has_permalink_hash() {
+		global $wpdb;
+
+		$table_name = $this->get_table_name();
+
+		return null !== $wpdb->get_var( "SHOW COLUMNS FROM `$table_name` LIKE 'permalink_hash'" );
+	}
+
+	/**
+	 * Whether this site's queue table carries an index of this name.
+	 *
+	 * Impure for the same reason as the column read above: what it answers is a
+	 * property of the table as it stands, and this migration changes that.
+	 *
+	 * @phpstan-impure
+	 *
+	 * @param string $key_name
+	 * @return bool
+	 */
+	private function table_has_index( $key_name ) {
+		global $wpdb;
+
+		$table_name = $this->get_table_name();
+
+		return null !== $wpdb->get_var(
+			$wpdb->prepare( "SHOW INDEX FROM `$table_name` WHERE `Key_name` = %s", $key_name )
+		);
+	}
+
+	/**
+	 * Write a hash for every entry the table already holds, and answer the ids
+	 * of the entries a hash shows to be duplicates.
+	 *
+	 * Read in drain order, so that where two entries do hold one permalink the
+	 * survivor is the one that would have drained first — the more urgent of
+	 * the two priorities, and the earlier arrival within it.
+	 *
+	 * Hashed in PHP rather than by the server's own `SHA2()`, which is not
+	 * portable in the way this whole change is about: a MySQL built without SSL
+	 * support answers `NULL`, and the column is `NOT NULL`.
+	 *
+	 * @return int[] The ids to delete, in no particular order.
+	 */
+	private function hash_existing_entries() {
+		global $wpdb;
+
+		$table_name = $this->get_table_name();
+
+		$entries = $wpdb->get_results( "SELECT `id`, `permalink` FROM `$table_name` ORDER BY `priority` ASC, `id` ASC" );
+
+		$seen       = [];
+		$duplicates = [];
+
+		foreach ( $entries as $entry ) {
+			$hash = self::permalink_hash( $entry->permalink );
+
+			if ( isset($seen[$hash]) ) {
+				$duplicates[] = intval( $entry->id );
+				continue;
+			}
+
+			$seen[$hash] = true;
+
+			$wpdb->update( $table_name, [ 'permalink_hash' => $hash ], [ 'id' => $entry->id ] );
+		}
+
+		return $duplicates;
 	}
 
 	/**
@@ -109,6 +316,12 @@ class RevalidateQueue extends Base implements Hookable {
 	 * the same path again. Re-submitting one at a more urgent priority
 	 * **promotes** that entry instead of discarding the priority the caller
 	 * asked for; see `promote_item()` for why it can only ever move it earlier.
+	 *
+	 * Two callers enqueuing a permalink the queue does *not* hold can both find
+	 * nothing and both insert. The unique key refuses one of them, and that one
+	 * promotes the row the other wrote rather than reporting a failure for a
+	 * permalink that is, after all, queued. See
+	 * `docs/adr/0027-the-queue-dedups-on-a-hash-of-the-permalink.md`.
 	 *
 	 * @param string $permalink
 	 * @param int    $priority   Optional. Used to specify the order in which
@@ -145,6 +358,7 @@ class RevalidateQueue extends Base implements Hookable {
 		}
 
 		$table_name = $this->get_table_name();
+		$hash       = self::permalink_hash( $permalink );
 
 		$accepted = false;
 
@@ -154,19 +368,7 @@ class RevalidateQueue extends Base implements Hookable {
 		// not queued at all — which is the question this used to ask with a
 		// `COUNT(*)`. The answer is now needed either way: a re-submission is
 		// only discarded once it is known not to be an escalation.
-		//
-		// Prepared rather than interpolated: a permalink is not this plugin's own
-		// string. It arrives from the REST route, which sanitises with
-		// `sanitize_text_field()` — that leaves a quote intact — and from the
-		// Redirection integration, whose source paths are whatever an editor typed.
-		// A quote in either would break this statement and reach past it. The
-		// insert below was always escaped by `$wpdb->insert()`; this was the one
-		// raw statement in the queue that carried anything but a table name. The
-		// promotion's `UPDATE` carries the permalink too, and is prepared for the
-		// same reason.
-		$queued_priority = $wpdb->get_var(
-			$wpdb->prepare( "SELECT `priority` FROM `$table_name` WHERE `permalink` = %s ORDER BY `priority` ASC LIMIT 1", $permalink )
-		);
+		$queued_priority = $this->queued_priority( $hash );
 
 		// Read for `null` rather than for falsiness: `0` is a priority like any
 		// other, and the most urgent one there is.
@@ -174,13 +376,32 @@ class RevalidateQueue extends Base implements Hookable {
 			$accepted = $wpdb->insert(
 				$table_name,
 				[
-					'permalink' => $permalink,
-					'priority'  => $priority
+					'permalink'      => $permalink,
+					'permalink_hash' => $hash,
+					'priority'       => $priority
 				]
 			);
+
+			// The read above takes no lock, so two enqueues of a permalink the
+			// queue does not hold can both find nothing and both insert. The
+			// unique key settles that — one of them is refused — and this is the
+			// refused one reading the row the other wrote, and treating it as
+			// what it is: the permalink is queued, and the priority this caller
+			// asked for is still owed.
+			//
+			// Read afresh rather than assumed: a `false` from an insert is not
+			// only ever a duplicate, and a caller told "queued" over a write
+			// that failed for some other reason would be told something untrue.
+			if ( false === $accepted ) {
+				$queued_priority = $this->queued_priority( $hash, true );
+
+				if ( null !== $queued_priority ) {
+					$accepted = $this->promote_item( $permalink, $hash, intval($priority), $queued_priority );
+				}
+			}
 		}
 		else {
-			$accepted = $this->promote_item( $permalink, intval($priority), intval($queued_priority) );
+			$accepted = $this->promote_item( $permalink, $hash, intval($priority), $queued_priority );
 		}
 
 		$wpdb->query("COMMIT");
@@ -188,6 +409,53 @@ class RevalidateQueue extends Base implements Hookable {
 		$this->schedule_next_cron();
 
 		return $accepted;
+	}
+
+	/**
+	 * The priority the queue holds this permalink at, or `null` when it holds
+	 * it at none — which is to say, not at all.
+	 *
+	 * Asked of the hash rather than of the permalink, because the hash is what
+	 * the unique key is on: the lookup, the constraint and the promotion all
+	 * read the queue's identity of an entry the same way, and cannot disagree
+	 * about whether two entries are one.
+	 *
+	 * Prepared rather than interpolated, although what it carries is now this
+	 * plugin's own hex digest. A permalink is not this plugin's own string — it
+	 * arrives from the REST route, which sanitises with `sanitize_text_field()`
+	 * and leaves a quote intact, and from the Redirection integration, whose
+	 * source paths are whatever an editor typed — and the statement that used to
+	 * carry it whole was the one raw statement in the queue carrying anything
+	 * but a table name. Nothing here composes a permalink into SQL any more;
+	 * `$wpdb->insert()` escapes the only statement that still stores one.
+	 *
+	 * @param string $hash   The digest of the permalink, per `permalink_hash()`.
+	 * @param bool   $latest Optional. Whether to read the latest committed row
+	 *                       rather than the transaction's snapshot. Default false.
+	 *
+	 * @return int|null
+	 */
+	private function queued_priority( $hash, $latest = false ) {
+		global $wpdb;
+
+		$table_name = $this->get_table_name();
+
+		// `FOR UPDATE` is not about the lock here, it is about *which version of
+		// the row is read*. `add_item()` runs in a transaction, so a plain read
+		// after the first one answers from the snapshot the first one opened —
+		// under which the row a concurrent enqueue has just committed does not
+		// exist, and the loser of that race would read its way back to the
+		// conclusion that the insert simply failed. A locking read sees the
+		// latest committed version, which is the whole of why it is used. The
+		// first read stays a plain one: taking a lock over a row that is not
+		// there locks the gap the permalink would sort into, which would
+		// serialise every enqueue this one has nothing to do with.
+		$sql = "SELECT `priority` FROM `$table_name` WHERE `permalink_hash` = %s ORDER BY `priority` ASC LIMIT 1";
+		if ( $latest ) $sql .= ' FOR UPDATE';
+
+		$priority = $wpdb->get_var( $wpdb->prepare( $sql, $hash ) );
+
+		return null === $priority ? null : intval( $priority );
 	}
 
 	/**
@@ -211,13 +479,14 @@ class RevalidateQueue extends Base implements Hookable {
 	 * work it predates.
 	 *
 	 * @param string $permalink       A permalink the queue holds.
+	 * @param string $hash            The digest of that permalink, per `permalink_hash()`.
 	 * @param int    $priority        The priority the caller asked for.
 	 * @param int    $queued_priority The priority the entry is queued at.
 	 *
 	 * @return bool Whether the queue holds the permalink at the priority asked
 	 *              for, or at a more urgent one.
 	 */
-	private function promote_item( $permalink, $priority, $queued_priority ) {
+	private function promote_item( $permalink, $hash, $priority, $queued_priority ) {
 		global $wpdb;
 
 		// Nothing to do, and nothing failed: the entry is already draining at
@@ -226,14 +495,19 @@ class RevalidateQueue extends Base implements Hookable {
 
 		$table_name = $this->get_table_name();
 
+		// Found by hash, for the reason `queued_priority()` gives: the entry the
+		// read identified is the entry this writes, under one definition of
+		// which entries are the same entry. The permalink is here for the log
+		// line below and for nothing else.
+		//
 		// The comparison is repeated in the `WHERE` rather than left to the read
 		// above: two callers escalating the same permalink at once would
 		// otherwise be able to write the less urgent of the two priorities last.
 		$promoted = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE `$table_name` SET `priority` = %d WHERE `permalink` = %s AND `priority` > %d",
+				"UPDATE `$table_name` SET `priority` = %d WHERE `permalink_hash` = %s AND `priority` > %d",
 				$priority,
-				$permalink,
+				$hash,
 				$priority
 			)
 		);

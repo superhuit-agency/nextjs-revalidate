@@ -173,3 +173,12 @@ so returning `true` there revalidates nothing.
   revalidates its page. Only draft and trash did before, so the front-end kept
   serving the page indefinitely. A private post moved out of private is covered
   the same way.
+* Fixed: the revalidation queue's table is now created on standard MySQL. Its
+  unique key was declared over a `TEXT` column with no prefix length, which only
+  MariaDB accepts — everywhere else the `CREATE TABLE` was refused outright, the
+  site was left with no queue table at all, and every revalidation it enqueued
+  failed silently. The key now sits on a fixed-width hash of the permalink, so
+  the deduplication the queue depends on means the same thing on every database.
+  An existing table is migrated to that shape on the first admin request after
+  the upgrade, carrying whatever it was holding; a site that never managed to
+  create one gets it there too.
