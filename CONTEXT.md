@@ -128,6 +128,24 @@ somebody purges all. That gap is an enhancement, not a property of the taxonomy.
 _Avoid_: Public taxonomy — `public` is a different setting and the two disagree
 in both directions, which is the whole of the bug this names the fix for.
 
+**Offered post type**:
+A post type whose posts this plugin offers an operator an action over: the
+"Purge caches" bulk action on its list screen, its two switches on the settings
+page, its entry in the admin bar's purge-all menu, and its place among the post
+types a **revalidate all** walks. One axis, the type axis of a **revalidatable
+post** — WordPress's own `is_post_type_viewable()` — with attachments taken out,
+because an uploaded file is not a page the front-end holds.
+
+An offer, and not a gate: that is the whole of the term. Being offered decides
+nothing about whether a revalidation is enqueued, which is **revalidatable
+post**'s question and is asked of every post either way. A type this plugin does
+not offer can still have revalidatable posts, through the post filter — and it
+is then the site saying so, not this plugin.
+_Avoid_: Public post type — `public` is a different setting and the two disagree
+in both directions, which is the whole of the bug this names the fix for;
+supported post type, allowed post type — both sound like a capability this
+plugin grants rather than a menu it draws.
+
 ### Full site editing
 
 **FSE snapshot**:

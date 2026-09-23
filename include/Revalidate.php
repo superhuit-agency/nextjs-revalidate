@@ -120,6 +120,47 @@ class Revalidate extends Base implements Hookable {
 		return in_array( get_post_status( $post_id ), ['draft', 'trash'], true );
 	}
 
+	/**
+	 * The post types this plugin offers its actions for.
+	 *
+	 * An offer, and not a gate. Nothing here decides whether a revalidation is
+	 * enqueued — `should_revalidate()` is asked about every post by every entry
+	 * point, and it alone answers that. This decides only what an operator is
+	 * shown: the "Purge caches" bulk action, the two settings toggle lists, and
+	 * the post types a revalidate all walks.
+	 *
+	 * The axis is the one the gate's own type axis uses,
+	 * `is_post_type_viewable()`, rather than the `public` these selections asked
+	 * for until #53. `public` and `publicly_queryable` default to each other but
+	 * are registered independently, so the two disagreed in both directions: a
+	 * type registered `public => true, publicly_queryable => false` was offered
+	 * a bulk action that purged nothing and two toggles that did nothing, and
+	 * one registered the other way round had a real front-end page and was
+	 * offered none of it.
+	 *
+	 * Attachments are never offered: an uploaded file is not a Next.js route,
+	 * and `get_post_permalink()` refuses one whatever its type says.
+	 *
+	 * Asking the same core function the gate asks is what keeps the offer and
+	 * the gate from drifting again: a site overriding viewability through
+	 * core's own `is_post_type_viewable` filter moves both at once. The
+	 * plugin's `nextjs_revalidate_purge_should_revalidate_post_on_save` filter
+	 * cannot move this one — it answers about a single post, and no list of
+	 * types can be derived from it.
+	 *
+	 * See `docs/adr/0025-viewability-selects-the-post-types-offered.md`.
+	 *
+	 * @return string[] The post type names, keyed by themselves.
+	 */
+	public function offered_post_types() {
+
+		$post_types = array_filter( get_post_types(), 'is_post_type_viewable' );
+
+		unset( $post_types['attachment'] );
+
+		return $post_types;
+	}
+
 	function on_post_save( $post_id, $post, $update, $post_before ) {
 
 		// Bail for a post that is not revalidatable
@@ -366,17 +407,17 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * Register "Purge caches" bulk action.
-	 * All public post types, except "attachment" one
+	 * Register the "Purge caches" bulk action, on the list screen of every post
+	 * type this plugin offers its actions for.
+	 *
+	 * A type it does not offer used to get the action anyway — and the action
+	 * then purged nothing, because the gate declines every one of its posts.
+	 * See `offered_post_types()`.
 	 */
 	function register_bulk_actions() {
 		if ( !$this->settings->is_configured() ) return false;
 
-		$post_types = get_post_types([ 'public' => true ]);
-
-		unset( $post_types['attachment'] );
-
-		foreach ($post_types as $post_type) {
+		foreach ($this->offered_post_types() as $post_type) {
 			add_filter( "bulk_actions-edit-$post_type", [$this, 'add_revalidate_bulk_action'], 99 );
 			add_filter( "handle_bulk_actions-edit-$post_type",  [$this, 'revalidate_bulk_action'], 10, 3 );
 		}
