@@ -83,9 +83,16 @@ their evidence.
 is now composed per site, and everything that reported it — the settings screen
 help text, the manual test runbooks — composes it too rather than hardcoding it.
 
-The new option must be deleted on uninstall. #72 is open against
-`Settings::delete_settings()` for already missing one option; whichever of the
-two lands second has to check the other.
+The new option must be deleted on uninstall, beside the ledger in
+`Settings::delete_settings()` rather than in `OPTIONS` — it is internal state,
+not a setting, and the two lists are torn down by different code for that
+reason.
+
+*(This paragraph first named #72 as an open coordination point, on the grounds
+that it was open against the same function for missing an option. It is not:
+verified on `main` while scoping the implementation, that teardown now iterates
+`OPTIONS` and takes the legacy URL and the ledger with it, so #72 was closed as
+already fixed. There is nobody to coordinate with.)*
 
 On multisite each site gets its own directory, its own suffix and its own
 migration, because `wp_upload_dir()` already follows `switch_to_blog()`. The
