@@ -331,6 +331,16 @@ sites are two config files, `.wp-env.json` and `.wp-env.tests.json`, and wp-env
 has no way for one to extend the other: a plugin added to one has to be added to
 both.
 
+Neither config pins a Redirection version, so the suite runs against whatever
+upstream ships — which is what makes it notice a change there
+([ADR 0014](docs/adr/0014-redirect-changes-revalidate-the-source-path.md)). It
+also means an upstream release can turn the suite red: creating Redirection's
+tables means naming files inside it, and 5.10.0 moved them.
+`tests/integration/redirection-database.php` knows that layout and the one before
+it, and reports the release that moves them again rather than running the redirect
+tests against tables nothing created. An environment started before a release
+keeps the copy it downloaded until `npx wp-env start --update --config=…`.
+
 The command starts wp-env itself — `wp-env start` is idempotent, so running it
 again costs seconds. It runs against a site of its own, described by
 `.wp-env.tests.json` and served on port 8888: wp-env gives each config file its
