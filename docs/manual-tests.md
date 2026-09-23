@@ -29,7 +29,7 @@ The **spine** establishes the state every group after it assumes.
 | Oracle | Where |
 | --- | --- |
 | Revalidate server console | the terminal running `npm start` |
-| Log file | `npx wp-env run cli -- tail -n 30 wp-content/uploads/nextjs-revalidate.log` |
+| Log file | `npx wp-env run cli -- tail -n 30 <path>`, where `<path>` is the one printed under **Enable logs** on the Debug tab. It differs per site, so read it there rather than typing it from memory |
 | Queue table | `npx wp-env run cli wp db query "SELECT * FROM wp_revalidate_queue"` |
 | The screen | wp-admin at http://localhost:8080/wp-admin |
 
@@ -73,7 +73,8 @@ Precondition: section 1 done.
 - [ ] **On Next.js API, confirm the seeded values**: domain
       `http://host.docker.internal:8083`, revalidate path `/revalidate`, FSE
       revalidate path empty but showing a `/api/revalidate-fse` placeholder,
-      secret `my-super-secret`. On Debug, confirm "enable logs" is on.
+      secret `my-super-secret`. On Debug, confirm "enable logs" is on, and note
+      the log path printed beneath it — the **Log file** oracle reads it.
 - [ ] **On Allow purge all, tick `post` and `page`, save.** Expect the
       settings-saved notice and both still ticked after the reload.
 - [ ] **Publish a post "Runbook post" and a page "Runbook page".** Expect

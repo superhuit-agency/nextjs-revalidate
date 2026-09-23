@@ -28,6 +28,16 @@ function trailingslashit( $string ) {
 	return rtrim( $string, '/\\' ) . '/';
 }
 
+function wp_mkdir_p( $target ) {
+	return is_dir( $target ) || mkdir( $target, 0777, true );
+}
+
+// Where the log lives is `LogLocationTest.php`'s subject; here it only has to
+// stay put between a write and the read that checks it.
+function get_option( $name, $default = false ) {
+	return NextJsRevalidate\Logger::SUFFIX_OPTION_NAME === $name ? 'loggertest' : $default;
+}
+
 class NextJsRevalidate_Test_Settings {
 	public function __get( $name ) {
 		return 'debug' === $name ? $GLOBALS['njr_test_debug'] : null;
@@ -88,10 +98,14 @@ function njr_test_run( $debug, $callback ) {
 
 	$callback();
 
-	$logFile  = $dir . '/' . Logger::FILENAME;
+	$logFile  = Logger::path();
 	$contents = file_exists( $logFile ) ? file_get_contents( $logFile ) : null;
 
-	if ( file_exists( $logFile ) ) unlink( $logFile );
+	// The log, its guards and the directory holding them.
+	foreach ( [ $logFile, Logger::directory() . '/.htaccess', Logger::directory() . '/index.php' ] as $file ) {
+		if ( file_exists( $file ) ) unlink( $file );
+	}
+	if ( is_dir( Logger::directory() ) ) rmdir( Logger::directory() );
 	rmdir( $dir );
 
 	return $contents;

@@ -77,6 +77,30 @@ function wp_parse_url( $url, $component = -1 ) {
 	return parse_url( $url, $component );
 }
 
+/**
+ * The fixture site's uploads directory: a real, empty temporary directory, so
+ * the migration that moves the log has somewhere to look and finds nothing
+ * unless a case puts a legacy log there.
+ */
+$GLOBALS['njr_test_uploads_dir'] = sys_get_temp_dir() . '/njr-migration-ledger-test-' . uniqid();
+mkdir( $GLOBALS['njr_test_uploads_dir'] );
+
+function wp_upload_dir() {
+	return [ 'basedir' => $GLOBALS['njr_test_uploads_dir'] ];
+}
+
+function trailingslashit( $string ) {
+	return rtrim( $string, '/\\' ) . '/';
+}
+
+function wp_mkdir_p( $target ) {
+	return is_dir( $target ) || mkdir( $target, 0777, true );
+}
+
+function wp_generate_password( $length = 12, $special_chars = true, $extra_special_chars = false ) {
+	return str_repeat( 'a', $length );
+}
+
 function delete_option( $name ) {
 	if ( ! array_key_exists( $name, $GLOBALS['njr_test_options'] ) ) return false;
 
@@ -91,7 +115,9 @@ function delete_option( $name ) {
 require_once __DIR__ . '/../include/Interfaces/Hookable.php';
 require_once __DIR__ . '/../include/Abstracts/Base.php';
 require_once __DIR__ . '/../include/Settings.php';
+require_once __DIR__ . '/../include/Logger.php';
 
+use NextJsRevalidate\Logger;
 use NextJsRevalidate\Settings;
 
 const LEDGER               = Settings::DB_VERSION_OPTION_NAME;
@@ -100,6 +126,7 @@ const LEGACY_URL           = Settings::LEGACY_URL_OPTION_NAME;
 const DOMAIN               = Settings::SETTINGS_DOMAIN_NAME;
 const PATH_OPT             = Settings::SETTINGS_ENDPOINT_PATH_NAME;
 const SECRET               = Settings::SETTINGS_SECRET_NAME;
+const LOG_SUFFIX           = Logger::SUFFIX_OPTION_NAME;
 
 $failures = 0;
 
@@ -331,11 +358,22 @@ check_same( [], writes(), 'a downgraded site keeps its higher DB version' );
 // patch release away, the day it was written.
 check( version_compare( '1.7.0', '1.6.10', '>' ), '1.7.0 is newer than 1.6.10' );
 
+// A site upgrading into ADR-0024 has its log at the legacy path, and
+// `migrate_db()` moves it — on whatever request reaches it, so the log does not
+// wait for somebody to open the logs setting.
+$legacy = $GLOBALS['njr_test_uploads_dir'] . '/' . Logger::LEGACY_FILENAME;
+file_put_contents( $legacy, "an old line\n" );
+migrate( [ LEDGER => NJR_VERSION ] );
+check( ! file_exists( $legacy ) && "an old line\n" === @file_get_contents( Logger::path() ), 'migrating moves the legacy log into the plugin directory' );
+foreach ( [ Logger::path(), Logger::directory() . '/.htaccess', Logger::directory() . '/index.php' ] as $file ) unlink( $file );
+rmdir( Logger::directory() );
+
 // The ledger describes this site's data, so it is torn down with it. Left
-// behind, a later reinstall would read it and skip every migration.
-$GLOBALS['njr_test_options'] = [ LEDGER => NJR_VERSION, DOMAIN => 'https://front-end.test', LEGACY_URL => 'https://front-end.test/api/revalidate' ];
+// behind, a later reinstall would read it and skip every migration. The log's
+// suffix is internal state of the same kind.
+$GLOBALS['njr_test_options'] = [ LEDGER => NJR_VERSION, DOMAIN => 'https://front-end.test', LEGACY_URL => 'https://front-end.test/api/revalidate', LOG_SUFFIX => 'abc123' ];
 Settings::delete_settings();
-check_same( [], options(), 'uninstalling takes the ledger with the settings' );
+check_same( [], options(), 'uninstalling takes the ledger and the log suffix with the settings' );
 
 // The plugin version has one source of truth: the header. A hardcoded
 // `NJR_VERSION` is how it came to say 1.6.0 while the plugin shipped 1.6.9, and
@@ -350,6 +388,8 @@ check(
 	preg_match( "/define\(\s*['\"]NJR_VERSION['\"]\s*,\s*['\"]/", $plugin_file ) === 0,
 	'NJR_VERSION is derived from the header, not written out beside it'
 );
+
+rmdir( $GLOBALS['njr_test_uploads_dir'] );
 
 printf( "\n%d failure(s)\n", $failures );
 exit( $failures === 0 ? 0 : 1 );

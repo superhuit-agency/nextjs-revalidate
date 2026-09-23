@@ -137,6 +137,12 @@ function esc_html( $text ) { return htmlspecialchars( $text, ENT_QUOTES ); }
 function __( $text, $domain = 'default' ) { return $text; }
 function untrailingslashit( $string ) { return rtrim( $string, '/\\' ); }
 function wp_parse_url( $url, $component = -1 ) { return parse_url( $url, $component ); }
+function trailingslashit( $string ) { return rtrim( $string, '/\\' ) . '/'; }
+
+// An uploads directory that does not exist holds no legacy log, so the log
+// migration each site is asked to run finds nothing to move. Which site's log
+// moves where is `LogLocationTest.php`'s subject, not this file's.
+function wp_upload_dir() { return [ 'basedir' => sys_get_temp_dir() . '/njr-network-sweep-test-no-uploads' ]; }
 
 /**
  * A double for the composition root, standing in for its sweep helper.
@@ -188,6 +194,7 @@ class NextJsRevalidate {
 require_once __DIR__ . '/../include/Interfaces/Hookable.php';
 require_once __DIR__ . '/../include/Abstracts/Base.php';
 require_once __DIR__ . '/../include/Settings.php';
+require_once __DIR__ . '/../include/Logger.php';
 
 use NextJsRevalidate\Settings;
 
