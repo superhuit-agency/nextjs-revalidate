@@ -163,19 +163,46 @@ class RestApi extends Base implements Hookable {
 			}
 
 			try {
-				$res = $this->queue->add_item($it['path'], $it['priority']);
-				if (is_wp_error($res)) {
+				// An item is accepted when the queue holds it afterwards, and
+				// failed otherwise (ADR 0010). `add_item()` answers four
+				// different things, and three of them are not a `WP_Error`: `1`
+				// for a row it inserted, `true` for a permalink already waiting
+				// — both honest acceptances — and a bare `false` when its own
+				// insert failed. Reading everything that is not a `WP_Error` as
+				// an acceptance reported that failed insert as `success: true`
+				// with a 200, and a caller reaching these routes has no other
+				// feedback channel to find out otherwise (#93).
+				$accepted = $this->queue->add_item($it['path'], $it['priority']);
+				if (is_wp_error($accepted)) {
 					$results[] = [
 						'path'    => $it['path'],
 						'success' => false,
-						'message' => $res->get_error_message(),
+						'message' => $accepted->get_error_message(),
+					];
+					$had_error = true;
+				} elseif (!$accepted) {
+					$results[] = [
+						'path'    => $it['path'],
+						'success' => false,
+						// A fixed message rather than `$wpdb->last_error`: the
+						// insert failed, and the database's own words for why
+						// are not something to hand back over a route anyone
+						// holding the secret can call. The `WP_Error` above
+						// carries its own because the queue wrote that one for
+						// a caller to read.
+						'message' => 'Could not be added to the revalidation queue.',
 					];
 					$had_error = true;
 				} else {
 					$results[] = [
 						'path'    => $it['path'],
 						'success' => true,
-						'data'    => $res,
+						// The queue's raw answer, left as it is: `1` and `true`
+						// both mean the queue holds the permalink, so `success`
+						// above is the whole of what this route promises, and
+						// the field can no longer be the `false` that was the
+						// only trace of a failed insert.
+						'data'    => $accepted,
 					];
 				}
 			} catch (\Exception $e) {

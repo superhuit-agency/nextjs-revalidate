@@ -413,6 +413,20 @@ Scripts under `tests/` that stub the handful of WordPress functions their
 subject touches. No framework, no database, no Docker; they run anywhere PHP
 does, including a sandbox with neither.
 
+The command globs `tests/*.php` — every script at the top level, in one
+interpreter each, stopping at the first one to exit non-zero. Top level only:
+`tests/integration/` is the other suite's, and needs Docker. **Adding a script
+needs no wiring** — drop it in `tests/` and the next run picks it up. Each
+script runs under `php`, or under `PHP_BIN` when that is set.
+
+The rule runs both ways: **every top-level `.php` under `tests/` is a test and
+will be executed as one.** There is no shared helper to drop beside them — ADR
+0008 gives each script its own stubs and no autoload precisely so that none is
+needed. Order is not a contract either: the glob is walked in whatever order
+the shell's locale collates, which is neither the order they were written in
+nor the same on every machine — **no script may depend on another having run
+first.** A failing script's own exit code is the command's.
+
 ### `npm run test:integration` — the integration suite
 
 PHPUnit tests under `tests/integration/` that boot WordPress with this plugin
@@ -435,6 +449,16 @@ tables when it is there, and skips the tests that need it when it is not. The tw
 sites are two config files, `.wp-env.json` and `.wp-env.tests.json`, and wp-env
 has no way for one to extend the other: a plugin added to one has to be added to
 both.
+
+Neither config pins a Redirection version, so the suite runs against whatever
+upstream ships — which is what makes it notice a change there
+([ADR 0014](docs/adr/0014-redirect-changes-revalidate-the-source-path.md)). It
+also means an upstream release can turn the suite red: creating Redirection's
+tables means naming files inside it, and 5.10.0 moved them.
+`tests/integration/redirection-database.php` knows that layout and the one before
+it, and reports the release that moves them again rather than running the redirect
+tests against tables nothing created. An environment started before a release
+keeps the copy it downloaded until `npx wp-env start --update --config=…`.
 
 The command starts wp-env itself — `wp-env start` is idempotent, so running it
 again costs seconds. It runs against a site of its own, described by

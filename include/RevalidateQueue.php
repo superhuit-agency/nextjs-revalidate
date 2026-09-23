@@ -113,10 +113,15 @@ class RevalidateQueue extends Base implements Hookable {
 	 *                           priority are executed in the order in which
 	 *                           they were added. Default 10.
 	 *
-	 * @return bool|WP_Error Whether the queue holds the permalink at the
+	 * @return int|bool|WP_Error Whether the queue holds the permalink at the
 	 *                       priority asked for, or at a more urgent one.
-	 *                       A `not_configured` WP_Error when the site is
-	 *                       unconfigured and the revalidation is refused.
+	 *                       Truthy in four spellings, and callers must read it
+	 *                       as such rather than compare it to one of them: `1`
+	 *                       for a row this inserted, `true` for a permalink
+	 *                       already waiting or promoted, `false` when the write
+	 *                       itself failed, and a `not_configured` WP_Error when
+	 *                       the site is unconfigured and the revalidation is
+	 *                       refused.
 	 */
 	public function add_item( $permalink, $priority = self::DEFAULT_PRIORITY ) {
 		global $wpdb;

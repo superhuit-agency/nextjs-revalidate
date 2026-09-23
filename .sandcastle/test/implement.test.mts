@@ -33,6 +33,8 @@ const ITEM: PlanItem = {
 
 type FakeOptions = {
 	commits?: number;
+	/** How far the branch is ahead of its base. Defaults to what this run wrote. */
+	ahead?: number;
 	signalled?: boolean;
 	gateExitCode?: number;
 	runThrows?: string;
@@ -41,16 +43,21 @@ type FakeOptions = {
 type Recorded = {
 	runOptions: Parameters<SandboxSeam['run']>[0][];
 	execCommands: string[];
+	aheadQueries: { branch: string; base: string }[];
 	closed: number;
 };
 
 function fakeDeps(options: FakeOptions = {}): { deps: ImplementDeps; recorded: Recorded } {
-	const recorded: Recorded = { runOptions: [], execCommands: [], closed: 0 };
+	const recorded: Recorded = { runOptions: [], execCommands: [], aheadQueries: [], closed: 0 };
 
 	const deps: ImplementDeps = {
 		repoRoot: '/repo',
 		agent: { name: 'fake' },
 		promptFile: '/repo/.sandcastle/prompts/implement.md',
+		commitsAhead: (branch, base) => {
+			recorded.aheadQueries.push({ branch, base });
+			return options.ahead ?? options.commits ?? 1;
+		},
 		log: () => {},
 		createSandbox: async ({ branch }) => ({
 			branch,
@@ -136,10 +143,43 @@ describe('the gate is the arbiter', () => {
 		assert.equal(outcome.gate?.exitCode, 1);
 	});
 
-	it('calls an item with no commits unworked, however green the gate', () => {
+	it('calls a branch level with its base unworked, however green the gate', () => {
 		assert.equal(classifyRun(0, { passed: true, exitCode: 0, tail: '' }), 'no-commits');
 		assert.equal(classifyRun(1, { passed: true, exitCode: 0, tail: '' }), 'implemented');
 		assert.equal(classifyRun(1, { passed: false, exitCode: 2, tail: '' }), 'gate-failed');
+	});
+
+	// The regression this rule exists for. In September 2026 a pass died between
+	// `merge()` and `finalize()`, leaving #93, #115 and #117 green, committed and
+	// unpushed. Every later pass re-ran the agent on a branch whose work was
+	// already complete; the agent correctly wrote nothing; counting *this pass's*
+	// commits called that `no-commits`, `itemsToFinalize()` dropped the item, and
+	// with no PR on the head and the label still in place `gather()` re-picked it
+	// on the next pass too. The loop had no exit.
+	it('finalizes a branch that already carries the work, even when this pass wrote nothing', async () => {
+		const { deps, recorded } = fakeDeps({ commits: 0, ahead: 1 });
+
+		const outcome = await implementItem(deps, ITEM, 'body');
+
+		assert.equal(outcome.status, 'implemented', 'the branch is shippable; who committed it is not the question');
+		assert.equal(outcome.commits, 0, 'the run still reports honestly what it wrote');
+		assert.deepEqual(recorded.aheadQueries, [{ branch: ITEM.workBranch, base: ITEM.base }]);
+	});
+
+	it('still calls a branch that carries nothing at all unworked', async () => {
+		const { deps } = fakeDeps({ commits: 0, ahead: 0 });
+
+		const outcome = await implementItem(deps, ITEM, 'body');
+
+		assert.equal(outcome.status, 'no-commits');
+	});
+
+	it('a red gate on a branch that already carries work is gate-failed, not no-commits', async () => {
+		const { deps } = fakeDeps({ commits: 0, ahead: 3, gateExitCode: 1 });
+
+		const outcome = await implementItem(deps, ITEM, 'body');
+
+		assert.equal(outcome.status, 'gate-failed');
 	});
 });
 
