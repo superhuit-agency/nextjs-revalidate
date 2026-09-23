@@ -176,8 +176,9 @@ revalidates all.
 ## Integrations
 
 An integration is a third-party plugin whose changes this plugin reacts to when
-that plugin is present. It is never a dependency: with the plugin absent nothing
-registers, and no feature here requires one.
+that plugin is present. This plugin supports an integration; it never requires
+one. With that plugin absent nothing registers, no feature here needs it, and
+revalidation of the site's posts is unaffected either way.
 
 ### Redirection
 
@@ -189,19 +190,125 @@ active, this plugin enqueues a revalidation of the source path whenever a
 redirect changes, so the redirect starts — or stops — working within the time the
 queue takes to drain.
 
-Only a redirect the front-end could resolve for a single path produces a
-revalidation: its source is a literal path rather than a regular expression, and
-it is enabled. A regular expression source matches an unbounded set of paths, so
-there is no single path to rebuild; it is skipped, and the skip is written to the
-log when logging is switched on. Source paths are reduced to their path
-component, dropping any query string or domain the source was stored with, and
-given the site's trailing slash convention, so they match the form post
-permalinks are enqueued in.
+**Supported, never required.** With Redirection absent, nothing here registers
+and the plugin behaves exactly as it did before; installing it, or removing it
+again later, changes nothing about how posts are revalidated. There is no setting
+to switch the integration on: a redirect change enqueues exactly one path, so
+there is nothing to gate.
 
-Changing a redirect's *source* revalidates the path it stopped redirecting as
-well as the new one, on Redirection versions whose update action carries the
-redirect's previous state. Redirection 5.9.0 passes the redirect's id instead,
-where only the new source path is revalidated.
+#### What revalidates, and when
+
+| A redirect is | and the plugin enqueues |
+| --- | --- |
+| created | its source path |
+| edited | its new source path — and the source it had before the edit, see below |
+| deleted | the source path it stops redirecting |
+| enabled | the source path it starts redirecting |
+| disabled | the source path it stops redirecting |
+
+Changing a redirect's *source* leaves two paths stale, the one that stops
+redirecting and the one that starts, and both are revalidated — on Redirection
+versions whose update action carries the redirect's previous state. Redirection
+5.9.0 and later pass the redirect's id instead, so nothing hands over the source
+it had: only the new path is revalidated, and the old one keeps redirecting until
+its own cache entry expires. See
+[ADR 0014](docs/adr/0014-redirect-changes-revalidate-the-source-path.md).
+
+#### Which redirects are candidates
+
+Only a **revalidatable redirect** produces a revalidation: one the front-end
+could resolve for a single path, which means its source is a literal path rather
+than a regular expression, and it is enabled. A redirect that is not
+revalidatable produces no revalidation at all — it is not refused, it was never a
+candidate. Disabling one is the single event that does not ask whether it is
+enabled: by the time the plugin hears about it the redirect is already stored as
+disabled, and that it stopped being enabled is exactly the change the front-end
+has not heard about yet.
+
+**A redirect whose source is a regular expression is skipped entirely.** It
+matches an unbounded set of paths, so there is no single path to rebuild, and
+nothing is enqueued for it — the front-end simply keeps serving the page it
+already holds, with nothing on screen to say why. The skip is recorded in the
+plugin's log file and nowhere else, and only while logging is switched on; with
+logging off, a regex redirect is silent. The line it writes, and the other
+reasons a redirect gets one, are below. It deliberately does not escalate to a
+**revalidate all**: the regex box is a per-rule checkbox an editor can tick
+casually, and turning one tick into a site-wide rebuild is worse than the
+staleness it would cure.
+
+Source paths are reduced to their path component, dropping any query string or
+domain the source was stored with, and given the site's trailing slash
+convention, so they match the form post permalinks are enqueued in. A source
+names a path from the domain root rather than from the site, which is how
+Redirection matches them, so on a site served from a subdirectory that directory
+is already part of the source.
+
+#### Why a redirect did not revalidate
+
+Nothing about a redirect change is reported on screen. Redirects are saved
+through Redirection's own REST routes, from an admin that never reloads the
+page, so a revalidation that did not happen is answered by the plugin's **log
+file** or by nothing at all. Every case in the table writes one line to
+`nextjs-revalidate.log` in the site's uploads directory
+(`wp-content/uploads/nextjs-revalidate.log` on a standard install, one file per
+site on a network), and only while **Enable logs** is switched on under the
+**Debug** tab of *Settings → Next.js revalidate*. With logging off there is
+nothing to read anywhere, which is why switching it on is the first step for a
+redirect that "did nothing".
+
+Every one of them is a single line of the same shape, so the whole set is one
+grep away:
+
+```
+[2026-04-28 11:04:07]	[INFO]	[Redirection.php] ↪️ Redirect #12 not revalidated (source: ^/blog/(.*)) — its source is a regular expression, which names no single path
+```
+
+What follows the dash is the reason, and there are five of them:
+
+| How the line ends | What happened |
+| --- | --- |
+| `its source is a regular expression, which names no single path` | The redirect was never a candidate, as above. |
+| `it is disabled, so the front-end resolves nothing for it` | The redirect was created, edited, deleted or enabled while stored as disabled, so what the front-end holds for its source is already the right answer. Disabling one is the exception, and does revalidate. |
+| `it names no path of this site to rebuild` | The source names no path to rebuild — it is empty, it is not a URL this plugin can read a path out of, or it is the bare site root. |
+| `a filter declined the revalidation of …` | [`nextjs_revalidate_should_revalidate_redirect`](#nextjs_revalidate_should_revalidate_redirect) returned `false` for that path. |
+| `⛔ Refused … — site not configured` | The path was a candidate and reached the queue, which **refused** it: the revalidate domain or the secret is missing. Nothing was queued, and nothing will be until the site is configured. |
+
+A redirect that *is* revalidated writes no line of its own here — its source
+path is simply in the queue, visible under the **Queue** tab of the same
+settings screen until cron drains it. The line arrives then, as
+`✅ Revalidated` or `❌ Failed to revalidate` for the permalink, written by the
+drain rather than by this integration.
+
+#### Bulk operations and imports
+
+Redirection fires these events once per redirect, from its bulk actions as much
+as from a single edit, so a bulk delete of three hundred redirects reaches this
+plugin three hundred times — and so does an import, which creates its redirects
+through the same code path a hand-typed one goes through. What lands in the
+queue is **one revalidation per distinct source path**: redirects sharing a
+source cost a single entry, because the queue holds a permalink it already holds
+exactly once. Nothing is capped, collapsed above a threshold, or dropped — a
+revalidation that never reaches the queue is one nothing retries.
+
+The queue is durable and drained by cron rather than in the request that filled
+it, so a large import is delivered to the front-end **over the following cron
+runs** rather than immediately. The redirects it created keep resolving from
+whatever the front-end has cached until their paths' turn comes.
+
+A drain is scheduled the moment something is enqueued; it works through the
+queue until PHP's `max_execution_time` is nearly up, then schedules the next
+one while anything is left, and up to four can be running at once. Three hundred
+paths therefore arrive over several runs rather than in one. WordPress fires its
+cron on site traffic unless a real system cron is wired up, so a quiet site
+drains when somebody visits it — the **Queue** tab is where to watch the count
+fall.
+
+#### Declining a revalidation
+
+A site whose front-end resolves redirects some other way can decline any of these
+revalidations with the
+[`nextjs_revalidate_should_revalidate_redirect`](#nextjs_revalidate_should_revalidate_redirect)
+filter, without deactivating the plugin or losing the revalidation of its posts.
 
 ## Filters
 
@@ -209,7 +316,19 @@ where only the new source path is revalidated.
 
 Filters whether a redirect's source path is revalidated. Return `false` to leave
 the path alone — the escape hatch for a site whose front-end resolves redirects
-some other way.
+some other way, from build-time configuration, from middleware, or from anywhere
+a per-path revalidation does not reach.
+
+Applied last, and to every redirect change that revalidates a source path:
+creating, updating, deleting, enabling and disabling one alike. It is asked once
+per path, so changing a redirect's source puts the path that stops redirecting
+and the one that starts to it separately, and a site can decline either on its
+own.
+
+Unlike the post filter below it declines rather than admits. A redirect that is
+not revalidatable never reaches it — a regular expression source names no single
+path, so there is nothing to hand the filter, and returning `true` revalidates
+nothing.
 
 #### Usage
 ```php

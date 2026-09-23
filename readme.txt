@@ -41,3 +41,125 @@ https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-str
 
 > Base on the Next.js [On-demand revalidation](https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration#on-demand-revalidation) documentation
 
+== Integrations ==
+
+An integration is a third-party plugin whose changes this plugin reacts to when
+that plugin is present. This plugin supports an integration; it never requires
+one. With that plugin absent nothing registers, no feature here needs it, and
+the revalidation of the site's posts is unaffected either way.
+
+= Redirection =
+
+A headless front-end resolves a redirect inside the cached page of the path it
+redirects *from*, so a redirect change leaves that path answering as it did
+before until its cache entry expires. With the
+[Redirection](https://wordpress.org/plugins/redirection/) plugin active, this
+plugin enqueues a revalidation of the redirect's source path whenever a redirect
+changes. The changes that trigger one:
+
+1. A redirect is created.
+2. A redirect is edited.
+3. A redirect is deleted.
+4. A redirect is enabled.
+5. A redirect is disabled.
+
+Installing Redirection switches the behaviour on, and removing it switches it off
+again; neither can break the revalidation of posts, and there is no setting to
+turn the integration on or off.
+
+Editing a redirect's *source* revalidates the path that stops redirecting as well
+as the new one, on Redirection versions whose update action carries the
+redirect's previous state. Redirection 5.9.0 and later pass the redirect's id
+instead, where only the new source path is revalidated and the old one keeps
+redirecting until its own cache entry expires.
+
+Only a **revalidatable redirect** is revalidated — one the front-end could
+resolve for a single path, which means its source is a literal path rather than
+a regular expression, and it is enabled. One that is not revalidatable produces
+no revalidation at all: it is not refused, it was never a candidate. Disabling
+one is the single exception that does not ask whether it is enabled, because
+that it stopped being enabled is itself the change the front-end has not heard
+about yet.
+
+**A redirect whose source is a regular expression is skipped entirely.** It
+matches an unbounded set of paths, so there is no single path to rebuild and
+nothing is enqueued for it: the front-end keeps serving the page it already
+holds, with nothing on screen to say why. The skip is recorded in the plugin's
+log file (`wp-content/uploads/nextjs-revalidate.log`) and nowhere else, and only
+while **Enable logs** is switched on under the **Debug** tab of *Settings →
+Next.js revalidate*.
+
+Other reasons a redirect change enqueues nothing, each recorded in that same log
+file and nowhere else:
+
+1. The redirect is disabled. Creating, editing, deleting or enabling one that is
+   stored as disabled changes nothing the front-end resolves for its source;
+   disabling one is the exception, and does revalidate.
+2. Its source names no path to rebuild — it is empty, it is not a URL a path can
+   be read out of, or it is the bare site root.
+3. A filter declined that path. See below.
+4. The site is unconfigured, so the queue refuses the revalidation: the
+   revalidate domain or the secret is missing, nothing is queued, and nothing
+   will be until both are filled in.
+
+Each of them is one line of the same shape, so the whole set is one grep away:
+
+```
+[2026-04-28 11:04:07]	[INFO]	[Redirection.php] ↪️ Redirect #12 not revalidated (source: ^/blog/(.*)) — its source is a regular expression, which names no single path
+```
+
+A redirect that *is* revalidated writes no line at that point. Its source path
+waits under the **Queue** tab of *Settings → Next.js revalidate* until cron
+drains it, and the log line — revalidated, or failed — comes from the drain.
+
+A bulk operation — deleting, enabling or disabling many redirects at once, or an
+import creating them — reaches this plugin once per redirect, and enqueues one
+revalidation per **distinct** source path: redirects sharing a source cost a
+single queue entry. Nothing is capped. The queue is drained by cron rather than
+in the request that filled it, so a large import reaches the front-end over the
+following cron runs rather than immediately. A drain is scheduled as soon as
+something is enqueued, works through the queue until PHP's max execution time is
+nearly up, then schedules the next one while anything is left. WordPress fires
+its cron on site traffic unless a real system cron is wired up, so a quiet site
+drains when somebody visits it.
+
+== Filters ==
+
+= nextjs_revalidate_should_revalidate_redirect =
+
+Filters whether a redirect's source path is revalidated. Return `false` to leave
+the path alone — the escape hatch for a site whose front-end resolves redirects
+some other way, from build-time configuration, from middleware, or from anywhere
+a per-path revalidation does not reach. A site can decline a redirect
+revalidation this way without deactivating the plugin or losing the revalidation
+of its posts.
+
+```php
+add_filter( 'nextjs_revalidate_should_revalidate_redirect', function( $should_revalidate, $path, $redirect ) {
+	if ( 0 === strpos( $path, '/legacy/' ) ) return false;
+	return $should_revalidate;
+}, 10, 3 );
+```
+
+It receives whether the path is to be revalidated, the normalised source path,
+and the redirect itself as Redirection's own `Red_Item`. It is applied last and
+asked once per path, so an edit that changes a redirect's source puts the old
+path and the new one to it separately, and either can be declined on its own.
+
+The filter declines; it cannot admit. A redirect that was never a candidate —
+one whose source is a regular expression — returns before the filter is reached,
+so returning `true` there revalidates nothing.
+
+== Changelog ==
+
+= 1.7.0 =
+
+* Added: the Redirection integration. Creating, editing, deleting, enabling or
+  disabling a redirect enqueues a revalidation of its source path, so a headless
+  front-end stops serving the cached page that resolved the old answer. Editing a
+  source revalidates the old path as well as the new one, on Redirection versions
+  whose update action carries the redirect's previous state. Redirects whose
+  source is a regular expression are skipped. Redirection is supported and never
+  required: with it absent the plugin is unchanged.
+* Added: the `nextjs_revalidate_should_revalidate_redirect` filter, for a site
+  whose front-end resolves redirects some other way.

@@ -108,7 +108,35 @@ which paths it has seen. `RevalidateQueue::add_item()` already enqueues a
 permalink it holds exactly once, so a second answer here would only add a way to
 be wrong: a set kept in memory outlives the queue entry it describes, and in a
 long-running process (a WP-CLI import) it would decline a path that had already
-been enqueued, drained, and made stale again.
+been enqueued, drained, and made stale again. An edit that leaves a source
+untouched is the sharpest case: both sides of it are put to the revalidatable
+redirect rules independently, so one path is handed over twice and costs one row.
+
+Verified rather than inherited, when the rest of a redirect's life was covered:
+what collapses the duplicates is `add_item()`'s own already-queued lookup — a
+prepared `SELECT COUNT(*)` on the permalink, with the insert conditional on its
+answer — and not the `UNIQUE KEY` on the table's `permalink` column, which
+within one request never gets the chance to reject anything. Worth knowing
+because the two fail differently: the lookup is ordinary PHP and is what a bulk
+operation actually meets, so it is asserted against a real queue in
+`tests/integration/RedirectRevalidationTest.php` — a bulk over redirects sharing
+one source costing one entry, and a bulk over 120 distinct sources costing 120,
+which is what pins the absence of a cap. That this integration hands the same
+path over once per redirect, keeping no set and no threshold of its own, is
+`tests/revalidatable-redirect-test.php`'s.
+
+**The escape hatch declines; it does not admit.** `nextjs_revalidate_should_revalidate_redirect`
+is applied after the revalidatable redirect rules and over the source path they
+produced, which is what lets a site decline one path rather than the feature —
+and what stops it resurrecting a revalidation those rules never had a path for. A
+regular expression source returns before the filter is reached, so no amount of
+returning `true` turns it into a revalidation, and the stampede rejected above
+cannot be filtered back into existence. This is where it parts company with
+`nextjs_revalidate_purge_should_revalidate_post_on_save`, which admits as well as
+declines: every post has a permalink whatever its type, so there is always a
+single path for that filter to be right about. The reach is the whole of the
+integration — every event that enqueues a source path asks, and an update that
+changes the source asks twice, once per path. Issue #60.
 
 **A source names a path from the domain root, not from the site.** Redirection
 matches its redirects against `REQUEST_URI`, and its post slug monitor stores the

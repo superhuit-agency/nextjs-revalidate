@@ -186,7 +186,7 @@ Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
       empty one. Confirm the row says so:
       `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`.
       Expect `on`. (A site *upgrading* into this release starts off instead;
-      section X covers that.)
+      section Y covers that.)
 - [ ] **Appearance → Editor → Patterns → a template part (Footer) → move a block
       → Save.** Expect **exactly one** `= Invalidating: the FSE snapshot` in the
       console, and `✅ Invalidated the FSE snapshot` in the log. Not two — the
@@ -278,7 +278,33 @@ Create a subscriber once:
       a French row action label.
 - [ ] **Restore English and restore the secret.**
 
-## M. Uninstallation
+## M. The Redirection integration in bulk
+
+Precondition: Redirection active (installed from `.wp-env.json`), its setup
+wizard completed once, and no redirects left from the core pass. Single
+redirects are the core pass's section 7; a bulk route is the only thing that
+fires those same per-redirect actions in a loop, and nothing automated reaches
+Redirection's own bulk screen.
+
+- [ ] **Tools → Redirection → add five enabled redirects**, from `/bulk-a/`,
+      `/bulk-b/`, `/bulk-c/` and twice from `/bulk-dup/` — two rules sharing one
+      source, which is the case the rest of this section is about.
+- [ ] **Select all five → Bulk Actions → Disable → Apply**, then open Settings →
+      Next.js revalidate → Queue *before* it drains. Expect **four** rows — one
+      per distinct source. The two redirects sharing `/bulk-dup/` cost one row
+      between them.
+- [ ] **Drain it, then select all five → Bulk Actions → Enable → Apply.** Expect
+      four rows again: a bulk route reaches this plugin once per redirect
+      whichever way the switch went.
+- [ ] **Drain it, then select all five → Bulk Actions → Delete → Apply.** Expect
+      four rows once more: nothing is capped above a threshold and nothing
+      escalates to a revalidate all. The count is bounded by the rules that
+      existed.
+- [ ] **Add a regex redirect, source `^/bulk-regex/(.*)`, and bulk-delete it
+      alone.** Expect **no** row, and a log line saying it was skipped because
+      "its source is a regular expression, which names no single path".
+
+## N. Uninstallation
 
 Run this last in Part 1 — it destroys the site's plugin data.
 
@@ -304,7 +330,7 @@ Run this last in Part 1 — it destroys the site's plugin data.
 Precondition: Part 1 finished and `npm run stop` run. This stack is raised by an
 override file, never by editing `.wp-env.json`.
 
-## N. Setup
+## O. Setup
 
 - [ ] **`cp config/wp-env.multisite.json .wp-env.override.json`.**
 - [ ] **`npx wp-env destroy`** and confirm. The install has to be rebuilt as a
@@ -315,9 +341,9 @@ override file, never by editing `.wp-env.json`.
       only it. Create a second site:
       `npx wp-env run cli wp site create --slug=second --title="Second"`.
 
-## O. Network activation sets up every site
+## P. Network activation sets up every site
 
-Precondition: N done, plugin **not** yet network-activated, at least two sites.
+Precondition: O done, plugin **not** yet network-activated, at least two sites.
 
 - [ ] **Network Admin → Plugins → Network Activate "Next.js revalidate".**
       Expect no error.
@@ -330,9 +356,9 @@ Precondition: N done, plugin **not** yet network-activated, at least two sites.
       `npx wp-env run cli wp option get nextjs_revalidate-db_version --url=localhost:8080/second`.
       Expect a version string, not "could not be found".
 
-## P. A site created after activation
+## Q. A site created after activation
 
-Precondition: N done, plugin network-active.
+Precondition: O done, plugin network-active.
 
 - [ ] **Network Admin → Sites → Add New**, slug `third`.
 - [ ] **Expect `wp_3_revalidate_queue` to exist** without anyone visiting the new
@@ -342,9 +368,9 @@ Precondition: N done, plugin network-active.
       domain, no secret. Load its wp-admin and expect the unconfigured notice. A
       newly created site starting unconfigured is by design.
 
-## Q. Settings are per site
+## R. Settings are per site
 
-Precondition: N done, main site configured, `second` not.
+Precondition: O done, main site configured, `second` not.
 
 - [ ] **Configure `second`** with the same domain and secret, through its own
       Settings screen at `http://localhost:8080/second/wp-admin`.
@@ -358,9 +384,9 @@ Precondition: N done, main site configured, `second` not.
       notice on the main site and **not** on `second` — the failure window is per
       site. Restore the main site's secret.
 
-## R. An update migrates every site, without visiting any
+## S. An update migrates every site, without visiting any
 
-Precondition: O done, plugin network-active, at least two sites. The update is
+Precondition: P done, plugin network-active, at least two sites. The update is
 faked rather than performed: what triggers the sweep is the swept version
 differing from the running one, so a Composer or git deploy that never runs
 WordPress's updater reaches this the same way a real update does.
@@ -403,9 +429,9 @@ WordPress's updater reaches this the same way a real update does.
       and reload wp-admin as a super admin. Expect the notice gone and the swept
       version stamped.
 
-## S. A large network declines rather than truncates
+## T. A large network declines rather than truncates
 
-Precondition: N done. This simulates a large network with a filter; it cannot be
+Precondition: O done. This simulates a large network with a filter; it cannot be
 reached otherwise without ten thousand sites.
 
 - [ ] **Network-deactivate the plugin**, then install the filter:
@@ -424,9 +450,9 @@ reached otherwise without ten thousand sites.
       Expect it to succeed — the refusal exists to leave that door open. Then
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-large-network.php`.
 
-## T. Network deactivation and uninstallation
+## U. Network deactivation and uninstallation
 
-Precondition: N done, plugin network-active, all sites set up.
+Precondition: O done, plugin network-active, all sites set up.
 
 - [ ] **Network Deactivate.** Expect the queue cron gone on **every** site, the
       settings kept on every site, and the failure window cleared on every site.
@@ -439,7 +465,7 @@ Precondition: N done, plugin network-active, all sites set up.
       returns "could not be found". Left behind, a reinstall would read it and
       sweep nothing.
 
-## U. Teardown
+## V. Teardown
 
 - [ ] **`npm run stop`.**
 - [ ] **`rm .wp-env.override.json`.** Not optional: wp-env merges it over
@@ -455,7 +481,7 @@ The only stack that can exercise the migration ledger's backfill. A fresh instal
 never can: it is stamped with the current DB version at setup, which is precisely
 what the backfill exists to avoid needing.
 
-## V. Raise a real 1.6.9 site
+## W. Raise a real 1.6.9 site
 
 - [ ] **Confirm the release asset URL.** Open the v1.6.9 release on GitHub and
       copy the zip's download URL. Do not assume the filename.
@@ -474,7 +500,7 @@ what the backfill exists to avoid needing.
       screen shows **1.6.9**. If it shows anything else the working tree is still
       mounted and nothing below tests an upgrade. Activate it.
 
-## W. A 1.6.9 site, configured the old way
+## X. A 1.6.9 site, configured the old way
 
 - [ ] **Set the legacy single URL option** — the shape 1.6.9 stores:
       ```sh
@@ -490,7 +516,7 @@ what the backfill exists to avoid needing.
       `= Revalidating: /…/` in the dev server console. Enter the upgrade from a
       *working* site, so that a broken one afterwards means something.
 
-## X. The upgrade
+## Y. The upgrade
 
 - [ ] **`npm run stop`, `rm .wp-env.override.json`, `npm start`.** The working
       tree is now mounted into the same plugin directory over the same database.
@@ -529,9 +555,9 @@ what the backfill exists to avoid needing.
       `= Invalidating: the FSE snapshot`. The operator opting in is the whole
       of the upgrade path.
 
-## Y. Backfill from an older shape
+## Z. Backfill from an older shape
 
-Precondition: X done. This rewinds the ledger to fake a site that predates it.
+Precondition: Y done. This rewinds the ledger to fake a site that predates it.
 
 - [ ] **Rewind to a pre-1.5.0 shape**:
       ```sh
@@ -547,7 +573,7 @@ Precondition: X done. This rewinds the ledger to fake a site that predates it.
       ledger, load wp-admin. Expect the option deleted — the queue lives in its
       own table now — and the ledger stamped.
 
-## Z. Teardown
+## AA. Teardown
 
 - [ ] **`npm run stop`**, then **`ls .wp-env.override.json`** and expect it
       absent.
