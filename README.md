@@ -153,9 +153,11 @@ call added nothing to it. It is also `false` if the write failed.
 A post is revalidated when the front-end could hold a page for it: its post type
 is viewable — WordPress's own `publicly_queryable` test, via
 [`is_post_type_viewable()`](https://developer.wordpress.org/reference/functions/is_post_type_viewable/)
-— and its status is `publish` or `private`, or it has just left `publish` for
-`draft` or `trash`. Posts of a post type that is not viewable are never
-revalidated, whatever their status.
+— and its status is `publish` or `private`, or it has just left the front-end:
+the save moved it from `publish` or `private` to any other status — `draft`,
+`pending`, `future`, `trash`, or one an editorial workflow plugin registers. Its
+permalink from before the save is the one revalidated. Posts of a post type that
+is not viewable are never revalidated, whatever their status.
 
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
