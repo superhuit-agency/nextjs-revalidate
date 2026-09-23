@@ -67,12 +67,6 @@ parameters:
 			path: include/RestApi.php
 
 		-
-			message: '#^Access to an undefined property NextJsRevalidate\\Revalidate\:\:\$queue\.$#'
-			identifier: property.notFound
-			count: 2
-			path: include/Revalidate.php
-
-		-
 			message: '#^Call to function method_exists\(\) with WP_Screen and ''is_block_editor'' will always evaluate to true\.$#'
 			identifier: function.alreadyNarrowedType
 			count: 1

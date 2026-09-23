@@ -163,3 +163,8 @@ so returning `true` there revalidates nothing.
   required: with it absent the plugin is unchanged.
 * Added: the `nextjs_revalidate_should_revalidate_redirect` filter, for a site
   whose front-end resolves redirects some other way.
+* Fixed: permanently deleting a post now revalidates its path. Only trashing did
+  before, so a post deleted outright — "Delete Permanently", `wp_delete_post()`,
+  or `wp post delete` on a custom post type — left the front-end serving its
+  cached page indefinitely. A post already in the trash is unchanged: trashing it
+  revalidated that page, so emptying the trash enqueues nothing.

@@ -112,7 +112,11 @@ does not.
 Permanently deleting a post asks the same question of the post as it stands just
 before it is gone: a publish or private post is revalidatable and its page is
 revalidated, while a post already in the trash is not — trashing it already
-revalidated the page, and the front-end has had no reason to cache it since.
+revalidated the page, and the front-end has had no reason to cache it since. A
+deleted *revision* is the one place the question is not asked at all: a save
+treats a revision as standing for the post it belongs to, but a delete cannot —
+the revision has no page of its own, and its post is deleted, or saved, in its
+own right.
 
 This is deliberately not core's `is_post_status_viewable()`, which rejects
 private.
