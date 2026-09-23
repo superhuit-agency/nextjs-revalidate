@@ -58,13 +58,16 @@ switches on any site whose types register conditionally. The rows do not survive
 indefinitely either — the settings form posts only the switches it rendered, so
 the next save of that page drops them without anything having to look for them.
 
-**The admin bar asks the offer too, because a stored row is otherwise
-unreachable.** A "Purge all Editor notes" entry standing on a row for a type no
-longer offered is an entry that purges nothing *and* has no switch left to turn
-it off. So the entries are built from the ticked rows the selection still
-contains. That is the only read-side narrowing: the on-menu-save loop and
-`revalidate_all( $type )` are handed a post type by name, act on it, and let the
-gate answer for each post — an explicit instruction is not an offer.
+**The admin bar and the on-menu-save loop ask the offer too, because a stored
+row is otherwise unreachable.** A "Purge all Editor notes" entry standing on a
+row for a type no longer offered is an entry that purges nothing *and* has no
+switch left to turn it off; an on-menu-save row for such a type walks every one
+of its posts on every menu save to be told no, with the same missing switch. So
+both read only the ticked rows the selection still contains. That is the whole
+of the read-side narrowing: `revalidate_all( $type )` is handed a post type by
+name, acts on it, and lets the gate answer for each post — an explicit
+instruction is not an offer, where a row the operator can no longer see is not
+an instruction any more.
 
 ## Considered Options
 

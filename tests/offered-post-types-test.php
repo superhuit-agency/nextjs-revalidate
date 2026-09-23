@@ -142,6 +142,7 @@ function get_taxonomies( $args = [], $output = 'names' ) {
 
 class NextJsRevalidate_Test_Settings {
 	public $allow_revalidate_all = [];
+	public $revalidate_on_menu_save = [];
 
 	public function is_configured() { return true; }
 }
@@ -312,6 +313,27 @@ njr_test_expect(
 	'a revalidate all entry is offered for every ticked post type this plugin offers',
 	[ 'nextjs-revalidate', 'nextjs-revalidate-all-post', 'nextjs-revalidate-all-all' ],
 	array_keys( $admin_bar->nodes )
+);
+
+// The menu update switches
+// ====
+
+$settings->revalidate_on_menu_save = [
+	'post'          => 'on',
+	'page'          => 'off',
+	'headless_doc'  => 'on',
+	// Ticked while the settings page still offered it: not shown, so not acted on.
+	'editor_note'   => 'on',
+	'gone_for_good' => 'on',
+];
+
+$GLOBALS['njr_test_queried_post_types'] = [];
+$revalidate_all->revalidate_all_after_menu_update( 1 );
+
+njr_test_expect(
+	'a menu update walks only the ticked post types this plugin offers',
+	[ 'post', 'headless_doc' ],
+	$GLOBALS['njr_test_queried_post_types']
 );
 
 printf( "\n%d failure(s)\n", $failures );

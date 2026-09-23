@@ -171,8 +171,8 @@ filter — this plugin asks that function, so the offer and the gate move
 together.
 
 A switch already stored for a post type that is no longer offered is left as it
-is, and no purge-all entry is offered for it; saving the settings page drops the
-stored row.
+is, and does nothing: no purge-all entry is offered for it, and a menu update
+does not walk it. Saving the settings page drops the stored row.
 
 ## Which terms are revalidated
 

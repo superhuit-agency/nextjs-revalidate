@@ -147,8 +147,17 @@ class RevalidateAll extends Base implements Hookable {
 			$this->revalidate_all();
 		}
 		else {
+			$offered = $this->revalidate->offered_post_types();
+
 			foreach ($revalidate_on_save as $post_type => $enabled) {
 				if ( $enabled !== 'on' ) continue;
+
+				// A switch stored for a post type this plugin no longer offers
+				// is one the settings page does not show, so it does not act
+				// either — the same as the admin bar's purge-all entries. The
+				// gate would decline its posts anyway; this spares the walk.
+				if ( !isset($offered[$post_type]) ) continue;
+
 				$this->revalidate_all($post_type);
 			}
 		}
