@@ -148,6 +148,79 @@ nextjs_revalidate_schedule_purge_url( $datetime, $url );
 that URL is already registered for that date time: the schedule stands, and this
 call added nothing to it. It is also `false` if the write failed.
 
+## REST routes
+
+Two routes, for a deploy hook, a CI job or an external CMS asking this site to
+revalidate. Both accept `POST`, `PUT` or `PATCH`, and both take the site's
+**revalidate secret** — the same value the plugin sends to the front-end — as a
+parameter rather than as a header.
+
+| Route | Enqueues |
+| --- | --- |
+| `/wp-json/nextjs-revalidate/v1/revalidate` | one path |
+| `/wp-json/nextjs-revalidate/v1/revalidate/batch` | an array of them |
+
+```bash
+curl -X POST https://example.com/wp-json/nextjs-revalidate/v1/revalidate \
+  -H 'Content-Type: application/json' \
+  -d '{"secret":"my-super-secret-string","path":"https://example.com/hello-world/","priority":1}'
+
+curl -X POST https://example.com/wp-json/nextjs-revalidate/v1/revalidate/batch \
+  -H 'Content-Type: application/json' \
+  -d '{"secret":"my-super-secret-string","items":[{"path":"/hello-world/"},{"path":"/about/","priority":1}]}'
+```
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| secret | string | Required. The site's revalidate secret. |
+| path | string | The single route only, required. Stored **verbatim** as the permalink to revalidate — nothing is composed around it. |
+| items | array | The batch route only, required. Objects with a `path` and an optional `priority`. |
+| priority | int | Optional. Lower numbers are revalidated earlier; equal priorities keep insertion order. Default `10`. |
+
+What a route answers with is an **acceptance**, never a delivery: the path is in
+the **revalidation queue**, which cron drains afterwards. Nothing in the response
+says the front-end has rebuilt anything, and nothing can — see the note above
+`nextjs_revalidate_purge_url`.
+
+Both routes answer the same body, with one result per item sent, in the order
+they were sent:
+
+```json
+{
+  "success": false,
+  "results": [
+    { "path": "/hello-world/", "success": true, "data": 1 },
+    { "path": "/about/", "success": false, "message": "Missing path" }
+  ]
+}
+```
+
+A result carries `data` — the queue's own answer — only when the item was
+accepted, and a `message` only when it was not. Match results to items by
+`path`, which is echoed back either way.
+
+### Statuses
+
+The status describes the request as a whole, and is decided by the outcomes
+rather than by which route produced them:
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Every item was accepted into the queue. |
+| `207` | Some items were accepted and some were not — read `results[].success` for which. Only the batch route can answer this. |
+| `400` | No item was accepted, and the items are why: one carried no `path`. Also the answer when the request itself could not be read — no `path` on the single route, no `items` array on the batch route, or an `items` array holding nothing usable. |
+| `503` | No item was accepted because this site is unconfigured: the revalidate domain or the secret is missing, so nothing can be revalidated until an operator supplies them. |
+| `500` | No item was accepted because a queue write did not happen here. Also what a site holding **no secret at all** answers, from the permission check, with the code `missing_secret`. |
+| `401`/`403` | The secret did not match. Nothing was enqueued. |
+
+A request in which **nothing** was accepted always answers 4xx or 5xx, never
+2xx — so a caller that only checks the status still learns that nothing was
+queued. Where items failed for different reasons, `503` outranks `500`, which
+outranks `400`. Releases before this answered `207` for every failed request,
+including one in which nothing at all was queued;
+[ADR 0027](docs/adr/0027-a-wholly-failed-request-answers-a-failure-status.md) has
+the reasoning and what it changes for a caller.
+
 ## Which posts are revalidated
 
 A post is revalidated when the front-end could hold a page for it: its post type
