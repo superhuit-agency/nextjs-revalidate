@@ -20,6 +20,12 @@ use NextJsRevalidate\Interfaces\Hookable;
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
  * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — '', 'on' or 'off'.
  * @property array  $debug                   Debug switches, keyed by name.
+ *
+ * The plugin's own objects are reached through the same `__get()`, off the
+ * base class rather than off the table below.
+ *
+ * @property RevalidateQueue $queue      The queue, read for the pending count this page shows.
+ * @property Revalidate      $revalidate The gate, asked which post types this page offers switches for.
  */
 class Settings extends Base implements Hookable {
 
@@ -375,10 +381,14 @@ class Settings extends Base implements Hookable {
 			]
 		);
 
-		$post_types = get_post_types([ 'public' => true ]);
+		// The post types this plugin offers its actions for, rather than the
+		// `public` ones this list asked for until #53 — a switch offered for a
+		// type the gate declines every post of is one an operator can turn on
+		// to no effect. A type this no longer lists keeps whatever row it has
+		// in the option until the next save of this page, which posts only the
+		// switches it rendered. See `Revalidate::offered_post_types()`.
+		$post_types = $this->revalidate->offered_post_types();
 		foreach ($post_types as $post_type) {
-			if ( $post_type === 'attachment' ) continue; // skip attachments
-
 			$post_type_object = get_post_type_object( $post_type );
 			$id = "allow_revalidate_all-$post_type";
 			add_settings_field(
@@ -428,8 +438,6 @@ class Settings extends Base implements Hookable {
 		);
 
 		foreach ($post_types as $post_type) {
-			if ( $post_type === 'attachment' ) continue; // skip attachments
-
 			$post_type_object = get_post_type_object( $post_type );
 			$id = "revalidate-on-menu-save-$post_type";
 			add_settings_field(
@@ -514,7 +522,6 @@ class Settings extends Base implements Hookable {
 			]
 		);
 
-		$upload_dir = wp_upload_dir();
 		$id = "enable-logs";
 		add_settings_field(
 			$id,
@@ -529,7 +536,7 @@ class Settings extends Base implements Hookable {
 				'checked'   => $this->debug['enable-logs'] ?? false,
 				'help'      => sprintf(
 					__('Logs will be saved to file located in <code>%s</code>', 'nextjs-revalidate'),
-					trailingslashit($upload_dir['basedir']) . Logger::FILENAME
+					Logger::reported_location()
 				),
 			]
 		);
@@ -554,6 +561,10 @@ class Settings extends Base implements Hookable {
 		// later reinstall would read it, believe this site's options already
 		// have the running code's shape, and skip migrations that must run.
 		delete_option( self::DB_VERSION_OPTION_NAME );
+
+		// The log's filename suffix is internal state too, and goes with it.
+		// The log itself is left where it is: it is the operator's evidence.
+		delete_option( Logger::SUFFIX_OPTION_NAME );
 	}
 
 	/**
@@ -885,6 +896,10 @@ class Settings extends Base implements Hookable {
 		// would be read after the site had already been stamped past it, and
 		// would never fire for anybody. See `backfill_db_version()`.
 		$this->split_legacy_url();
+
+		// The log moved into a guarded directory of its own, under a per-site
+		// name (ADR-0024). Guarded on the data for the same reason as above.
+		Logger::migrate_legacy_log();
 
 		// Stamp the ledger, so none of the above is eligible to run again.
 		// A site whose data was migrated by newer code than is running now

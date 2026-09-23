@@ -85,9 +85,9 @@ about yet.
 matches an unbounded set of paths, so there is no single path to rebuild and
 nothing is enqueued for it: the front-end keeps serving the page it already
 holds, with nothing on screen to say why. The skip is recorded in the plugin's
-log file (`wp-content/uploads/nextjs-revalidate.log`) and nowhere else, and only
-while **Enable logs** is switched on under the **Debug** tab of *Settings →
-Next.js revalidate*.
+log file and nowhere else, and only while **Enable logs** is switched on under
+the **Debug** tab of *Settings → Next.js revalidate* — the file's path is shown
+beneath that switch.
 
 Other reasons a redirect change enqueues nothing, each recorded in that same log
 file and nowhere else:
@@ -163,3 +163,8 @@ so returning `true` there revalidates nothing.
   required: with it absent the plugin is unchanged.
 * Added: the `nextjs_revalidate_should_revalidate_redirect` filter, for a site
   whose front-end resolves redirects some other way.
+* Fixed: permanently deleting a post now revalidates its path. Only trashing did
+  before, so a post deleted outright — "Delete Permanently", `wp_delete_post()`,
+  or `wp post delete` on a custom post type — left the front-end serving its
+  cached page indefinitely. A post already in the trash is unchanged: trashing it
+  revalidated that page, so emptying the trash enqueues nothing.

@@ -103,3 +103,39 @@ unchanged by this.
 runs Apache, so a check on a running site can prove the `.htaccess` denies and
 can prove nothing about the case the suffix exists for. That is a known gap in
 the evidence, not an oversight.
+
+## Amended once the migration was built
+
+**The migration has no ledger gate, only the data guard.** "A migration gated on
+the DB version ledger" above describes nothing the code does. `migrate_db()` has
+no overall gate either; it runs on every `admin_init`. A version gate would need
+a release that stamps it, and gating on a release this code does not yet stamp
+re-fires on every admin request, which is the 1.6.9 trap (ADR-0001). So the migration runs
+iff the old file exists and the new one does not, as ADR-0017's split does. That
+guard was already enough to make it idempotent on its own.
+
+**It also runs before every line written, not only from `migrate_db()`.** An
+upgraded site's first line can come from cron or the front-end before anybody
+opens the admin. Written first, that line would create the new file, the guard
+would then refuse for good, and the old log would stay at the guessable path. For
+the same reason, a move that fails drops the line rather than writing ahead of
+it, and the next line tries the move again.
+
+**It moves the log whether or not logging is on.** A site that switched logging
+off still has the exposed file, and moving it is the point of this record. Such
+a site gains the directory, the guards and a suffix. It gains them for a log it
+already has, not as a side effect of opening the admin: with nothing to move,
+nothing is created.
+
+**The settings screen prints the full path only once the site has a suffix.**
+"Already prints the log's full path" is true while logging is on, or once the
+site has been handed a suffix by logging or by the migration. Before that, it
+prints the directory. The suffix is generated on first use, and composing the
+full path for the help text would hand one to a site that has never logged.
+
+**Uninstalling leaves the log behind under a name nothing refers to.** The
+suffix option goes with the ledger, and the log does not, because it is the
+operator's evidence. A reinstall then generates a new suffix and starts a new
+file beside the old one. The old file is still inside the guarded directory,
+so on Apache it stays denied. It is exactly as exposed on nginx as the log
+itself.

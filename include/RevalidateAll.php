@@ -9,7 +9,9 @@ use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
 /**
- * @property Revalidate $revalidate
+ * @property Revalidate      $revalidate
+ * @property RevalidateQueue $queue
+ * @property Settings        $settings
  */
 class RevalidateAll extends Base implements Hookable {
 	use AdminBarMenu;
@@ -39,6 +41,8 @@ class RevalidateAll extends Base implements Hookable {
 
 		if ( empty($revalidate_all_opts) ) return;
 
+		$offered = $this->revalidate->offered_post_types();
+
 		$this->add_admin_bar_menu( $admin_bar );
 
 		foreach ($revalidate_all_opts as $post_type => $allow) {
@@ -48,8 +52,16 @@ class RevalidateAll extends Base implements Hookable {
 				$name = _x('All', 'Admin top bar menu', 'nextjs-revalidate' );
 			}
 			else {
+				// A toggle stored for a post type this plugin does not offer —
+				// one unregistered since it was ticked, or one the settings
+				// page offered on the `public` it asked for before #53 — would
+				// be an entry that purges nothing. The row itself is left in
+				// the option: it is the operator's, and the next save of the
+				// settings page drops it anyway, the form posting only the
+				// switches it rendered.
+				if ( !isset($offered[$post_type]) ) continue;
+
 				$post_type_object = get_post_type_object( $post_type );
-				// Do not continue if post_type_object is null. I can happen if the post type is not publicly_queryable
 				if (!$post_type_object) continue;
 				$name = $post_type_object->labels->name;
 			}
@@ -137,8 +149,17 @@ class RevalidateAll extends Base implements Hookable {
 			$this->revalidate_all();
 		}
 		else {
+			$offered = $this->revalidate->offered_post_types();
+
 			foreach ($revalidate_on_save as $post_type => $enabled) {
 				if ( $enabled !== 'on' ) continue;
+
+				// A switch stored for a post type this plugin no longer offers
+				// is one the settings page does not show, so it does not act
+				// either — the same as the admin bar's purge-all entries. The
+				// gate would decline its posts anyway; this spares the walk.
+				if ( !isset($offered[$post_type]) ) continue;
+
 				$this->revalidate_all($post_type);
 			}
 		}
@@ -149,7 +170,11 @@ class RevalidateAll extends Base implements Hookable {
 	 * and schedule the revalidate all cron to run.
 	 *
 	 * @param string $type Optional. The type of post type to revalidate. Default. 'all'.
-	 * @return int The number of nodes added to revalidate
+	 * @return int|false The number of nodes added to revalidate, or false on a
+	 *                   refusal — an unconfigured site, where nothing was
+	 *                   enqueued because nothing enqueued could be delivered.
+	 *                   Zero and false are different answers: zero is a site
+	 *                   that had nothing revalidatable to add.
 	 */
 	function revalidate_all( $type = 'all' ) {
 		if ( !$this->settings->is_configured() ) {
@@ -163,10 +188,23 @@ class RevalidateAll extends Base implements Hookable {
 
 		$count = 0;
 		if ( $type === 'all' ) {
-			// retrieve all public post types except attachments
-			$post_types = array_filter(get_post_types([ 'public' => true ]), function($pt) { return $pt !== 'attachment'; });
+			// The post types this plugin offers, rather than the `public` ones
+			// this asked for until #53: a `public` type that is not viewable has
+			// every one of its posts declined by the gate below, and a viewable
+			// one that is not `public` was walked by nothing at all.
+			//
+			// A pre-filter, unlike the taxonomy selection further down, and
+			// deliberately so — the gate for a post sits *below* this
+			// enumeration, once per post, where the gate for a taxonomy sits
+			// above it. Walking every registered type would mean reading every
+			// revision, menu item and product variation on the site to be told
+			// no. See `docs/adr/0025-viewability-selects-the-post-types-offered.md`.
+			$post_types = $this->revalidate->offered_post_types();
 		}
 		else {
+			// A named type is the caller's own instruction and is walked
+			// whatever this plugin would have offered of its own accord. The
+			// gate still answers for every post either way.
 			$post_types = [ $type ];
 		}
 

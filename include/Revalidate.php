@@ -16,6 +16,13 @@ use WP_Taxonomy;
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
+/**
+ * The revalidation of a single post's page, from every entry point that asks
+ * for one — a save, a permanent delete, a row action, a bulk action, the admin
+ * bar — and the gate they all ask first.
+ *
+ * @property RevalidateQueue $queue
+ */
 class Revalidate extends Base implements Hookable {
 	use AdminBarMenu;
 	use BlockEditorScreen;
@@ -24,6 +31,7 @@ class Revalidate extends Base implements Hookable {
 
 	public function register_hooks(): void {
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99, 4 );
+		add_action( 'before_delete_post', [$this, 'on_post_delete'] );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -150,6 +158,47 @@ class Revalidate extends Base implements Hookable {
 		return ! $this->status_axis_admits( get_post_status( $post_id ) );
 	}
 
+	/**
+	 * The post types this plugin offers its actions for.
+	 *
+	 * An offer, and not a gate. Nothing here decides whether a revalidation is
+	 * enqueued — `should_revalidate()` is asked about every post by every entry
+	 * point, and it alone answers that. This decides only what an operator is
+	 * shown: the "Purge caches" bulk action, the two settings toggle lists, and
+	 * the post types a revalidate all walks.
+	 *
+	 * The axis is the one the gate's own type axis uses,
+	 * `is_post_type_viewable()`, rather than the `public` these selections asked
+	 * for until #53. `public` and `publicly_queryable` default to each other but
+	 * are registered independently, so the two disagreed in both directions: a
+	 * type registered `public => true, publicly_queryable => false` was offered
+	 * a bulk action that purged nothing and two toggles that did nothing, and
+	 * one registered the other way round had a real front-end page and was
+	 * offered none of it.
+	 *
+	 * Attachments are never offered: an uploaded file is not a Next.js route,
+	 * and `get_post_permalink()` refuses one whatever its type says.
+	 *
+	 * Asking the same core function the gate asks is what keeps the offer and
+	 * the gate from drifting again: a site overriding viewability through
+	 * core's own `is_post_type_viewable` filter moves both at once. The
+	 * plugin's `nextjs_revalidate_purge_should_revalidate_post_on_save` filter
+	 * cannot move this one — it answers about a single post, and no list of
+	 * types can be derived from it.
+	 *
+	 * See `docs/adr/0025-viewability-selects-the-post-types-offered.md`.
+	 *
+	 * @return string[] The post type names, keyed by themselves.
+	 */
+	public function offered_post_types() {
+
+		$post_types = array_filter( get_post_types(), 'is_post_type_viewable' );
+
+		unset( $post_types['attachment'] );
+
+		return $post_types;
+	}
+
 	function on_post_save( $post_id, $post, $update, $post_before ) {
 
 		// Bail for a post that is not revalidatable
@@ -174,6 +223,55 @@ class Revalidate extends Base implements Hookable {
 		$this->queue->add_item(
 			$post_permalink
 		);
+	}
+
+	/**
+	 * A post is about to be permanently deleted.
+	 *
+	 * `wp_delete_post()` fires no save hook at all — `before_delete_post`,
+	 * `deleted_post` and `after_delete_post`, none of which `on_post_save()`
+	 * hangs on — so without this the front-end kept serving the cached page of
+	 * content that no longer exists, indefinitely. Trashing hid the gap:
+	 * `wp_trash_post()` routes through `wp_insert_post()` and does fire the save
+	 * hook. See #77.
+	 *
+	 * The question asked is the ordinary one, of the post as it stands just
+	 * before it is gone and with no post before it: a publish or private post is
+	 * revalidatable and its page is rebuilt into a 404, while a post already in
+	 * the trash is not — trashing it revalidated that page already, and the
+	 * front-end has had no reason to cache it since. That leaves the
+	 * `wp_scheduled_delete` sweep and Empty Trash enqueueing nothing, which is
+	 * the right answer rather than a remaining gap, and the delete of a post
+	 * that never reached the trash enqueueing the one revalidation that used to
+	 * be missing.
+	 *
+	 * This hangs on `before_delete_post` rather than on either hook that follows
+	 * it because the permalink is composed from a row `deleted_post` no longer
+	 * has.
+	 *
+	 * @param int $post_id The post about to be deleted.
+	 * @return void
+	 */
+	public function on_post_delete( $post_id ) {
+
+		// A revision is deleted in its own right whenever the revision limit
+		// trims one, and in bulk just after the post it belongs to reaches here.
+		// Neither is that post leaving the front-end, and a revision has no page
+		// of its own — so unlike a save, which stands for the post it is a
+		// revision of, a deleted revision stands for nothing.
+		if ( false !== wp_is_post_revision( $post_id ) ) return;
+
+		// Bail for a post that is not revalidatable
+		if ( ! $this->should_revalidate( $post_id ) ) return;
+
+		// The gate above has answered the public question already; asking it
+		// again here would only ask it of a post mid-deletion.
+		$post_permalink = $this->get_post_permalink( $post_id, false );
+
+		// Bail for a post holding no front-end page to rebuild
+		if ( empty($post_permalink) ) return;
+
+		$this->queue->add_item( $post_permalink );
 	}
 
 	/**
@@ -396,17 +494,17 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * Register "Purge caches" bulk action.
-	 * All public post types, except "attachment" one
+	 * Register the "Purge caches" bulk action, on the list screen of every post
+	 * type this plugin offers its actions for.
+	 *
+	 * A type it does not offer used to get the action anyway — and the action
+	 * then purged nothing, because the gate declines every one of its posts.
+	 * See `offered_post_types()`.
 	 */
 	function register_bulk_actions() {
 		if ( !$this->settings->is_configured() ) return false;
 
-		$post_types = get_post_types([ 'public' => true ]);
-
-		unset( $post_types['attachment'] );
-
-		foreach ($post_types as $post_type) {
+		foreach ($this->offered_post_types() as $post_type) {
 			add_filter( "bulk_actions-edit-$post_type", [$this, 'add_revalidate_bulk_action'], 99 );
 			add_filter( "handle_bulk_actions-edit-$post_type",  [$this, 'revalidate_bulk_action'], 10, 3 );
 		}
