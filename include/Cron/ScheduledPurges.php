@@ -7,6 +7,9 @@ use DateTimeZone;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Interfaces\Hookable;
 
+/**
+ * @property \NextJsRevalidate\RevalidateQueue $queue
+ */
 class ScheduledPurges extends Base implements Hookable {
 
 	const CRON_HOOK_NAME = 'nextjs-revalidate-scheduled_purges';

@@ -21,8 +21,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * for one — a save, a permanent delete, a row action, a bulk action, the admin
  * bar — and the gate they all ask first.
  *
- * @property-read RevalidateQueue $queue The revalidation queue of the site being
- *                served, reached through `Base`.
+ * @property RevalidateQueue $queue
  */
 class Revalidate extends Base implements Hookable {
 	use AdminBarMenu;

@@ -24,7 +24,8 @@ use NextJsRevalidate\Interfaces\Hookable;
  * The plugin's own objects are reached through the same `__get()`, off the
  * base class rather than off the table below.
  *
- * @property Revalidate $revalidate The gate, asked which post types this page offers switches for.
+ * @property RevalidateQueue $queue      The queue, read for the pending count this page shows.
+ * @property Revalidate      $revalidate The gate, asked which post types this page offers switches for.
  */
 class Settings extends Base implements Hookable {
 
