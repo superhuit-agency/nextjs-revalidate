@@ -173,8 +173,7 @@ function njr_test_datetime( $minutes ) {
 // The number itself, and the two comparisons that make it mean anything. A
 // priority is only "elevated" relative to the default, and only "not the most
 // urgent there is" relative to 0.
-njr_test_assert( 5 === ScheduledPurges::QUEUE_PRIORITY, 'a scheduled purge is enqueued at priority 5' );
-njr_test_assert( is_int( ScheduledPurges::QUEUE_PRIORITY ), 'the priority is an integer, not a flag' );
+njr_test_assert( 5 === ScheduledPurges::QUEUE_PRIORITY, 'a scheduled purge is enqueued at priority 5, an integer rather than a flag' );
 njr_test_assert(
 	ScheduledPurges::QUEUE_PRIORITY < RevalidateQueue::DEFAULT_PRIORITY,
 	'it drains ahead of an ordinary save, which waits at the default'
@@ -192,12 +191,6 @@ njr_test_assert(
 	[ 'https://example.test/hello-world/', ScheduledPurges::QUEUE_PRIORITY ] === $queue->asked[0],
 	'it is enqueued at the scheduled purge priority'
 );
-
-// The bug in the shape it had: `true` is not 5, and read as a priority it is
-// the `1` that put every scheduled purge in front of the whole queue.
-$asked_priority = $queue->asked[0][1];
-njr_test_assert( true !== $asked_priority, 'the priority is not a boolean' );
-njr_test_assert( 1 !== $asked_priority, 'the priority is not the 1 a coerced boolean produced' );
 
 // A due entry is spent by the run; nothing is left to enqueue it a second time.
 njr_test_assert( [] === $GLOBALS['njr_test_written_entries'], 'a due entry is dropped from the option' );
