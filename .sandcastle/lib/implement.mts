@@ -75,7 +75,7 @@ export function tailOf(output: string, lines: number = GATE_TAIL_LINES): string 
  * left to do and writes nothing has produced a correct run, not an empty one.
  *
  * Counting this pass's commits instead is what stranded #93, #115 and #117 in
- * September 2026. A pass died between `merge()` and `finalize()`, leaving five
+ * September 2026. A pass died between `merge()` and `finalize()`, leaving six
  * green branches unpushed; every later pass re-ran the agent, the agent
  * correctly declined to commit, `no-commits` dropped the item from
  * `itemsToFinalize()`, and with no PR on the head and the label still in place
