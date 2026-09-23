@@ -168,3 +168,8 @@ so returning `true` there revalidates nothing.
   or `wp post delete` on a custom post type — left the front-end serving its
   cached page indefinitely. A post already in the trash is unchanged: trashing it
   revalidated that page, so emptying the trash enqueues nothing.
+* Fixed: unpublishing a post to Pending Review, re-scheduling it to a future
+  date, or moving it to a status an editorial workflow plugin registers now
+  revalidates its page. Only draft and trash did before, so the front-end kept
+  serving the page indefinitely. A private post moved out of private is covered
+  the same way.

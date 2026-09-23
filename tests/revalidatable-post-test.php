@@ -117,10 +117,16 @@ $GLOBALS['njr_test_posts'] = [
 	3  => [ 'type' => 'post', 'status' => 'draft' ],
 	4  => [ 'type' => 'post', 'status' => 'trash' ],
 	5  => [ 'type' => 'post', 'status' => 'pending' ],
+	6  => [ 'type' => 'post', 'status' => 'future' ],
+
+	// A status an editorial workflow plugin registered. The status axis knows
+	// nothing about it, which is the point — see #78.
+	7  => [ 'type' => 'post', 'status' => 'njr_awaiting_legal' ],
 
 	// A type the front-end holds no page for — what #25 is about.
 	10 => [ 'type' => 'acf-field-group', 'status' => 'publish' ],
 	11 => [ 'type' => 'acf-field-group', 'status' => 'draft' ],
+	12 => [ 'type' => 'acf-field-group', 'status' => 'pending' ],
 
 	// Revisions and autosaves.
 	20 => [ 'type' => 'revision', 'status' => 'inherit', 'revision_of' => 1 ],
@@ -134,6 +140,7 @@ $GLOBALS['njr_test_posts'] = [
 ];
 
 $published = new WP_Post( 0, 'publish' );
+$private   = new WP_Post( 0, 'private' );
 $draft     = new WP_Post( 0, 'draft' );
 
 // The expectations
@@ -148,14 +155,25 @@ $cases = [
 	[ 'a draft is not revalidatable', false, 3, null ],
 	[ 'a trashed post is not revalidatable on its own', false, 4, null ],
 	[ 'a pending post is not revalidatable', false, 5, null ],
+	[ 'a scheduled post is not revalidatable', false, 6, null ],
+	[ 'a post of a custom status is not revalidatable', false, 7, null ],
 
 	[ 'a published post of a non viewable type is not revalidatable', false, 10, null ],
 	[ 'a draft of a non viewable type is not revalidatable', false, 11, null ],
 
+	// Leaving the front-end: the status axis admitted the post before the save
+	// and does not admit it after. Every destination at once, rather than the
+	// allowlist of draft and trash #78 found here.
 	[ 'a post that just left publish for draft is revalidatable', true, 3, $published ],
 	[ 'a post that just left publish for trash is revalidatable', true, 4, $published ],
+	[ 'a post that just left publish for pending is revalidatable', true, 5, $published ],
+	[ 'a post that just left publish for future is revalidatable', true, 6, $published ],
+	[ 'a post that just left publish for a custom status is revalidatable', true, 7, $published ],
+	[ 'a post that just left private for trash is revalidatable — private is on the front-end too', true, 4, $private ],
+	[ 'a post that went publish → private is revalidatable by the status axis', true, 2, $published ],
 	[ 'a post that left draft for pending is not revalidatable', false, 5, $draft ],
 	[ 'the type axis gates the carve out too', false, 11, $published ],
+	[ 'the type axis gates it for every destination, not just draft', false, 12, $published ],
 
 	[ 'a revision of a published post is revalidatable', true, 20, null ],
 	[ 'a revision of a draft is not revalidatable', false, 21, null ],
