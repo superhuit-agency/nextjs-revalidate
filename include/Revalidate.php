@@ -17,6 +17,10 @@ use WP_Taxonomy;
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 /**
+ * The revalidation of a single post's page, from every entry point that asks
+ * for one — a save, a permanent delete, a row action, a bulk action, the admin
+ * bar — and the gate they all ask first.
+ *
  * @property RevalidateQueue $queue
  */
 class Revalidate extends Base implements Hookable {
@@ -27,6 +31,7 @@ class Revalidate extends Base implements Hookable {
 
 	public function register_hooks(): void {
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99, 4 );
+		add_action( 'before_delete_post', [$this, 'on_post_delete'] );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -188,6 +193,55 @@ class Revalidate extends Base implements Hookable {
 		$this->queue->add_item(
 			$post_permalink
 		);
+	}
+
+	/**
+	 * A post is about to be permanently deleted.
+	 *
+	 * `wp_delete_post()` fires no save hook at all — `before_delete_post`,
+	 * `deleted_post` and `after_delete_post`, none of which `on_post_save()`
+	 * hangs on — so without this the front-end kept serving the cached page of
+	 * content that no longer exists, indefinitely. Trashing hid the gap:
+	 * `wp_trash_post()` routes through `wp_insert_post()` and does fire the save
+	 * hook. See #77.
+	 *
+	 * The question asked is the ordinary one, of the post as it stands just
+	 * before it is gone and with no post before it: a publish or private post is
+	 * revalidatable and its page is rebuilt into a 404, while a post already in
+	 * the trash is not — trashing it revalidated that page already, and the
+	 * front-end has had no reason to cache it since. That leaves the
+	 * `wp_scheduled_delete` sweep and Empty Trash enqueueing nothing, which is
+	 * the right answer rather than a remaining gap, and the delete of a post
+	 * that never reached the trash enqueueing the one revalidation that used to
+	 * be missing.
+	 *
+	 * This hangs on `before_delete_post` rather than on either hook that follows
+	 * it because the permalink is composed from a row `deleted_post` no longer
+	 * has.
+	 *
+	 * @param int $post_id The post about to be deleted.
+	 * @return void
+	 */
+	public function on_post_delete( $post_id ) {
+
+		// A revision is deleted in its own right whenever the revision limit
+		// trims one, and in bulk just after the post it belongs to reaches here.
+		// Neither is that post leaving the front-end, and a revision has no page
+		// of its own — so unlike a save, which stands for the post it is a
+		// revision of, a deleted revision stands for nothing.
+		if ( false !== wp_is_post_revision( $post_id ) ) return;
+
+		// Bail for a post that is not revalidatable
+		if ( ! $this->should_revalidate( $post_id ) ) return;
+
+		// The gate above has answered the public question already; asking it
+		// again here would only ask it of a post mid-deletion.
+		$post_permalink = $this->get_post_permalink( $post_id, false );
+
+		// Bail for a post holding no front-end page to rebuild
+		if ( empty($post_permalink) ) return;
+
+		$this->queue->add_item( $post_permalink );
 	}
 
 	/**

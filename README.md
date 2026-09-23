@@ -160,6 +160,14 @@ revalidated, whatever their status.
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
 
+Permanently deleting a post asks the same question of the post as it stands just
+before it is gone, and revalidates its permalink so the front-end stops serving
+a page for content that no longer exists. A post already in the trash is not
+revalidated again: trashing it revalidated that page already, and the front-end
+has had no reason to cache it since — so emptying the trash, by hand or through
+WordPress's scheduled sweep, enqueues nothing. Deleting a revision revalidates
+nothing either; the post it belongs to still has its page.
+
 ## Which post types the admin offers
 
 The same viewability decides what this plugin *offers* for a post type: the
