@@ -33,4 +33,15 @@ describe('parentFromBody', () => {
 	it('is null when there is no marker', () => {
 		assert.equal(parentFromBody('Blocked by #12'), null);
 	});
+
+	it('reads a marker that opens a line below other text', () => {
+		assert.equal(parentFromBody('> *Generated during triage.*\n\nPart of #29'), 29);
+	});
+
+	it('does not read a parent out of prose — #118 was sent to a closed #93 this way', () => {
+		assert.equal(
+			parentFromBody('ADR 0020 (being written as part of #93) is the natural home for whatever is decided here.'),
+			null
+		);
+	});
 });
