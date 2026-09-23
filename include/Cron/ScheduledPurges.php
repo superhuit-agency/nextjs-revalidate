@@ -42,9 +42,9 @@ class ScheduledPurges extends Base implements Hookable {
 					// reached the table as `1` — `$wpdb->insert()` binds it into
 					// an int column, and `promote_item()` takes `intval()` of it
 					// — so this is the same priority spelled honestly, not a new
-					// one. Whether a scheduled purge deserves to drain ahead of
-					// an ordinary save is a question nobody has answered; it is
-					// not answered by an accident either way.
+					// one. The priority a scheduled purge *should* have is 5,
+					// ahead of an ordinary save — see "Scheduled purge" in
+					// CONTEXT.md — and moving it there is #63, not this.
 					$this->queue->add_item( $url, 1 );
 				}
 			}

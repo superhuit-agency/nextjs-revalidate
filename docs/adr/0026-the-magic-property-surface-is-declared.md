@@ -92,8 +92,9 @@ and `new static()` on the singleton. They are still a to-do list.
 types.** `Cron\ScheduledPurges` passed `true` where `RevalidateQueue::add_item()`
 takes an `int $priority` — a literal port of the `$force` flag the pre-queue
 `Revalidate::purge()` took there. It has always bound as `1`, so nothing was
-broken and nothing is fixed; it is spelled `1` now, and *whether a scheduled
-purge should drain ahead of an ordinary save is a question nobody has answered*.
+broken and nothing is fixed; it is spelled `1` now. The priority it *should*
+have — 5, ahead of an ordinary save — has since been defined under **Scheduled
+purge** in `CONTEXT.md`, and moving it there is #63.
 That finding was invisible for as long as `$this->queue` had no type, and it was
 invisible in a file the baseline covered.
 

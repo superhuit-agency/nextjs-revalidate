@@ -68,7 +68,7 @@ includes:
 	# ignore; the other three were two lying docblocks and a redundant
 	# `method_exists()`. Anything still in the file is unrelated to either and
 	# still a to-do.
-	# See docs/adr/0025-the-magic-property-surface-is-declared.md.
+	# See docs/adr/0026-the-magic-property-surface-is-declared.md.
 	- phpstan-baseline.neon
 
 parameters:

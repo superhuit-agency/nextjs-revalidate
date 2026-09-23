@@ -84,12 +84,6 @@ namespace {
 	function add_action( $name, $callback, $priority = 10, $accepted_args = 1 ) {}
 	function add_filter( $name, $callback, $priority = 10, $accepted_args = 1 ) {}
 
-	function get_post_types( $args = [] ) {
-		$types = array_keys( $GLOBALS['njr_test_posts'] );
-
-		return array_combine( $types, $types );
-	}
-
 	function get_posts( $args = [] ) {
 		return $GLOBALS['njr_test_posts'][ $args['post_type'] ] ?? [];
 	}
@@ -122,13 +116,20 @@ namespace {
 	}
 
 	/**
-	 * `Revalidate`, reduced to the two questions revalidate-all puts to it: the
-	 * permalink of a post, and whether a taxonomy's terms are candidates. Both
-	 * gates have tests of their own — `tests/revalidatable-post-test.php` and
-	 * `tests/revalidatable-taxonomy-test.php` — and nothing here has an opinion
-	 * about either.
+	 * `Revalidate`, reduced to the three questions revalidate-all puts to it:
+	 * which post types it offers, the permalink of a post, and whether a
+	 * taxonomy's terms are candidates. Each has a test of its own —
+	 * `tests/offered-post-types-test.php`, `tests/revalidatable-post-test.php`
+	 * and `tests/revalidatable-taxonomy-test.php` — and nothing here has an
+	 * opinion about any of them.
 	 */
 	class NJR_Test_Revalidate {
+		public function offered_post_types() {
+			$types = array_keys( $GLOBALS['njr_test_posts'] );
+
+			return array_combine( $types, $types );
+		}
+
 		public function get_post_permalink( $post_id ) {
 			return "https://example.test/post/$post_id/";
 		}

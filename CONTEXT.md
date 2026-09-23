@@ -50,7 +50,10 @@ callbacks on one hook and has nothing to do with the queue.
 
 **Scheduled purge**:
 A revalidation registered to happen at a future time rather than immediately,
-used for content with a publication or expiry date.
+used for content with a publication or expiry date. When it comes due it is
+enqueued at an elevated **queue priority** (5, ahead of the default 10): content
+whose date has just passed is more urgent than an ordinary save, but still
+below anything a caller explicitly deemed more urgent.
 
 **Probe**:
 A revalidation the operator asks for directly, in order to observe its outcome.
@@ -93,8 +96,26 @@ merely wrong.
 **Revalidatable post**:
 A post the front-end could hold a page for. Its type is viewable — WordPress's
 own `publicly_queryable` test — and its status is publish or private, or it has
-just left publish for draft or trash. A post that is not revalidatable produces
-no revalidation at all; it is not refused, it was never a candidate.
+just **left the front-end**. A post that is not revalidatable produces no
+revalidation at all; it is not refused, it was never a candidate.
+
+A post **leaves the front-end** when the save that changed it moved it from a
+status the status axis admits (publish or private) to one it does not — draft,
+pending, future, trash, or any custom status. The front-end still holds the page
+the post had, so that page is revalidated one last time, from the permalink the
+post had *before* the save, to make it a 404. Defined against the status axis
+rather than as a list of destinations, so it covers every status — including
+ones a workflow plugin registers — and follows the axis if it is ever widened.
+Private counts as on the front-end: private → trash leaves it, publish → private
+does not.
+
+Permanently deleting a post asks the same question of the post as it stands just
+before it is gone: a publish or private post is revalidatable and its page is
+revalidated, while a post already in the trash is not — trashing it already
+revalidated the page, and the front-end has had no reason to cache it since.
+
+This is deliberately not core's `is_post_status_viewable()`, which rejects
+private.
 
 The site has the last word: a filter is applied after both axes and can admit or
 decline any post, which is how a headless site whose types are not
@@ -127,6 +148,24 @@ a term being created, edited or deleted, so a term archive goes stale until
 somebody purges all. That gap is an enhancement, not a property of the taxonomy.
 _Avoid_: Public taxonomy — `public` is a different setting and the two disagree
 in both directions, which is the whole of the bug this names the fix for.
+
+**Offered post type**:
+A post type whose posts this plugin offers an operator an action over: the
+"Purge caches" bulk action on its list screen, its two switches on the settings
+page, its entry in the admin bar's purge-all menu, and its place among the post
+types a **revalidate all** walks. One axis, the type axis of a **revalidatable
+post** — WordPress's own `is_post_type_viewable()` — with attachments taken out,
+because an uploaded file is not a page the front-end holds.
+
+An offer, and not a gate: that is the whole of the term. Being offered decides
+nothing about whether a revalidation is enqueued, which is **revalidatable
+post**'s question and is asked of every post either way. A type this plugin does
+not offer can still have revalidatable posts, through the post filter — and it
+is then the site saying so, not this plugin.
+_Avoid_: Public post type — `public` is a different setting and the two disagree
+in both directions, which is the whole of the bug this names the fix for;
+supported post type, allowed post type — both sound like a capability this
+plugin grants rather than a menu it draws.
 
 ### Full site editing
 
