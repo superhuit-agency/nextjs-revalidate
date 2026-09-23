@@ -22,6 +22,11 @@ trait BlockEditorScreen {
 
 		$screen = get_current_screen();
 
-		return ! is_null($screen) && method_exists($screen, 'is_block_editor') && $screen->is_block_editor();
+		// No `method_exists()` guard on `is_block_editor()`: it has been on
+		// `WP_Screen` since WordPress 5.0, which is the floor the plugin header
+		// declares. The `is_null()` one stays — `get_current_screen()` answers
+		// null outside the admin, and on an admin request before
+		// `set_current_screen()` has run.
+		return ! is_null($screen) && $screen->is_block_editor();
 	}
 }

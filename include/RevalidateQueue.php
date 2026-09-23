@@ -9,6 +9,10 @@ use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Error;
 
+/**
+ * @property Revalidate $revalidate
+ * @property Settings   $settings
+ */
 class RevalidateQueue extends Base implements Hookable {
 	use SendbackUrl;
 

@@ -80,6 +80,30 @@ if ( ! file_exists(__DIR__ . '/vendor/autoload.php') ) {
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+/**
+ * Every object the composition root constructs is private, and `__get()` below
+ * hands any of them back to a reader outside this class — which is how
+ * `Abstracts\Base` reaches the five it shares, how `Assets` and `Logger` reach
+ * the one each of them needs, and how the two API functions at the foot of this
+ * file reach theirs.
+ *
+ * Declared here so static analysis can see that surface: without these, every
+ * one of those reads is an access to a private property, which is most of what
+ * `phpstan-baseline.neon` used to carry. Read, never written — the composition
+ * root is the only thing that assigns them.
+ *
+ * @property-read Assets          $assets
+ * @property-read Revalidate      $revalidate
+ * @property-read Probe           $probe
+ * @property-read Settings        $settings
+ * @property-read FailureWindow   $failureWindow
+ * @property-read ScheduledPurges $cronScheduledPurges
+ * @property-read RevalidateAll   $revalidateAll
+ * @property-read FseSnapshot     $fseSnapshot
+ * @property-read RevalidateQueue $queue
+ * @property-read RestApi         $restApi
+ * @property-read Redirection     $redirection
+ */
 class NextJsRevalidate {
 
 	private Assets $assets;

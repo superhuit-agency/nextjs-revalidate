@@ -16,6 +16,9 @@ use WP_Taxonomy;
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
+/**
+ * @property RevalidateQueue $queue
+ */
 class Revalidate extends Base implements Hookable {
 	use AdminBarMenu;
 	use BlockEditorScreen;
