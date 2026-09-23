@@ -123,6 +123,13 @@ Registers a revalidation of the given URL for a future date time. Nothing is
 enqueued until then, so a schedule registered on a configured site is still
 refused at its due time if the site is unconfigured by then.
 
+When the date time passes, the revalidation is enqueued at priority `5` rather
+than the default `10`: content whose publication or expiry date has just passed
+is more urgent than an ordinary save, and still less urgent than anything a
+caller asked for at a lower number.
+A URL already waiting in the queue at the default is promoted to `5` rather
+than queued a second time.
+
 #### Usage
 ```php
 nextjs_revalidate_schedule_purge_url( $datetime, $url );
