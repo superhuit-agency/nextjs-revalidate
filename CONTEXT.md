@@ -257,14 +257,12 @@ _Avoid_: Skip, ignore — both suggest the revalidation was unimportant rather t
 undeliverable.
 
 **Log file**:
-The file the plugin appends its own diagnostics to, one per site, in a directory
-this plugin owns beneath that site's uploads directory and under a name unique to
-that site. Written only while the operator has the logs setting switched on, and
-created by the first line written rather than by switching the setting on — so on
-a site that has never logged, its absence is the normal state and not a fault.
-Every log line the plugin can produce passes through that one setting; there is
-no second channel that logs regardless. Its path is composed rather than known in
-advance, and the settings screen is where an operator reads it.
+The file the plugin appends its own diagnostics to, one per site, in that site's
+uploads directory. Written only while the operator has the logs setting switched
+on, and created by the first line written rather than by switching the setting
+on — so on a site that has never logged, its absence is the normal state and not
+a fault. Every log line the plugin can produce passes through that one setting;
+there is no second channel that logs regardless.
 _Avoid_: Debug mode — the plugin has a setting that enables logging, not a mode
 it runs in.
 
