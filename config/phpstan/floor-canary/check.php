@@ -11,9 +11,9 @@
  *
  * So this analyses `fixture.php` alone, with the project's own phpstan.neon —
  * the same rule, registered the same way, holding the same floor — and fails
- * unless the rule reports exactly the fixture's unguarded calls newer than
+ * unless the rule reports exactly the fixture's unguarded uses newer than
  * `wordpressFloor`, and nothing else is reported at all. Too few is a rule gone
- * blind; too many is one reporting guarded or older calls, or a fixture that
+ * blind; too many is one reporting guarded or older uses, or a fixture that
  * has stopped analysing cleanly.
  *
  * `--memory-limit=2G` for the reason ADR 0020 gives: the stubs are parsed here
@@ -29,8 +29,12 @@ $fixture  = 'config/phpstan/floor-canary/fixture.php';
 $rule     = 'nextjsRevalidate.wordpressFloor';
 $failures = 0;
 
-/** `5.6` as `5.6.0`, as the rule compares. */
-function njr_full_version( string $version ): string {
+/**
+ * `5.6` as `5.6.0`, as the rule compares. A copy of the rule's own
+ * `pad_version()`, and deliberately: the expectation must not come from the
+ * code under test, or a broken comparison would agree with itself.
+ */
+function njr_pad_version( string $version ): string {
 	return implode( '.', array_pad( explode( '.', $version ), 3, '0' ) );
 }
 
@@ -50,7 +54,7 @@ if ( false === $lines ) {
 	exit( 1 );
 }
 
-/** Line => what it calls, for every line the rule must report. */
+/** Line => what it uses, for every line the rule must report. */
 $expected = [];
 $marked   = 0;
 
@@ -58,13 +62,13 @@ foreach ( $lines as $index => $line ) {
 	if ( ! preg_match( '/^\s*(.+?);?\s*\/\/ since (\d+\.\d+(?:\.\d+)?)(, guarded)?\s*$/', $line, $marker ) ) continue;
 
 	$marked++;
-	if ( empty( $marker[3] ) && version_compare( njr_full_version( $marker[2] ), njr_full_version( $floor ), '>' ) ) {
+	if ( empty( $marker[3] ) && version_compare( njr_pad_version( $marker[2] ), njr_pad_version( $floor ), '>' ) ) {
 		$expected[ $index + 1 ] = $marker[1];
 	}
 }
 
 if ( ! $expected ) {
-	fwrite( STDERR, "FAIL — nothing in $fixture is newer than the $floor floor, so the canary proves nothing. Add a call to something core introduced after it.\n" );
+	fwrite( STDERR, "FAIL — nothing in $fixture is newer than the $floor floor, so the canary proves nothing. Add a use of something core introduced after it.\n" );
 	exit( 1 );
 }
 
@@ -124,7 +128,7 @@ foreach ( $expected as $line => $call ) {
 	printf( "FAIL — line %d, %s, is newer than the %s floor and the rule did not report it. It has gone blind: the analysis after this proves nothing until it is fixed.\n", $line, $call, $floor );
 }
 
-printf( "ok   — %d of %d marked calls are at or below the floor, or guarded, and %s\n", $marked - count( $expected ), $marked, $failures ? 'checked above' : 'none is reported' );
+printf( "ok   — %d of %d marked uses are at or below the floor, or guarded, and %s\n", $marked - count( $expected ), $marked, $failures ? 'checked above' : 'none is reported' );
 
 printf( "\n%d failure(s)\n", $failures );
 exit( $failures === 0 ? 0 : 1 );

@@ -98,9 +98,10 @@ parameters:
 
 	# The WordPress release the plugin declares as its floor — `Requires at least`
 	# in nextjs-revalidate.php and readme.txt, and "Requires WordPress" in
-	# README.md — and what `WordPressFloorRule` below holds every core function,
-	# method and class the plugin calls to. A call to anything core documents as
-	# `@since` a newer release fails the analysis, naming the API and the release.
+	# README.md — and what `WordPressFloorRule` below holds the core functions,
+	# methods, classes and constants the plugin uses to. A use of anything core
+	# documents as `@since` a newer release fails the analysis, naming the API and
+	# the release.
 	#
 	# It is a copy of the header, and deliberately: PHPStan's result cache is keyed
 	# on this file, so a floor read from the header would leave every cached

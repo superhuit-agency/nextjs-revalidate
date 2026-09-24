@@ -1,4 +1,4 @@
-# The analysis holds every core call to the WordPress floor, and hooks are held by hand
+# The analysis holds the core APIs the plugin uses to the WordPress floor, and hooks are held by hand
 
 Decided while fixing #122, alongside
 [ADR 0028](0028-the-wordpress-floor-is-the-newest-api-the-plugin-calls.md), which
@@ -19,24 +19,42 @@ The analysis already loads WordPress core as stubs, through
 core function, method and class the plugin calls is resolved by PHPStan to a
 declaration that carries the `@since` core gave it. Nothing had been reading it.
 
-`config/phpstan/WordPressFloorRule.php` does. For every call — `foo()`,
-`$x->foo()`, `$x?->foo()`, `X::foo()` and `new X` — that resolves to something
-declared in the stubs, it takes the first `@since` (where core records the
-introduction; later ones record changes) and fails the analysis when it is newer
-than the floor:
+`config/phpstan/WordPressFloorRule.php` does. For every use of core that
+resolves to something declared in the stubs, it takes the first `@since` (where
+core records the introduction; later ones record changes) and fails the analysis
+when it is newer than the floor. A use is:
+
+- a call — `foo()`, `$x->foo()`, `$x?->foo()`, `X::foo()`, `new X` — including
+  on a receiver that may also be `null` or `false`, as `get_current_screen()`'s
+  is;
+- a class constant, `X::FOO`;
+- a function or method named as a callback — `'foo'`, `'X::foo'`,
+  `[ 'X', 'foo' ]` — in an argument whose parameter is a `callable`, which is
+  every `add_action()`, `add_filter()`, `call_user_func()` and `array_map()`.
+  Only there: a hook name is a string too, and `do_action( 'wp_body_open' )`
+  names a hook whatever function shares its name;
+- a class a declaration `extends` or `implements`, since a missing parent is
+  fatal the moment the file loads.
 
 ```
 Function wp_is_block_theme() was added in WordPress 5.9.0, above the 5.6 floor
 the plugin declares (`Requires at least`). Raise the floor (ADR 0028), or guard
-the call with function_exists().
+it with function_exists().
 🪪 nextjsRevalidate.wordpressFloor
 ```
 
-A method with no `@since` of its own is dated by its class. A function call
-inside a `function_exists()` check on that function, and a `new` or static call
-inside a `class_exists()` check on its class, is not reported: that is how a
-plugin uses a newer API below its release, and PHPStan's scope already knows
-when a call sits inside one.
+A method or constant is as new as the newer of its own `@since` and its
+class's: one with none arrived with its class, and none arrived before it. A
+`@since` that names no release — `Unknown`, `Beta`, the bundled libraries' own —
+dates nothing, rather than letting a later change stand in for the introduction.
+
+A function inside a `function_exists()` check on it, and a class inside a
+`class_exists()` check on it, is not reported: that is how a plugin uses a newer
+API below its release, and PHPStan's scope already knows when a use sits inside
+one. A `class_exists()` check also covers the members no newer than the class it
+checks, so `$tags->next_tag()` inside `class_exists( 'WP_HTML_Tag_Processor' )`
+is let through, and `$theme->is_block_theme()` (5.9) inside
+`class_exists( 'WP_Theme' )` (3.4) is not.
 
 `method_exists()` is not honoured, because it cannot be. The stubs describe the
 newest core, where the method exists, so PHPStan has nothing to narrow — and
@@ -67,16 +85,25 @@ has stopped running looks exactly like one that passes, which is #122 again.
 
 So `npm run analyse:php` runs `config/phpstan/floor-canary/check.php` first. It
 analyses `fixture.php` beside it, alone, with the project's own `phpstan.neon`,
-and fails unless the rule reports exactly the fixture's unguarded calls newer
-than `wordpressFloor` — a function, a `new`, an instance method and a static
-method — and nothing else is reported. Each call in the fixture is marked with
-the release it arrived in, so the expectation follows the floor rather than being
-written down twice; a floor above every marked call fails the canary too, since
-it would then prove nothing.
+and fails unless the rule reports exactly the fixture's unguarded uses newer
+than `wordpressFloor` — one of each kind above — and nothing else is reported.
+Each use in the fixture is marked with the release it arrived in, so the
+expectation follows the floor rather than being written down twice; a floor
+above every marked use fails the canary too, since it would then prove nothing.
+
+Some lines are there to fail a specific blindness. `WP_Theme::is_block_theme()`
+is 5.9 on a 3.4 class, so it is reported only while the rule reads a method's own
+`@since` — a method sharing its class's release would stay reported by the
+class's alone. `do_action( 'wp_is_block_theme' )` must not be reported, and a
+`class_exists( 'WP_Theme' )` check must not cover that 5.9 method. `check.php`
+pads versions with its own copy of the rule's comparison, so a broken comparison
+cannot agree with itself.
 
 It was checked against the ways it exists to catch: the rule's stubs path
 changed, the rule removed from `phpstan.neon`, the `function_exists()` check
-dropped, the floor raised past the fixture. Each fails it, naming the line. It
+dropped, the floor raised past the fixture, a method's own `@since` ignored, the
+callback check removed, and a `class_exists()` check covering every member. Each
+fails it, naming the line. It
 analyses one file, so it neither reads nor writes the result cache, and it costs
 a couple of seconds.
 
@@ -93,7 +120,7 @@ configuration invalidates the cache the moment it changes.
 same job. "Can't drift apart silently" is held by that test rather than by there
 being one copy.
 
-## Hooks are the accepted limit
+## Hooks are the accepted limit, among a few smaller ones
 
 `add_action( 'wp_after_insert_post', … )` is, to an analyser, a call to a 2.0
 function with a string in it. A hook's `@since` lives in the docblock above its
@@ -109,6 +136,15 @@ since then the floor may be higher than the code needs. It reads the registratio
 from tokens, so a hook named only in a comment does not count. What nothing
 catches is a **newly registered** hook newer than the floor: adding one means
 adding it to that list, which is a discipline and not a check.
+
+The rest of what the rule cannot see is smaller, and none of it is in the plugin
+today:
+
+- a callback PHPStan cannot resolve to a constant — built by concatenation, read
+  from an option — or passed to a parameter not typed `callable`;
+- a static property, `X::$foo`, and a trait `use`d from core;
+- a class named only in a type declaration, an `instanceof` or a `catch`. None of
+  these is fatal when the class is missing, so none of them sets a floor.
 
 ## Considered Options
 
@@ -136,8 +172,8 @@ disagree with CI, which starts cold.
 
 ## Consequences
 
-Reaching for a core API newer than the floor is now a red analysis, not a review
-comment. The fix is one of three: guard it, raise the floor in all four places
+Reaching for a core API newer than the floor, in any of the forms above, is now
+a red analysis, not a review comment. The fix is one of three: guard it, raise the floor in all four places
 (ADR 0028), or use something older.
 
 The rule is only as good as the stubs' docblocks. `php-stubs/wordpress-stubs`

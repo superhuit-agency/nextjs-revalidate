@@ -16,8 +16,8 @@
  * activated at all (`validate_plugin_requirements()`, since WordPress 5.2.0), so
  * the number being wrong is the whole of the bug. ADR 0028 settled it at 5.6.
  *
- * `npm run analyse:php` holds every core function, method and class the plugin
- * calls to that floor (ADR 0030). This holds the rest:
+ * `npm run analyse:php` holds the core functions, methods, classes and
+ * constants the plugin uses to that floor (ADR 0030). This holds the rest:
  *
  * 1. The four places that state the floor agree: the plugin header, which core
  *    reads; `readme.txt`, which WordPress.org reads; README.md, which a person
@@ -122,8 +122,8 @@ function njr_registered_hooks( string $contents ): array {
 	return $hooks;
 }
 
-/** Every PHP file the analysis covers — `include/`, at any depth, plus the plugin file. */
-function njr_analysed_files( string $root ): array {
+/** The plugin's own PHP — `include/`, at any depth, plus the plugin file. */
+function njr_plugin_files( string $root ): array {
 	$files = [ "$root/nextjs-revalidate.php" ];
 
 	if ( is_dir( "$root/include" ) ) {
@@ -242,7 +242,7 @@ foreach ( array_unique( $floors ) as $stated ) {
 // 4. Every hook that sets a floor is registered the way that needs it, and none is above it.
 $registered = [];
 
-foreach ( njr_analysed_files( $root ) as $path ) {
+foreach ( njr_plugin_files( $root ) as $path ) {
 	$contents = @file_get_contents( $path );
 
 	if ( false === $contents ) {
