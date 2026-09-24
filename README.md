@@ -58,12 +58,13 @@ https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-str
 
 ### Probing the front-end
 
-The **Probe** tab of the settings screen asks the front-end to rebuild one path
-straight away, and shows what it answered — including the error message and its
-code when it did not work. It is a real revalidation and not a dry run: the page
-is rebuilt exactly as it would be after an edit, using the *saved* settings, so
-it answers "does this site revalidate right now" rather than "would these values
-work".
+The **Probe** tab of the settings screen reports one path change to the
+front-end straight away, in a request of its own, and shows what it answered —
+including the error message and its code when it did not work. It is a real
+revalidation and not a dry run: the front-end is sent the same request, through
+the same `nextjs_revalidate_change` filter, as for any other change, using the
+*saved* settings, so it answers "does this site revalidate right now" rather
+than "would these values work".
 
 A probe is never counted towards the "not keeping this site up to date" warning:
 pressing it can neither raise that warning nor clear it. It is written to the log
@@ -76,71 +77,69 @@ file when logging is on, marked `🔎 Probe`.
 
 ## API functions
 
-Neither function can tell you whether the front-end has rebuilt anything. Each
-answers what the plugin took on: `nextjs_revalidate_purge_url` whether the
-revalidation was **accepted** into the queue, and
-`nextjs_revalidate_schedule_purge_url` whether the schedule was registered —
-which is one step further away, since that revalidation is only enqueued when
-the date time passes, and can be refused then. The queue is drained afterwards,
-by cron, so there is no return value in this plugin that could report the
-outcome of a delivery that has not happened yet. Delivery is at most once — a
-revalidation that is attempted and fails is written to the log and dropped,
-never retried.
+Neither function can tell you whether the front-end has revalidated anything.
+Each answers what the plugin took on: `nextjs_revalidate_path` whether the
+change was **accepted** into the request's pending changes, and
+`nextjs_revalidate_schedule_path` whether the schedule was registered — which is
+one step further away, since that change is only reported when the date time
+passes, and can be refused then. Pending changes are sent to the front-end once
+the request that produced them has answered, so there is no return value in
+this plugin that could report the outcome of a delivery that has not happened
+yet. Delivery is at most once — a revalidation that is attempted and fails is
+written to the log and dropped, never retried.
 
-### nextjs_revalidate_purge_url
+Both take a full URL or a path. A URL is reduced to its path from the domain
+root — `https://example.com/hello-world/?ref=x` and `/hello-world/` are the same
+change — keeping its trailing slash, or its lack of one, as given.
 
-Enqueues a revalidation of any URL, to be delivered to the front-end by the next
-run of the queue's cron.
+### nextjs_revalidate_path
+
+Reports a path as changed, so the front-end revalidates whatever it cached from
+it: a **path** change, `{ "subject": "path", "uri": "/hello-world/" }`, for a
+path this plugin has no other way to know about. What the front-end expires for
+it is the front-end's decision.
 
 #### Usage
 ```php
-nextjs_revalidate_purge_url( $url );
+nextjs_revalidate_path( $url );
 ```
 
 #### Arguments
 
 | Name | Type | Description |
 | --- | --- | --- |
-| url  | string | The URL to purge |
-| priority | int | Optional. Lower numbers are purged earlier; equal priorities keep insertion order. Default `10`. |
+| url  | string | The URL, or the path, that changed |
 
 #### Returns
 
-`bool` — whether the revalidation was accepted into the queue. It is `false`
+`bool` — whether the change was accepted into the pending changes. It is `false`
 when the site is unconfigured, which is a **refusal**: the revalidate domain or
-the secret is missing, nothing has been queued, and nothing will be. It is also
-`false` if the queue write failed — the insert, or the promotion of an entry
-already waiting. A URL already waiting in the queue is
-accepted (`true`) without being queued twice; calling again with a lower
-priority number moves the entry it already has to that priority, and a higher
-one leaves it where it is.
+the secret is missing, nothing has been accepted, and nothing will be. It is also
+`false` when the site's `nextjs_revalidate_change` filter dropped the change, and
+for a URL that names no path at all. A path already reported in the same request
+is accepted (`true`) and sent once.
 
 It is never a statement about the front-end. A `true` says the plugin will try.
 
-### nextjs_revalidate_schedule_purge_url
+### nextjs_revalidate_schedule_path
 
-Registers a revalidation of the given URL for a future date time. Nothing is
-enqueued until then, so a schedule registered on a configured site is still
-refused at its due time if the site is unconfigured by then.
-
-When the date time passes, the revalidation is enqueued at priority `5` rather
-than the default `10`: content whose publication or expiry date has just passed
-is more urgent than an ordinary save, and still less urgent than anything a
-caller asked for at a lower number.
-A URL already waiting in the queue at the default is promoted to `5` rather
-than queued a second time.
+Registers a path to be reported as changed at a future date time — a
+**scheduled purge**. Nothing is reported until then: the cron request that finds
+it due reports it as a path change, so a schedule registered on a configured site
+is still refused at its due time if the site is unconfigured by then. The entry
+is dropped either way.
 
 #### Usage
 ```php
-nextjs_revalidate_schedule_purge_url( $datetime, $url );
+nextjs_revalidate_schedule_path( $datetime, $url );
 ```
 
 #### Arguments
 
 | Name | Type | Description |
 | --- | --- | --- |
-| datetime  | string | The date time when to purge |
-| url  | string | The URL to purge |
+| datetime  | string | The date time from which the path is due |
+| url  | string | The URL, or the path, to report then |
 
 #### Returns
 
@@ -148,14 +147,30 @@ nextjs_revalidate_schedule_purge_url( $datetime, $url );
 that URL is already registered for that date time: the schedule stands, and this
 call added nothing to it. It is also `false` if the write failed.
 
+### Deprecated: nextjs_revalidate_purge_url, nextjs_revalidate_schedule_purge_url
+
+The 1.x names, kept as wrappers until 3.0
+([ADR 0035](docs/adr/0035-v2-breaks-the-wire-and-nothing-else.md)).
+`nextjs_revalidate_purge_url( $url, $priority )` calls `nextjs_revalidate_path()`
+and `nextjs_revalidate_schedule_purge_url( $datetime, $url )` calls
+`nextjs_revalidate_schedule_path()`, answering what those answer. Both go
+through WordPress's `_deprecated_function()`, so they warn under `WP_DEBUG` and
+fire `deprecated_function_run` either way. `$priority` is accepted and ignored:
+there is no queue left for it to order.
+
 ## REST routes
 
 Two routes, for a deploy hook, a CI job or an external CMS asking this site to
 revalidate. Both accept `POST`, `PUT` or `PATCH`, and both take the site's
 revalidate secret — the same value the plugin sends to the front-end — as a
-parameter rather than as a header.
+parameter rather than as a header. Each item becomes a **path** change,
+`{ "subject": "path", "uri": … }`, exactly as `nextjs_revalidate_path` reports
+one.
 
-| Route | Enqueues |
+Plugin 2.0 still serves them under `/v1/`: a REST namespace versions the REST
+API rather than the plugin, and the request these routes take has not changed.
+
+| Route | Reports |
 | --- | --- |
 | `/wp-json/nextjs-revalidate/v1/revalidate` | one path |
 | `/wp-json/nextjs-revalidate/v1/revalidate/batch` | an array of them |
@@ -163,24 +178,24 @@ parameter rather than as a header.
 ```bash
 curl -X POST https://example.com/wp-json/nextjs-revalidate/v1/revalidate \
   -H 'Content-Type: application/json' \
-  -d '{"secret":"my-super-secret-string","path":"https://example.com/hello-world/","priority":1}'
+  -d '{"secret":"my-super-secret-string","path":"https://example.com/hello-world/"}'
 
 curl -X POST https://example.com/wp-json/nextjs-revalidate/v1/revalidate/batch \
   -H 'Content-Type: application/json' \
-  -d '{"secret":"my-super-secret-string","items":[{"path":"/hello-world/"},{"path":"/about/","priority":1}]}'
+  -d '{"secret":"my-super-secret-string","items":[{"path":"/hello-world/"},{"path":"/about/"}]}'
 ```
 
 | Parameter | Type | Description |
 | --- | --- | --- |
 | secret | string | Required. The site's revalidate secret. |
-| path | string | The single route only, required. Stored **verbatim** as the permalink to revalidate — nothing is composed around it. |
-| items | array | The batch route only, required. Objects with a `path` and an optional `priority`. |
-| priority | int | Optional. Lower numbers are revalidated earlier; equal priorities keep insertion order. Default `10`. |
+| path | string | The single route only, required. A URL or a path; a URL is reduced to its path from the domain root. |
+| items | array | The batch route only, required. Objects with a `path`, and optionally a `priority`. |
+| priority | int | Optional, and ignored since 2.0: there is no queue left for it to order. Still accepted — and still required to be an integer — so a request 1.x took is taken still. |
 
-What a route answers with is an acceptance, never a delivery: the path is in
-the **revalidation queue**, which cron drains afterwards. Nothing in the response
-says the front-end has rebuilt anything, and nothing can — see the note above
-`nextjs_revalidate_purge_url`.
+What a route answers with is an acceptance, never a delivery: the change is in
+the request's pending changes, which are sent to the front-end once the response
+has gone. Nothing in the response says the front-end has revalidated anything,
+and nothing can — see the note above `nextjs_revalidate_path`.
 
 Both routes answer the same body, with one result per item sent, in the order
 they were sent:
@@ -189,17 +204,17 @@ they were sent:
 {
   "success": false,
   "results": [
-    { "path": "/hello-world/", "success": true, "data": 1 },
+    { "path": "/hello-world/", "success": true, "data": true },
     { "path": "/about/", "success": false, "message": "Missing path" }
   ]
 }
 ```
 
-A result carries `data` — the queue's own answer — only when the item was
-accepted, and a `message` only when it was not. Match results to items by
-position; `path` is echoed back too, and is `null` for an entry that carried
-none. An entry of `items` that is not an object is reported as an item with no
-`path`, never skipped.
+A result carries `data` — always `true`, where 1.x carried the queue's own
+answer — only when the item was accepted, and a `message` only when it was not.
+Match results to items by position; `path` is echoed back as it was sent, and is
+`null` for an entry that carried none. An entry of `items` that is not an object
+is reported as an item with no `path`, never skipped.
 
 ### Statuses
 
@@ -208,17 +223,17 @@ rather than by which route produced them:
 
 | Status | Meaning |
 | --- | --- |
-| `200` | Every item was accepted into the queue. |
+| `200` | Every item was accepted into the pending changes. |
 | `207` | Some items were accepted and some were not — read `results[].success` for which. Only the batch route can answer this. |
 | `400` | No item was accepted, and the items are why: one carried no `path`. Also the answer when the request itself could not be read — no `path` on the single route, or no `items` array on the batch route. |
 | `503` | No item was accepted because this site is unconfigured: the revalidate domain or the secret is missing, so nothing can be revalidated until an operator supplies them. |
-| `500` | No item was accepted because a queue write did not happen here. Also what a site holding **no secret at all** answers, from the permission check, with the code `missing_secret`. |
-| `401`/`403` | The secret did not match. Nothing was enqueued. |
+| `500` | No item was accepted because of something on this site: the site's own `nextjs_revalidate_change` filter dropped the change, or something threw. Also what a site holding **no secret at all** answers, from the permission check, with the code `missing_secret`. |
+| `401`/`403` | The secret did not match. Nothing was reported. |
 
 A request in which **nothing** was accepted always answers 4xx or 5xx, never
 2xx — so a caller that only checks the status still learns that nothing was
-queued. Where items failed for different reasons, `503` outranks `500`, which
-outranks `400`. Releases before this answered `207` for every failed request,
+accepted. Where items failed for different reasons, `503` outranks `500`, which
+outranks `400`. Releases before 1.7 answered `207` for every failed request,
 including one in which nothing at all was queued;
 [ADR 0027](docs/adr/0027-a-wholly-failed-request-answers-a-failure-status.md) has
 the reasoning and what it changes for a caller.
@@ -316,19 +331,20 @@ A headless front-end resolves a redirect inside the cached page of the path it
 redirects *from*, so creating, editing, deleting, enabling or disabling a
 redirect in [Redirection](https://wordpress.org/plugins/redirection/) leaves that
 path answering as it did before until its cache entry expires. With Redirection
-active, this plugin enqueues a revalidation of the source path whenever a
-redirect changes, so the redirect starts — or stops — working within the time the
-queue takes to drain.
+active, this plugin reports a **redirect** change for the source path whenever a
+redirect changes — `{ "subject": "redirect", "uri": "/old-path/" }` — so the
+redirect starts, or stops, working as soon as the front-end has been told, once
+the request that saved it has answered.
 
 **Supported, never required.** With Redirection absent, nothing here registers
 and the plugin behaves exactly as it did before; installing it, or removing it
 again later, changes nothing about how posts are revalidated. There is no setting
-to switch the integration on: a redirect change enqueues exactly one path, so
+to switch the integration on: a redirect change reports exactly one path, so
 there is nothing to gate.
 
 #### What revalidates, and when
 
-| A redirect is | and the plugin enqueues |
+| A redirect is | and the plugin reports a redirect change for |
 | --- | --- |
 | created | its source path |
 | edited | its new source path — and the source it had before the edit, see below |
@@ -357,7 +373,7 @@ has not heard about yet.
 
 **A redirect whose source is a regular expression is skipped entirely.** It
 matches an unbounded set of paths, so there is no single path to rebuild, and
-nothing is enqueued for it — the front-end simply keeps serving the page it
+nothing is reported for it — the front-end simply keeps serving the page it
 already holds, with nothing on screen to say why. The skip is recorded in the
 plugin's log file and nowhere else, and only while logging is switched on; with
 logging off, a regex redirect is silent. The line it writes, and the other
@@ -368,9 +384,10 @@ staleness it would cure.
 
 Source paths are reduced to their path component, dropping any query string or
 domain the source was stored with, and given the site's trailing slash
-convention, so they match the form post permalinks are enqueued in. A source
-names a path from the domain root rather than from the site, which is how
-Redirection matches them, so on a site served from a subdirectory that directory
+convention, so they match the form the site's post permalinks take. A source
+names a path from the domain root rather than from the site — which is how
+Redirection matches them, and what a change's `uri` is — so on a site served
+from a subdirectory that directory
 is already part of the source.
 
 #### Why a redirect did not revalidate
@@ -402,37 +419,29 @@ What follows the dash is the reason, and there are five of them:
 | `it is disabled, so the front-end resolves nothing for it` | The redirect was created, edited, deleted or enabled while stored as disabled, so what the front-end holds for its source is already the right answer. Disabling one is the exception, and does revalidate. |
 | `it names no path of this site to rebuild` | The source names no path to rebuild — it is empty, it is not a URL this plugin can read a path out of, or it is the bare site root. |
 | `a filter declined the revalidation of …` | [`nextjs_revalidate_should_revalidate_redirect`](#nextjs_revalidate_should_revalidate_redirect) returned `false` for that path. |
-| `⛔ Refused … — site not configured` | The path was a candidate and reached the queue, which **refused** it: the revalidate domain or the secret is missing. Nothing was queued, and nothing will be until the site is configured. |
+| `⛔ Refused a redirect change — site not configured` | The path was a candidate and its change was **refused**: the revalidate domain or the secret is missing. Nothing was accepted, and nothing will be until the site is configured. Written by the pending changes rather than by this integration, so it does not start `↪️ Redirect #…`. |
 
-A redirect that *is* revalidated writes no line of its own here — its source
-path is simply in the queue, visible under the **Queue** tab of the same
-settings screen until cron drains it. The line arrives then, as
-`✅ Revalidated` or `❌ Failed to revalidate` for the permalink, written by the
-drain rather than by this integration.
+A redirect that *is* revalidated writes no line of its own here — its change
+simply joins the request's pending changes. The line arrives when they are
+delivered, once the request has answered, as `✅ Revalidated` or
+`❌ Failed to revalidate` followed by how many changes the request carried and
+of which subjects — `2 changes (redirect ×2)` — written by the delivery rather
+than by this integration.
 
 #### Bulk operations and imports
 
 Redirection fires these events once per redirect, from its bulk actions as much
 as from a single edit, so a bulk delete of three hundred redirects reaches this
 plugin three hundred times — and so does an import, which creates its redirects
-through the same code path a hand-typed one goes through. What lands in the
-queue is **one revalidation per distinct source path**: redirects sharing a
-source cost a single entry, because the queue holds a permalink it already holds
-exactly once. Nothing is capped, collapsed above a threshold, or dropped — a
-revalidation that never reaches the queue is one nothing retries.
+through the same code path a hand-typed one goes through. What the front-end is
+told is **one redirect change per distinct source path**: redirects sharing a
+source cost a single change, because two identical changes in one request merge
+into one. Nothing is capped, collapsed above a threshold, or escalated to a
+revalidate all.
 
-The queue is durable and drained by cron rather than in the request that filled
-it, so a large import is delivered to the front-end **over the following cron
-runs** rather than immediately. The redirects it created keep resolving from
-whatever the front-end has cached until their paths' turn comes.
-
-A drain is scheduled the moment something is enqueued; it works through the
-queue until PHP's `max_execution_time` is nearly up, then schedules the next
-one while anything is left, and up to four can be running at once. Three hundred
-paths therefore arrive over several runs rather than in one. WordPress fires its
-cron on site traffic unless a real system cron is wired up, so a quiet site
-drains when somebody visits it — the **Queue** tab is where to watch the count
-fall.
+The changes are delivered when the request that made them ends — in one request
+to the front-end, or in several of about a hundred changes each when a long
+request, such as an import, produces more than that. Nothing waits for cron.
 
 #### Declining a revalidation
 
@@ -693,6 +702,21 @@ the site's home url, so a test survives a change of the test site's port.
 The queue table is created once in the bootstrap and emptied around every test.
 It has to be: `RevalidateQueue::add_item()` runs its own transaction, whose
 `COMMIT` also commits the one `WP_UnitTestCase` uses to roll a test back.
+
+What reports a **change** rather than enqueueing a path — the public API, the
+REST routes, a due scheduled purge, the Redirection integration — is tested by
+extending `NextJsRevalidate\Tests\PendingChangesTestCase` instead, which reads
+what the request holds before anything is delivered:
+
+```php
+$this->configure_site();
+nextjs_revalidate_path( home_url( '/hello-world/' ) );
+$this->assertReports( [ Change::path( '/hello-world/' ) ] ); // changes, in order
+$this->assertReportsNothing();                               // or none at all
+```
+
+The pending changes are emptied around every test, which is also what keeps the
+suite's own `shutdown` from sending them anywhere.
 
 ### The manual test runbook — checks no command can run
 

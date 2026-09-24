@@ -8,7 +8,7 @@
  * `WP_REST_Response::is_error()` is false, and most HTTP clients'
  * raise-on-error helper stays quiet — so a caller doing the ordinary thing,
  * issuing the request and checking the status, was told everything was fine
- * while nothing had been queued. #93 made the *body* honest; a caller reading
+ * while nothing had been accepted. #93 made the *body* honest; a caller reading
  * only the status still had the lie. And on the single route 207 did not fit at
  * all: one item has one outcome, and there is nothing for a multi-status to
  * disambiguate.
@@ -18,21 +18,25 @@
  *  - every item accepted                    — 200
  *  - some accepted, some not                — 207, and only here
  *  - none accepted, the caller's fault      — 400
- *  - none accepted, this site's fault       — 500
+ *  - none accepted, this site's doing       — 500
  *  - none accepted, the site unconfigured   — 503
  *  - none accepted, kinds disagreeing       — 503 over 500 over 400
  *
- * See `docs/adr/0027-a-wholly-failed-request-answers-a-failure-status.md`.
+ * See `docs/adr/0027-a-wholly-failed-request-answers-a-failure-status.md`. Until
+ * v2 the 500 also covered a queue write that did not happen; there is no queue
+ * write left to fail (ADR 0034), so that case is gone from here, and the 500 is
+ * what is left of it: something threw, or the site's own
+ * `nextjs_revalidate_change` filter dropped the change.
  *
- * What the routes read out of the queue's answer — which answers mean accepted,
- * what a failed item carries in the body — is `tests/rest-queue-answer-test.php`
- * and issue #93. This file asserts on statuses and stays out of the body.
+ * What the routes hand to the pending changes, and what a failed item carries
+ * in the body, is `tests/rest-change-answer-test.php`. This file asserts on
+ * statuses and stays out of the body.
  *
- * A status is computed from return values, so this needs no queue, no options
- * and no database: a standalone script rather than a PHPUnit test, per
- * `docs/adr/0008-two-testing-idioms.md`. That the statuses come out of a real
- * dispatch, with a real queue behind them, is the integration suite's business:
- * `tests/integration/RestApiTest.php`.
+ * A status is computed from return values, so this needs no pending changes of
+ * the real kind, no options and no database: a standalone script rather than a
+ * PHPUnit test, per `docs/adr/0008-two-testing-idioms.md`. That the statuses
+ * come out of a real dispatch, with real settings behind them, is the
+ * integration suite's business: `tests/integration/RestApiTest.php`.
  *
  * Run with `npm run test:php`, or `php tests/rest-response-status-test.php`.
  */
@@ -51,6 +55,10 @@ function __( $text, $domain = null ) { return $text; }
 
 function sanitize_text_field( $str ) {
 	return trim( strip_tags( (string) $str ) );
+}
+
+function wp_parse_url( $url, $component = -1 ) {
+	return parse_url( $url, $component );
 }
 
 function absint( $maybeint ) {
@@ -107,31 +115,32 @@ class WP_REST_Response {
 }
 
 /**
- * A queue that answers whatever the case under test scripted, in call order.
+ * Pending changes that answer whatever the case under test scripted, in call
+ * order.
  *
  * An answer that is an `Exception` is thrown rather than returned: the handler
  * catches those too, and what a thrown item does to the request's status is one
  * of the cases here.
  */
-class NextJsRevalidate_Test_Queue {
+class NextJsRevalidate_Test_PendingChanges {
 
 	/**
-	 * One answer per `add_item()` call, in order.
+	 * One answer per `report()` call, in order.
 	 * @var array
 	 */
 	public $answers = [];
 
 	/**
-	 * How many times the queue was asked for anything.
+	 * How many times the pending changes were handed anything.
 	 * @var int
 	 */
 	public $calls = 0;
 
-	public function add_item( $permalink, $priority = 10 ) {
+	public function report( array $change ) {
 		$this->calls++;
 
 		if ( empty( $this->answers ) ) {
-			die( "njr_test: the queue was asked more often than the case scripted an answer for.\n" );
+			die( "njr_test: the pending changes were handed more changes than the case scripted an answer for.\n" );
 		}
 
 		$answer = array_shift( $this->answers );
@@ -151,7 +160,7 @@ class NextJsRevalidate_Test_Settings {
 }
 
 class NextJsRevalidate {
-	public $queue;
+	public $pendingChanges;
 	public $settings;
 
 	private static $instance;
@@ -162,8 +171,8 @@ class NextJsRevalidate {
 	}
 
 	private function __construct() {
-		$this->queue    = new NextJsRevalidate_Test_Queue();
-		$this->settings = new NextJsRevalidate_Test_Settings();
+		$this->pendingChanges = new NextJsRevalidate_Test_PendingChanges();
+		$this->settings       = new NextJsRevalidate_Test_Settings();
 	}
 }
 
@@ -172,8 +181,7 @@ class NextJsRevalidate {
 
 require_once __DIR__ . '/../include/Interfaces/Hookable.php';
 require_once __DIR__ . '/../include/Abstracts/Base.php';
-require_once __DIR__ . '/../include/Traits/SendbackUrl.php';
-require_once __DIR__ . '/../include/RevalidateQueue.php';
+require_once __DIR__ . '/../include/Change.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\RestApi;
@@ -196,30 +204,30 @@ function njr_test_assert( $condition, $description ) {
 }
 
 /**
- * The queue the routes reach, scripted with the answers of one case.
+ * The pending changes the routes reach, scripted with the answers of one case.
  *
- * @param array $answers One answer per expected `add_item()` call, in order.
- * @return NextJsRevalidate_Test_Queue
+ * @param array $answers One answer per expected `report()` call, in order.
+ * @return NextJsRevalidate_Test_PendingChanges
  */
-function njr_test_queue( array $answers ) {
-	$queue = NextJsRevalidate::init()->queue;
+function njr_test_pending( array $answers ) {
+	$pending = NextJsRevalidate::init()->pendingChanges;
 
-	$queue->answers = $answers;
-	$queue->calls   = 0;
+	$pending->answers = $answers;
+	$pending->calls   = 0;
 
-	return $queue;
+	return $pending;
 }
 
 /**
- * Call the single route with the queue scripted to answer this.
+ * Call the single route with the pending changes scripted to answer this.
  *
- * @param mixed $answer What `add_item()` answers, or an `Exception` it throws.
+ * @param mixed $answer What `report()` answers, or an `Exception` it throws.
  * @param array $params Optional. Merged over the request's parameters.
  *
  * @return WP_REST_Response
  */
 function njr_test_single( $answer, array $params = [] ) {
-	njr_test_queue( null === $answer ? [] : [ $answer ] );
+	njr_test_pending( null === $answer ? [] : [ $answer ] );
 
 	$request = new WP_REST_Request(
 		array_merge(
@@ -236,7 +244,8 @@ function njr_test_single( $answer, array $params = [] ) {
 }
 
 /**
- * Call the batch route with the queue scripted to answer these, one per item.
+ * Call the batch route with the pending changes scripted to answer these, one
+ * per item.
  *
  * @param array $answers One answer per item, in order.
  * @param array $items   Optional. The items sent; defaults to one path per answer.
@@ -244,7 +253,7 @@ function njr_test_single( $answer, array $params = [] ) {
  * @return WP_REST_Response
  */
 function njr_test_batch( array $answers, array $items = null ) {
-	njr_test_queue( $answers );
+	njr_test_pending( $answers );
 
 	if ( null === $items ) {
 		$items = [];
@@ -272,28 +281,34 @@ function njr_test_batch( array $answers, array $items = null ) {
 // nothing broke.
 $refusal = new WP_Error( 'not_configured', 'Next.js revalidate is not configured for this site.' );
 
-// A `WP_Error` the queue does not produce today. It is this site failing rather
-// than declining, and must not be read as a configuration an operator could go
-// and fix.
+// A `WP_Error` the pending changes do not produce today. It is this site
+// failing rather than declining, and must not be read as a configuration an
+// operator could go and fix.
 $other_error = new WP_Error( 'unexpected', 'Something else went wrong.' );
+
+// The site's own `nextjs_revalidate_change` filter dropped the change: nothing
+// the caller could send differently, and nothing an operator could configure.
+$dropped = false;
+
+// Something in the path of the change threw — a filter callback, most likely.
+$thrown = new Exception( 'a filter threw' );
 
 // Everything was accepted
 // ====
 
-njr_test_assert( 200 === njr_test_single( 1 )->get_status(), 'the single route answers 200 for an accepted item' );
-njr_test_assert( 200 === njr_test_batch( [ 1, true ] )->get_status(), 'the batch route answers 200 when every item was accepted' );
+njr_test_assert( 200 === njr_test_single( true )->get_status(), 'the single route answers 200 for an accepted item' );
+njr_test_assert( 200 === njr_test_batch( [ true, true ] )->get_status(), 'the batch route answers 200 when every item was accepted' );
 
 // Nothing was accepted
 // ====
 
-// The whole of #118: a request in which nothing was queued answers with a
+// The whole of #118: a request in which nothing was accepted answers with a
 // failure status, and a caller reading only the status now learns that.
 $wholly_failed = [
-	'a failed insert'       => [ false, 500 ],
-	'a write affecting nothing' => [ 0, 500 ],
-	'a thrown exception'    => [ new Exception( 'the queue threw' ), 500 ],
-	'a refusal'             => [ $refusal, 503 ],
-	'a WP_Error of another kind' => [ $other_error, 500 ],
+	'a change the filter dropped' => [ $dropped, 500 ],
+	'a thrown exception'          => [ $thrown, 500 ],
+	'a refusal'                   => [ $refusal, 503 ],
+	'a WP_Error of another kind'  => [ $other_error, 500 ],
 ];
 
 foreach ( $wholly_failed as $description => $case ) {
@@ -310,37 +325,38 @@ foreach ( $wholly_failed as $description => $case ) {
 }
 
 // An item this route cannot read is the caller's to fix, and 400-shaped. The
-// single route answers it before the queue is asked anything; the batch route
-// reaches `process_items()` with the item, which is where the status is decided.
+// single route answers it before the pending changes are handed anything; the
+// batch route reaches `process_items()` with the item, which is where the
+// status is decided.
 $response = njr_test_single( null, [ 'path' => '' ] );
 
 njr_test_assert( 400 === $response->get_status(), 'the single route answers 400 for a missing path' );
-njr_test_assert( 0 === NextJsRevalidate::init()->queue->calls, 'a missing path asks the queue nothing' );
+njr_test_assert( 0 === NextJsRevalidate::init()->pendingChanges->calls, 'a missing path reports nothing' );
 
 $response = njr_test_batch( [], [ [ 'priority' => 1 ], [ 'priority' => 2 ] ] );
 
 njr_test_assert( 400 === $response->get_status(), 'the batch route answers 400 when every item is missing its path' );
 njr_test_assert( false === $response->get_data()['success'], 'a batch in which nothing was accepted is not reported as a success' );
 njr_test_assert( 2 === count( $response->get_data()['results'] ), 'every item sent still has a result of its own' );
-njr_test_assert( 0 === NextJsRevalidate::init()->queue->calls, 'none of those items reached the queue' );
+njr_test_assert( 0 === NextJsRevalidate::init()->pendingChanges->calls, 'none of those items was reported' );
 
 // 207 is for a body one code cannot describe
 // ====
 
 // A mixed batch is the one case the status earns its keep (RFC 4918 §13): some
-// items were queued, some were not, and the per-item `success` fields are the
+// items were accepted, some were not, and the per-item `success` fields are the
 // only place the rest of the answer can be read.
-$response = njr_test_batch( [ 1, false ] );
+$response = njr_test_batch( [ true, $thrown ] );
 
 njr_test_assert( 207 === $response->get_status(), 'a batch holding an accepted item and a failed one answers 207' );
 njr_test_assert( false === $response->get_data()['success'], 'a mixed batch is not reported as a success' );
 
-njr_test_assert( 207 === njr_test_batch( [ $refusal, 1 ] )->get_status(), 'the accepted item can be the second one' );
-njr_test_assert( 207 === njr_test_batch( [ false, 1, $refusal ] )->get_status(), 'two kinds of failure beside an acceptance are still a mixed result' );
+njr_test_assert( 207 === njr_test_batch( [ $refusal, true ] )->get_status(), 'the accepted item can be the second one' );
+njr_test_assert( 207 === njr_test_batch( [ $dropped, true, $refusal ] )->get_status(), 'two kinds of failure beside an acceptance are still a mixed result' );
 
 // The single route sends one item, so there is never a body for 207 to
 // describe. Every answer it can give must therefore be something else.
-foreach ( [ 1, true, false, 0, $refusal, $other_error, new Exception( 'the queue threw' ) ] as $i => $answer ) {
+foreach ( [ true, $dropped, $refusal, $other_error, $thrown ] as $i => $answer ) {
 	njr_test_assert(
 		207 !== njr_test_single( $answer )->get_status(),
 		sprintf( 'the single route never answers 207 (answer %d)', $i )
@@ -362,18 +378,23 @@ njr_test_assert(
 );
 
 njr_test_assert(
-	500 === njr_test_batch( [ false ], [ [ 'priority' => 1 ], [ 'path' => 'https://site.test/not-inserted/' ] ] )->get_status(),
-	'a failed insert outranks the missing path beside it'
+	500 === njr_test_batch( [ $thrown ], [ [ 'priority' => 1 ], [ 'path' => 'https://site.test/threw/' ] ] )->get_status(),
+	'a thrown exception outranks the missing path beside it'
 );
 
 njr_test_assert(
-	503 === njr_test_batch( [ false, $refusal ] )->get_status(),
-	'a refusal outranks a failed insert'
+	500 === njr_test_batch( [ $dropped ], [ [ 'priority' => 1 ], [ 'path' => 'https://site.test/dropped/' ] ] )->get_status(),
+	'so does a change the filter dropped'
 );
 
 njr_test_assert(
-	503 === njr_test_batch( [ $refusal, false ] )->get_status(),
-	'and does so whichever order the two arrived in'
+	503 === njr_test_batch( [ $thrown, $refusal ] )->get_status(),
+	'a refusal outranks a thrown exception'
+);
+
+njr_test_assert(
+	503 === njr_test_batch( [ $refusal, $dropped ] )->get_status(),
+	'and a dropped change, whichever order the two arrived in'
 );
 
 // The request the route could not read at all
@@ -391,14 +412,14 @@ njr_test_assert(
 
 // An entry that is not an object is an item with no path, and is reported like
 // one. It used to be skipped, which left the body a result short and let a
-// batch that lost an item answer 200 as if everything sent had been queued.
+// batch that lost an item answer 200 as if everything sent had been accepted.
 $response = njr_test_batch( [], [ 'not-an-item' ] );
 
 njr_test_assert( 400 === $response->get_status(), 'a batch holding nothing that could be an item answers 400' );
 njr_test_assert( 1 === count( $response->get_data()['results'] ), 'an entry that is not an object still has a result of its own' );
 njr_test_assert( false === $response->get_data()['results'][0]['success'], 'an entry that is not an object is reported as a failure' );
 
-$response = njr_test_batch( [ 1 ], [ '/not-an-object/', [ 'path' => 'https://site.test/accepted/' ] ] );
+$response = njr_test_batch( [ true ], [ '/not-an-object/', [ 'path' => 'https://site.test/accepted/' ] ] );
 
 njr_test_assert( 207 === $response->get_status(), 'an entry that is not an object beside an accepted item is a mixed result, not a 200' );
 njr_test_assert( 2 === count( $response->get_data()['results'] ), 'one result per entry sent, the unreadable one included' );

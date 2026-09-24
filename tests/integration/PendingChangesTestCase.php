@@ -7,6 +7,7 @@
 
 namespace NextJsRevalidate\Tests;
 
+use NextJsRevalidate\Logger;
 use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Settings;
 use ReflectionProperty;
@@ -49,6 +50,7 @@ abstract class PendingChangesTestCase extends WP_UnitTestCase {
 
 	public function tear_down() {
 		$this->reset_pending_changes();
+		$this->unconfigure_site();
 
 		parent::tear_down();
 	}
@@ -98,6 +100,16 @@ abstract class PendingChangesTestCase extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Take the site back to holding neither setting.
+	 *
+	 * @return void
+	 */
+	protected function unconfigure_site() {
+		delete_option( Settings::SETTINGS_DOMAIN_NAME );
+		delete_option( Settings::SETTINGS_SECRET_NAME );
+	}
+
+	/**
 	 * The path a permalink of this site names — what a change calls its `uri`.
 	 *
 	 * A permalink pointing elsewhere is returned whole rather than trimmed into
@@ -113,6 +125,54 @@ abstract class PendingChangesTestCase extends WP_UnitTestCase {
 		return strpos( $permalink, $home ) === 0
 			? substr( $permalink, strlen( $home ) )
 			: $permalink;
+	}
+
+	/**
+	 * The permalink of a path of this site.
+	 *
+	 * @param string $path A path, as `/hello-world/`.
+	 * @return string
+	 */
+	protected function permalink_of( $path ) {
+		return home_url( $path );
+	}
+
+	// The log
+	// ====
+
+	/**
+	 * Switch the plugin's logging on, which is the only way a refusal or a
+	 * skipped redirect leaves any record at all.
+	 *
+	 * @return void
+	 */
+	protected function enable_logs() {
+		update_option( Settings::SETTINGS_DEBUG, [ 'enable-logs' => 'on' ] );
+	}
+
+	/**
+	 * Everything the plugin has logged on this site.
+	 *
+	 * @return string
+	 */
+	protected function log() {
+		$log_file = Logger::path();
+
+		return file_exists( $log_file ) ? (string) file_get_contents( $log_file ) : '';
+	}
+
+	/**
+	 * The log file is on disk rather than in the database, so no rollback
+	 * reaches it: it is removed by hand.
+	 *
+	 * @return void
+	 */
+	protected function reset_log() {
+		$log_file = Logger::path();
+
+		if ( file_exists( $log_file ) ) unlink( $log_file );
+
+		delete_option( Settings::SETTINGS_DEBUG );
 	}
 
 	// Assertions

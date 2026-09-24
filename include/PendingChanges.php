@@ -112,6 +112,82 @@ class PendingChanges extends Base implements Hookable {
 			return $this->settings->not_configured_error();
 		}
 
+		$filtered = $this->filtered( $change, $subject );
+		if ( false === $filtered ) return false;
+
+		$site_id  = get_current_blog_id();
+		$identity = Change::identity( $filtered );
+
+		$held   = $this->pending[ $site_id ][ $identity ] ?? null;
+		$merged = is_null( $held ) ? $filtered : Change::merge( $held, $filtered );
+
+		if ( Change::is_void( $merged ) ) {
+			unset( $this->pending[ $site_id ][ $identity ] );
+			if ( empty( $this->pending[ $site_id ] ) ) unset( $this->pending[ $site_id ] );
+
+			return true;
+		}
+
+		$this->pending[ $site_id ][ $identity ] = $merged;
+
+		if ( count( $this->pending[ $site_id ] ) >= self::CAP ) $this->deliver_site( $site_id );
+
+		return true;
+	}
+
+	/**
+	 * Deliver one change for a **probe**: now, on its own, and without a trace
+	 * in the failure window.
+	 *
+	 * The operator is waiting for the answer, so the change is sent in a
+	 * request of its own rather than joining the pending changes — and sent
+	 * exactly as a pending change would be: the same refusal first, the same
+	 * filter, the same `POST` to the same endpoint within the same timeout. A
+	 * probe whose request differed from the ordinary one could disagree with
+	 * it, and send an operator chasing a fault the site does not have.
+	 *
+	 * What it does not share is the record. The failure window samples the
+	 * site's ordinary traffic, and a probe enters it at a rate set by how
+	 * worried the operator is (ADR 0013), so the outcome is handed back to be
+	 * shown and never recorded. The pending changes the request already holds
+	 * are left where they are, for their own delivery.
+	 *
+	 * @param array $change A change, as `Change` builds one.
+	 * @return bool|WP_Error What the front-end answered — true for any 2xx, the
+	 *                       transport's WP_Error otherwise — false when the
+	 *                       filter dropped the change and nothing was sent, and
+	 *                       the `not_configured` WP_Error when the site refused
+	 *                       it.
+	 */
+	public function deliver_probe( array $change ) {
+
+		// The refusal `report()` gives, without its log line: the probe writes
+		// the one line its operator reads, and that line names the refusal.
+		if ( ! $this->settings->is_configured() ) return $this->settings->not_configured_error();
+
+		$filtered = $this->filtered( $change, Change::is_change( $change ) ? $change['subject'] : '?' );
+		if ( false === $filtered ) return false;
+
+		return $this->send_front_end_changes(
+			$this->settings->endpoint_url(),
+			[
+				'version' => self::CONTRACT_VERSION,
+				'changes' => [ $filtered ],
+			],
+			self::REQUEST_TIMEOUT
+		);
+	}
+
+	/**
+	 * A change as the site wants it sent — through the
+	 * `nextjs_revalidate_change` filter — or false when the site dropped it.
+	 *
+	 * @param array  $change  The change, as it was produced.
+	 * @param string $subject Its subject, for the log.
+	 * @return array|false
+	 */
+	private function filtered( array $change, $subject ) {
+
 		/**
 		 * Filters a change before it joins the pending changes.
 		 *
@@ -141,24 +217,7 @@ class PendingChanges extends Base implements Hookable {
 			return false;
 		}
 
-		$site_id  = get_current_blog_id();
-		$identity = Change::identity( $filtered );
-
-		$held   = $this->pending[ $site_id ][ $identity ] ?? null;
-		$merged = is_null( $held ) ? $filtered : Change::merge( $held, $filtered );
-
-		if ( Change::is_void( $merged ) ) {
-			unset( $this->pending[ $site_id ][ $identity ] );
-			if ( empty( $this->pending[ $site_id ] ) ) unset( $this->pending[ $site_id ] );
-
-			return true;
-		}
-
-		$this->pending[ $site_id ][ $identity ] = $merged;
-
-		if ( count( $this->pending[ $site_id ] ) >= self::CAP ) $this->deliver_site( $site_id );
-
-		return true;
+		return $filtered;
 	}
 
 	/**

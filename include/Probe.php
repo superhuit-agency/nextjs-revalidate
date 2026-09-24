@@ -14,27 +14,30 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * its outcome.
  *
  * The plugin's work is invisible by nature, and every other surface only ever
- * answers *later* — the queue drains on cron, a failure lands in the log if
- * logging is on, and the failure window needs three of them before it says
- * anything. This is the one place where an operator can ask the front-end a
- * question and read the answer, error message and all.
+ * answers *later* — the pending changes are delivered once the request that
+ * produced them has answered, a failure lands in the log if logging is on, and
+ * the failure window needs three of them before it says anything. This is the
+ * one place where an operator can ask the front-end a question and read the
+ * answer, error message and all.
  *
- * It is not a read-only check. A probe rebuilds the path it names, on the live
- * front-end, exactly as any other revalidation would: it calls
- * `Revalidate::purge()` rather than building its own request, composes
- * `home_url( $path )` so that function's parameter keeps meaning one thing, and
- * reads the *saved* settings rather than the fields on screen — so it answers
- * "does this site revalidate right now", not "would these values work".
+ * It is not a read-only check. A probe reports a real **path** change, on the
+ * live front-end, exactly as any other revalidation would: it builds the change
+ * with `Change::path()` and hands it to `PendingChanges::deliver_probe()`, which
+ * sends it in the v2 request every change travels in rather than building one
+ * of its own; it composes `home_url( $path )` so a path of this site is named
+ * from the domain root, as every `uri` is; and it reads the *saved* settings
+ * rather than the fields on screen — so it answers "does this site revalidate
+ * right now", not "would these values work".
  *
  * **A probe outcome is never recorded in the failure window.** The window is a
- * sample of the queue's own traffic rather than a record of attempts, and a
+ * sample of the site's ordinary traffic rather than a record of attempts, and a
  * probe enters at a rate set by how worried the operator is: admitting one would
  * let this button clear the degraded notice while the site was still serving
  * stale pages. The log file is not sampled by anything, so a probe *is* written
  * there, behind the same logs setting as everything else.
  * See `docs/adr/0013-a-probe-is-not-evidence.md`.
  *
- * @property Revalidate $revalidate
+ * @property PendingChanges $pendingChanges
  */
 class Probe extends Base implements Hookable {
 
@@ -73,17 +76,6 @@ class Probe extends Base implements Hookable {
 	 * anything from it.
 	 */
 	const RESULT_TRANSIENT = 'nextjs_revalidate-probe_result';
-
-	/**
-	 * Seconds the request running a probe is allowed to take.
-	 *
-	 * The purge keeps its 60 second timeout — shortening it for the comfort of
-	 * someone watching a spinner would report `unreachable` for a slow front-end
-	 * the queue would have revalidated fine — and 60 seconds of outbound request
-	 * inside a `max_execution_time` commonly set to 30 fatals rather than
-	 * answers. This is that margin, raised best effort.
-	 */
-	const TIME_LIMIT = 90;
 
 	/**
 	 * The path a probe asks about when the operator named none.
@@ -133,8 +125,8 @@ class Probe extends Base implements Hookable {
 	}
 
 	/**
-	 * Ask the front-end to rebuild one path of this site, and answer with what
-	 * it said.
+	 * Report a path change of this site to the front-end, now, and answer with
+	 * what it said.
 	 *
 	 * @param string $path A path of this site, as `path()` normalises it.
 	 *
@@ -142,21 +134,20 @@ class Probe extends Base implements Hookable {
 	 */
 	public function send( $path ) {
 
+		// The permalink is what the operator reads, and its path from the domain
+		// root is the change's `uri` — on a site served from a directory, that
+		// directory is part of it, as it is of every `uri`.
 		$permalink = home_url( $path );
-
-		// Best effort, and a host that refuses this has been quietly killing
-		// long cron drains all along. `function_exists()` rather than a call
-		// in the dark: a function listed in `disable_functions` is reported as
-		// absent, and calling it anyway only adds a warning to the diagnostic.
-		if ( function_exists( 'set_time_limit' ) ) set_time_limit( self::TIME_LIMIT );
+		$uri       = Change::uri_of( $permalink ) ?? $path;
 
 		$start   = microtime( true );
-		$outcome = $this->revalidate->purge( $permalink );
+		$outcome = $this->pendingChanges->deliver_probe( Change::path( $uri ) );
 		$elapsed = microtime( true ) - $start;
 
-		// Deliberately no `FailureWindow::record()` here: see the class
-		// docblock and ADR 0013. The window samples the queue's traffic, and a
-		// probe is not drawn from it.
+		// Deliberately no `FailureWindow::record()` here, and none in
+		// `deliver_probe()` either: see the class docblock and ADR 0013. The
+		// window samples the site's ordinary traffic, and a probe is not drawn
+		// from it.
 		$this->log_outcome( $permalink, $outcome, $elapsed );
 
 		return self::describe( $permalink, $outcome );
@@ -209,11 +200,25 @@ class Probe extends Base implements Hookable {
 	 * failed" is exactly what this button exists to stop.
 	 *
 	 * @param string        $permalink The permalink that was probed.
-	 * @param true|WP_Error $outcome   What `Revalidate::purge()` answered.
+	 * @param bool|WP_Error $outcome   What `PendingChanges::deliver_probe()` answered.
 	 *
 	 * @return array{status: string, message: string}
 	 */
 	private static function describe( $permalink, $outcome ) {
+
+		// The site's own `nextjs_revalidate_change` filter dropped the change,
+		// so the front-end was asked nothing — and that filter is the one place
+		// the operator can look to find out why.
+		if ( false === $outcome ) {
+			return [
+				'status'  => 'error',
+				'message' => sprintf(
+					/* translators: %s: the permalink nothing was sent for. */
+					__( 'Nothing was sent for %s: this site\'s nextjs_revalidate_change filter dropped the change.', 'nextjs-revalidate' ),
+					$permalink
+				),
+			];
+		}
 
 		if ( ! is_wp_error( $outcome ) ) {
 			return [
@@ -256,13 +261,13 @@ class Probe extends Base implements Hookable {
 	/**
 	 * Write what became of one probe.
 	 *
-	 * The drain's vocabulary, minus the two things a probe has not got: no queue
-	 * id, because nothing was queued, and no priority, because nothing was
-	 * ordered against anything else. The 🔎 is what tells an operator reading
-	 * the log that this line is one they asked for.
+	 * The delivery's vocabulary, naming the permalink rather than counting
+	 * changes, because a probe carries one change and its operator typed the
+	 * path. The 🔎 is what tells an operator reading the log that this line is
+	 * one they asked for.
 	 *
 	 * @param string        $permalink The permalink that was probed.
-	 * @param true|WP_Error $outcome   What `Revalidate::purge()` answered.
+	 * @param bool|WP_Error $outcome   What `PendingChanges::deliver_probe()` answered.
 	 * @param float         $elapsed   Seconds the attempt took.
 	 *
 	 * @return void
@@ -270,6 +275,13 @@ class Probe extends Base implements Hookable {
 	private function log_outcome( $permalink, $outcome, $elapsed ) {
 
 		$elapsed = round( $elapsed, 2 );
+
+		// Nothing was sent, so there is no time to report — only who stopped
+		// it, beside the line the drop itself already wrote.
+		if ( false === $outcome ) {
+			Logger::log( "🔎 Probe: 🚫 Dropped by the nextjs_revalidate_change filter {$permalink}", __FILE__ );
+			return;
+		}
 
 		if ( ! is_wp_error( $outcome ) ) {
 			Logger::log( "🔎 Probe: ✅ Revalidated in {$elapsed}s {$permalink}", __FILE__ );

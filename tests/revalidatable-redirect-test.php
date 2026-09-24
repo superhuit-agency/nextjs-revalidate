@@ -2,7 +2,8 @@
 /**
  * Revalidatable redirect and its source path — Integrations\Redirection.
  *
- * The decision a redirect change makes before it ever reaches the queue: is
+ * The decision a redirect change makes before it ever reaches the pending
+ * changes: is
  * this redirect a candidate at all, and which path does its source name? Asked
  * of every event in a redirect's life — created, updated, deleted, disabled,
  * enabled — and of a bulk operation, which is those same events in a loop. All
@@ -21,9 +22,10 @@
  * stands in for one of Redirection's. The single exception is `Red_Item`, whose
  * name the integration has to spell out to load a redirect from an id, so this
  * file spells it out too. That those methods are the ones upstream actually
- * has, and that the queue then holds what this asserts it was handed, is
- * `tests/integration/RedirectRevalidationTest.php`'s to prove — against the
- * real plugin, on a real queue. Nothing here has an opinion about either.
+ * has, and that the pending changes then hold what this asserts they were
+ * handed, is `tests/integration/RedirectRevalidationTest.php`'s to prove —
+ * against the real plugin, with real pending changes. Nothing here has an
+ * opinion about either.
  *
  * Run with `npm run test:php`, or `php tests/revalidatable-redirect-test.php`.
  */
@@ -54,10 +56,10 @@ namespace {
 	define( 'ABSPATH', __DIR__ . '/' );
 
 	/**
-	 * The permalinks the queue was handed, in order. [permalink, priority][]
+	 * The changes the pending changes were handed, in order.
 	 * @var array
 	 */
-	$GLOBALS['njr_test_enqueued'] = [];
+	$GLOBALS['njr_test_reported'] = [];
 
 	/**
 	 * Everything the plugin logged while handling the last redirect.
@@ -156,28 +158,30 @@ namespace {
 	}
 
 	/**
-	 * The revalidation queue, reduced to what it was handed.
+	 * The pending changes, reduced to what they were handed.
 	 *
-	 * Reached through `Base::__get()`, which asks the composition root for it —
-	 * so the fixture below is the plugin's singleton as far as the integration
-	 * can tell.
+	 * Reached through `Base::__get()`, which asks the composition root for them
+	 * — so the fixture below is the plugin's singleton as far as the
+	 * integration can tell. Every change is kept, identical ones included:
+	 * merging them is the real pending changes' business, and what this file
+	 * pins is what the integration hands over.
 	 */
-	class NJR_Test_Queue {
-		public function add_item( $permalink, $priority = 10 ) {
-			$GLOBALS['njr_test_enqueued'][] = [ $permalink, $priority ];
+	class NJR_Test_PendingChanges {
+		public function report( array $change ) {
+			$GLOBALS['njr_test_reported'][] = $change;
 			return true;
 		}
 	}
 
 	class NextJsRevalidate {
-		public $queue;
+		public $pendingChanges;
 
 		private static $instance;
 
 		public static function init() {
 			if ( ! isset( self::$instance ) ) {
-				self::$instance        = new self();
-				self::$instance->queue = new NJR_Test_Queue();
+				self::$instance                 = new self();
+				self::$instance->pendingChanges = new NJR_Test_PendingChanges();
 			}
 
 			return self::$instance;
@@ -260,6 +264,7 @@ namespace {
 
 	require_once __DIR__ . '/../include/Interfaces/Hookable.php';
 	require_once __DIR__ . '/../include/Abstracts/Base.php';
+	require_once __DIR__ . '/../include/Change.php';
 	require_once __DIR__ . '/../include/Integrations/Redirection.php';
 
 	// The expectations
@@ -287,7 +292,7 @@ namespace {
 	}
 
 	/**
-	 * Take the fixture site back to holding no redirects, no queue entries and
+	 * Take the fixture site back to holding no redirects, no reported changes and
 	 * no log, and forget which paths the filter was handed.
 	 *
 	 * Filters are left where they are: a test attaches one before it fires the
@@ -296,7 +301,7 @@ namespace {
 	 * @return void
 	 */
 	function njr_test_reset() {
-		$GLOBALS['njr_test_enqueued']   = [];
+		$GLOBALS['njr_test_reported']   = [];
 		$GLOBALS['njr_test_log']        = [];
 		$GLOBALS['njr_test_redirects']  = [];
 		$GLOBALS['njr_test_filter_saw'] = [];
@@ -455,13 +460,13 @@ namespace {
 
 	/**
 	 * @param string $description What is being asserted.
-	 * @param array  $expected    The expected [permalink, priority] pairs.
+	 * @param array  $expected    The expected changes, in order.
 	 * @return void
 	 */
-	function njr_test_enqueued( $description, array $expected ) {
+	function njr_test_reported( $description, array $expected ) {
 		global $failures;
 
-		$actual = $GLOBALS['njr_test_enqueued'];
+		$actual = $GLOBALS['njr_test_reported'];
 
 		if ( $actual === $expected ) {
 			printf( "ok   — %s\n", $description );
@@ -521,12 +526,22 @@ namespace {
 	}
 
 	/**
-	 * The permalinks the queue was handed, without their priorities.
+	 * The `uri` of every change handed over, in order.
 	 *
 	 * @return string[]
 	 */
-	function njr_test_permalinks() {
-		return array_column( $GLOBALS['njr_test_enqueued'], 0 );
+	function njr_test_uris() {
+		return array_column( $GLOBALS['njr_test_reported'], 'uri' );
+	}
+
+	/**
+	 * The redirect change a source path is reported as.
+	 *
+	 * @param string $uri The source path, from the domain root.
+	 * @return array
+	 */
+	function njr_test_change( $uri ) {
+		return [ 'subject' => 'redirect', 'uri' => $uri ];
 	}
 
 	/**
@@ -540,37 +555,38 @@ namespace {
 		njr_test_same( $description, $expected, $GLOBALS['njr_test_filter_saw'] );
 	}
 
-	// The everyday case, and the priority it is enqueued at: a redirect
-	// revalidation holds no special place in the queue.
+	// The everyday case: a redirect change, naming the source path — not a path
+	// change, because "the redirect at this path changed" and "somebody named
+	// this path" are different facts to a front-end (ADR 0033).
 	njr_test_redirect_created( [ 'url' => '/about-us' ] );
-	njr_test_enqueued(
-		'an enabled redirect with a literal source enqueues that path, at the default priority',
-		[ [ 'https://example.test/about-us/', 10 ] ]
+	njr_test_reported(
+		'an enabled redirect with a literal source reports that path as a redirect change',
+		[ njr_test_change( '/about-us/' ) ]
 	);
 
 	// A source names one path however it was stored — by an import, by an older
 	// version of Redirection, or by hand.
 	njr_test_redirect_created( [ 'url' => '/a-page?ref=newsletter' ] );
-	njr_test_enqueued(
-		'a source stored with a query string enqueues only its path',
-		[ [ 'https://example.test/a-page/', 10 ] ]
+	njr_test_reported(
+		'a source stored with a query string reports only its path',
+		[ njr_test_change( '/a-page/' ) ]
 	);
 
 	njr_test_redirect_created( [ 'url' => 'https://an-old-domain.test/a-page/' ] );
-	njr_test_enqueued(
-		'a source stored with a domain enqueues only its path',
-		[ [ 'https://example.test/a-page/', 10 ] ]
+	njr_test_reported(
+		'a source stored with a domain reports only its path',
+		[ njr_test_change( '/a-page/' ) ]
 	);
 
 	// The site's own convention, whichever way it goes: the front-end keys on
-	// the exact path string, so a source has to arrive in the form the rest of
-	// the queue already holds.
+	// the exact path string, so a source has to arrive in the form the site's
+	// post permalinks take.
 	$GLOBALS['njr_test_trailing_slash'] = false;
 
 	njr_test_redirect_created( [ 'url' => '/about-us/' ] );
-	njr_test_enqueued(
-		'a site whose permalinks carry no trailing slash enqueues the path without one',
-		[ [ 'https://example.test/about-us', 10 ] ]
+	njr_test_reported(
+		'a site whose permalinks carry no trailing slash reports the path without one',
+		[ njr_test_change( '/about-us' ) ]
 	);
 
 	$GLOBALS['njr_test_trailing_slash'] = true;
@@ -578,30 +594,31 @@ namespace {
 	// A source that names no path of this site to rebuild.
 	foreach ( [ '/' => 'the bare site root', '' => 'an empty source', '   ' => 'a source of whitespace', '?ref=newsletter' => 'a query string alone' ] as $url => $description ) {
 		njr_test_redirect_created( [ 'url' => $url ] );
-		njr_test_enqueued( "$description enqueues nothing", [] );
+		njr_test_reported( "$description reports nothing", [] );
 	}
 
 	// A regular expression source matches an unbounded set of paths, so there is
 	// no single path to rebuild — and never a revalidate all.
 	njr_test_redirect_created( [ 'url' => '/blog/(.*)', 'regex' => true ] );
-	njr_test_enqueued( 'a regular expression source enqueues nothing', [] );
+	njr_test_reported( 'a regular expression source reports nothing', [] );
 	njr_test_logged( 'a regular expression source is logged', '/blog/(.*)' );
 
 	// Redirection's post slug monitor creates its trashed-post redirects
 	// disabled, which makes this an everyday case rather than a hypothetical.
 	njr_test_redirect_created( [ 'url' => '/a-trashed-page', 'enabled' => false ] );
-	njr_test_enqueued( 'a redirect created disabled enqueues nothing', [] );
+	njr_test_reported( 'a redirect created disabled reports nothing', [] );
 
 	// A site served from a subdirectory. A source names a path from the domain
 	// root — Redirection matches against the request uri, and its monitor stores
 	// the path component of a permalink — so the directory the site is served
-	// from is already in the source, and the permalink must not name it twice.
+	// from is already in the source — which is what a `uri` is, from the domain
+	// root — and the change must not name it twice.
 	$GLOBALS['njr_test_home_path'] = '/blog';
 
 	njr_test_redirect_created( [ 'url' => '/blog/about-us' ] );
-	njr_test_enqueued(
+	njr_test_reported(
 		'a site served from a subdirectory names that directory once',
-		[ [ 'https://example.test/blog/about-us/', 10 ] ]
+		[ njr_test_change( '/blog/about-us/' ) ]
 	);
 
 	$GLOBALS['njr_test_home_path'] = '';
@@ -609,9 +626,9 @@ namespace {
 	// Match type is irrelevant: a redirect matched on a cookie, a referrer or a
 	// user agent still has a single source path.
 	njr_test_redirect_created( [ 'url' => '/seen-by-one-browser', 'match_type' => 'agent' ] );
-	njr_test_enqueued(
-		'a non url match type with a literal source enqueues that path',
-		[ [ 'https://example.test/seen-by-one-browser/', 10 ] ]
+	njr_test_reported(
+		'a non url match type with a literal source reports that path',
+		[ njr_test_change( '/seen-by-one-browser/' ) ]
 	);
 
 	// Editing
@@ -624,60 +641,60 @@ namespace {
 	// the previous state is the only thing that knows the path an edited source
 	// stopped redirecting from.
 
-	// A numeric first argument is not a redirect, so a create enqueues the one
+	// A numeric first argument is not a redirect, so a create reports the one
 	// source it has. Redirection 5.9.0 and later fire an update this way too,
 	// which is the same case seen from the other end: no previous state, no old
-	// path, and the new source enqueued alone.
+	// path, and the new source reported alone.
 	njr_test_redirect_created( [ 'id' => 42, 'url' => '/a-created-source' ] );
-	njr_test_enqueued(
-		'a first argument that is the redirect\'s id enqueues the new source alone',
-		[ [ 'https://example.test/a-created-source/', 10 ] ]
+	njr_test_reported(
+		'a first argument that is the redirect\'s id reports the new source alone',
+		[ njr_test_change( '/a-created-source/' ) ]
 	);
 
 	// The interesting case: two paths are stale at once, the one that should
 	// stop redirecting and the one that should start. Old first, because that is
-	// the order they are handed over in and the queue drains in.
+	// the order they are handed over in and the front-end is told them in.
 	njr_test_redirect_edited(
 		[ 'url' => '/the-old-source' ],
 		[ 'url' => '/the-new-source' ]
 	);
-	njr_test_enqueued(
-		'changing a redirect\'s source enqueues the old path and the new one',
+	njr_test_reported(
+		'changing a redirect\'s source reports the old path and the new one',
 		[
-			[ 'https://example.test/the-old-source/', 10 ],
-			[ 'https://example.test/the-new-source/', 10 ],
+			njr_test_change( '/the-old-source/' ),
+			njr_test_change( '/the-new-source/' ),
 		]
 	);
 
 	// The target moved and the source did not: the path the front-end still
 	// sends visitors from is the one whose answer changed. Both sides of the
 	// edit are put to the rules independently, so that one path is handed over
-	// twice — on purpose. It costs one revalidation because the queue holds a
-	// permalink it already has exactly once, which is asserted against the real
-	// queue in `tests/integration/RedirectRevalidationTest.php`; what this file
-	// pins is that the integration keeps no set of its own to collapse the two.
+	// twice — on purpose. It costs one change because identical changes merge
+	// in the pending changes, which is asserted against the real ones in
+	// `tests/integration/RedirectRevalidationTest.php`; what this file pins is
+	// that the integration keeps no set of its own to collapse the two.
 	// See `docs/adr/0014-redirect-changes-revalidate-the-source-path.md`.
 	njr_test_redirect_edited(
 		[ 'url' => '/moved-target' ],
 		[ 'url' => '/moved-target' ]
 	);
-	njr_test_enqueued(
+	njr_test_reported(
 		'changing a redirect\'s target hands its unchanged source path over from both sides of the edit',
 		[
-			[ 'https://example.test/moved-target/', 10 ],
-			[ 'https://example.test/moved-target/', 10 ],
+			njr_test_change( '/moved-target/' ),
+			njr_test_change( '/moved-target/' ),
 		]
 	);
 
 	// Independently means what it says: the side that is a candidate is
-	// enqueued whatever the other side is.
+	// reported whatever the other side is.
 	njr_test_redirect_edited(
 		[ 'url' => '/a-literal-source' ],
 		[ 'url' => '/a-literal-source/(.*)', 'regex' => true ]
 	);
-	njr_test_enqueued(
-		'a source edited into a regular expression enqueues the old path only',
-		[ [ 'https://example.test/a-literal-source/', 10 ] ]
+	njr_test_reported(
+		'a source edited into a regular expression reports the old path only',
+		[ njr_test_change( '/a-literal-source/' ) ]
 	);
 	njr_test_logged( 'the regular expression an edit produced is logged', '/a-literal-source/(.*)' );
 
@@ -685,9 +702,9 @@ namespace {
 		[ 'url' => '/blog/(.*)', 'regex' => true ],
 		[ 'url' => '/blog-home' ]
 	);
-	njr_test_enqueued(
-		'a regular expression source edited into a literal path enqueues the new path only',
-		[ [ 'https://example.test/blog-home/', 10 ] ]
+	njr_test_reported(
+		'a regular expression source edited into a literal path reports the new path only',
+		[ njr_test_change( '/blog-home/' ) ]
 	);
 
 	// A disabled redirect resolves to nothing on either side of the edit, so
@@ -696,7 +713,7 @@ namespace {
 		[ 'url' => '/an-old-source', 'enabled' => false ],
 		[ 'url' => '/a-new-source', 'enabled' => false ]
 	);
-	njr_test_enqueued( 'editing a disabled redirect enqueues nothing', [] );
+	njr_test_reported( 'editing a disabled redirect reports nothing', [] );
 
 	// An editor can change the source and switch the redirect on in one save.
 	// The path it never redirected from needs nothing; the one it now does.
@@ -704,9 +721,9 @@ namespace {
 		[ 'url' => '/never-redirected', 'enabled' => false ],
 		[ 'url' => '/now-redirecting' ]
 	);
-	njr_test_enqueued(
-		'an edit that switches a redirect on enqueues the path it starts redirecting',
-		[ [ 'https://example.test/now-redirecting/', 10 ] ]
+	njr_test_reported(
+		'an edit that switches a redirect on reports the path it starts redirecting',
+		[ njr_test_change( '/now-redirecting/' ) ]
 	);
 
 	// A source that named no path leaves nothing behind to free.
@@ -714,9 +731,9 @@ namespace {
 		[ 'url' => '/' ],
 		[ 'url' => '/a-source-at-last' ]
 	);
-	njr_test_enqueued(
-		'an edit away from a source that named no path enqueues the new path only',
-		[ [ 'https://example.test/a-source-at-last/', 10 ] ]
+	njr_test_reported(
+		'an edit away from a source that named no path reports the new path only',
+		[ njr_test_change( '/a-source-at-last/' ) ]
 	);
 
 	// Both paths are normalised the way a created redirect's source is: a
@@ -726,11 +743,11 @@ namespace {
 		[ 'url' => 'https://an-old-domain.test/an-old-source?ref=newsletter' ],
 		[ 'url' => '/a-new-source' ]
 	);
-	njr_test_enqueued(
+	njr_test_reported(
 		'a stored domain and query string are dropped from both sides of an edit',
 		[
-			[ 'https://example.test/an-old-source/', 10 ],
-			[ 'https://example.test/a-new-source/', 10 ],
+			njr_test_change( '/an-old-source/' ),
+			njr_test_change( '/a-new-source/' ),
 		]
 	);
 
@@ -740,11 +757,11 @@ namespace {
 		[ 'url' => '/the-old-source/' ],
 		[ 'url' => '/the-new-source/' ]
 	);
-	njr_test_enqueued(
+	njr_test_reported(
 		'both paths follow the site\'s trailing slash convention',
 		[
-			[ 'https://example.test/the-old-source', 10 ],
-			[ 'https://example.test/the-new-source', 10 ],
+			njr_test_change( '/the-old-source' ),
+			njr_test_change( '/the-new-source' ),
 		]
 	);
 
@@ -757,9 +774,9 @@ namespace {
 	// its own page again, instead of staying stuck on a redirect that no longer
 	// exists. The whole redirect travels with this action, so nothing is loaded.
 	njr_test_redirect_deleted( [ 'url' => '/deleted' ] );
-	njr_test_enqueued(
-		'deleting an enabled redirect with a literal source enqueues that path',
-		[ [ 'https://example.test/deleted/', 10 ] ]
+	njr_test_reported(
+		'deleting an enabled redirect with a literal source reports that path',
+		[ njr_test_change( '/deleted/' ) ]
 	);
 
 	// The same two non-candidates as on the way in, asked again on the way out:
@@ -767,11 +784,11 @@ namespace {
 	// leaves, and a disabled one was resolving to nothing already, so deleting
 	// it changes nothing the front-end holds.
 	njr_test_redirect_deleted( [ 'url' => '/blog/(.*)', 'regex' => true ] );
-	njr_test_enqueued( 'deleting a redirect with a regular expression source enqueues nothing', [] );
+	njr_test_reported( 'deleting a redirect with a regular expression source reports nothing', [] );
 	njr_test_logged( 'the deleted regular expression source is logged', '/blog/(.*)' );
 
 	njr_test_redirect_deleted( [ 'url' => '/never-resolved', 'enabled' => false ] );
-	njr_test_enqueued( 'deleting a redirect that was already disabled enqueues nothing', [] );
+	njr_test_reported( 'deleting a redirect that was already disabled reports nothing', [] );
 
 	// Disabling is a real off switch rather than a delayed one. Only the id
 	// travels with it, so the redirect is loaded to find its source — and by
@@ -780,60 +797,60 @@ namespace {
 	// for every redirect ever disabled, and that it stopped being enabled is
 	// precisely the change the front-end has not heard about.
 	njr_test_redirect_disabled( [ 'id' => 7, 'url' => '/switched-off' ] );
-	njr_test_enqueued(
-		'disabling a redirect enqueues its source path, from its id alone',
-		[ [ 'https://example.test/switched-off/', 10 ] ]
+	njr_test_reported(
+		'disabling a redirect reports its source path, from its id alone',
+		[ njr_test_change( '/switched-off/' ) ]
 	);
 
 	// Re-enabling puts the redirect back in service, and the front-end is still
 	// holding the answer from while it was off.
 	njr_test_redirect_enabled( [ 'id' => 7, 'url' => '/switched-on' ] );
-	njr_test_enqueued(
-		'enabling a redirect enqueues its source path, from its id alone',
-		[ [ 'https://example.test/switched-on/', 10 ] ]
+	njr_test_reported(
+		'enabling a redirect reports its source path, from its id alone',
+		[ njr_test_change( '/switched-on/' ) ]
 	);
 
 	// The source has the same say whichever way the switch went.
 	njr_test_redirect_disabled( [ 'url' => '/blog/(.*)', 'regex' => true ] );
-	njr_test_enqueued( 'disabling a redirect with a regular expression source enqueues nothing', [] );
+	njr_test_reported( 'disabling a redirect with a regular expression source reports nothing', [] );
 
 	njr_test_redirect_enabled( [ 'url' => '/blog/(.*)', 'regex' => true ] );
-	njr_test_enqueued( 'enabling a redirect with a regular expression source enqueues nothing', [] );
+	njr_test_reported( 'enabling a redirect with a regular expression source reports nothing', [] );
 
 	// An id nothing answers to. Redirection hands back false, and false is not
 	// a redirect — reachable in ordinary use, since two operators bulk-deleting
 	// and bulk-disabling the same selection in two tabs is enough.
 	njr_test_reset();
 	njr_test_integration()->on_redirect_enabled( 404 );
-	njr_test_enqueued( 'enabling an id no redirect answers to enqueues nothing', [] );
+	njr_test_reported( 'enabling an id no redirect answers to reports nothing', [] );
 
 	njr_test_reset();
 	njr_test_integration()->on_redirect_disabled( 404 );
-	njr_test_enqueued( 'disabling an id no redirect answers to enqueues nothing', [] );
+	njr_test_reported( 'disabling an id no redirect answers to reports nothing', [] );
 
 	// Bulk operations
 	// ====
 
 	// Redirection's bulk routes fire these same per redirect actions in a loop,
 	// so one click over hundreds of redirects reaches this integration hundreds
-	// of times. That is absorbed rather than capped: the queue is durable and
-	// cron drained, revalidate all routinely enqueues far more, and the count
-	// is bounded by rules an operator actually created. Capping would silently
+	// of times. That is absorbed rather than capped: the pending changes are
+	// sent in chunks once they hold a hundred, and the count is bounded by rules
+	// an operator actually created. Capping would silently
 	// drop revalidations ADR 0004 guarantees no retry for, and collapsing above
 	// a threshold would reintroduce the site wide stampede ADR 0014 rejected.
 	//
 	// So what is pinned here is the absence of both, and the absence of a third
 	// thing: any memory of which paths this integration has already seen. A
 	// path several redirects share is handed over once per redirect, on
-	// purpose. Collapsing those duplicates is `RevalidateQueue::add_item()`'s
-	// job, and whether it really does collapse them is a question about MySQL
-	// rather than about this file: it is asserted against a real queue, in
+	// purpose. Collapsing those duplicates is the pending changes' job — two
+	// identical changes merge into one — and it is asserted against the real
+	// ones in `tests/pending-changes-test.php` and
 	// `tests/integration/RedirectRevalidationTest.php`.
 	njr_test_reset();
 
 	$bulk        = njr_test_integration();
 	$bulk_size   = 250;
-	$shared_path = 'https://example.test/campaign/';
+	$shared_path = '/campaign/';
 
 	foreach ( range( 1, $bulk_size ) as $i ) {
 		$bulk->on_redirect_deleted( new NJR_Test_Redirect( [
@@ -846,21 +863,21 @@ namespace {
 	}
 
 	njr_test_same(
-		'a bulk delete enqueues once per redirect, under no cap and no threshold',
+		'a bulk delete reports once per redirect, under no cap and no threshold',
 		$bulk_size,
-		count( $GLOBALS['njr_test_enqueued'] )
+		count( $GLOBALS['njr_test_reported'] )
 	);
 
 	njr_test_same(
 		'a bulk delete over 250 redirects names the 201 distinct source paths they hold',
 		201,
-		count( array_unique( njr_test_permalinks() ) )
+		count( array_unique( njr_test_uris() ) )
 	);
 
 	njr_test_same(
-		'a source path 50 redirects share is handed over 50 times — deduplication is the queue\'s, not a set this integration keeps',
+		'a source path 50 redirects share is handed over 50 times — merging is the pending changes\', not a set this integration keeps',
 		50,
-		count( array_keys( njr_test_permalinks(), $shared_path, true ) )
+		count( array_keys( njr_test_uris(), $shared_path, true ) )
 	);
 
 	// A bulk disable is the same loop over ids rather than over redirects, and
@@ -880,13 +897,13 @@ namespace {
 	njr_test_same(
 		'a bulk disable over 30 redirects sharing one source hands that path over 30 times, uncapped',
 		30,
-		count( $GLOBALS['njr_test_enqueued'] )
+		count( $GLOBALS['njr_test_reported'] )
 	);
 
 	njr_test_same(
 		'a bulk disable names nothing but the one source path its redirects share',
 		[ $shared_path ],
-		array_values( array_unique( njr_test_permalinks() ) )
+		array_values( array_unique( njr_test_uris() ) )
 	);
 
 	// The site has the last word
@@ -902,28 +919,28 @@ namespace {
 	njr_test_declining_filter( [ '/handled-by-the-front-end/' ] );
 
 	njr_test_redirect_created( [ 'url' => '/handled-by-the-front-end' ] );
-	njr_test_enqueued( 'a filter declining a source path enqueues nothing for it', [] );
+	njr_test_reported( 'a filter declining a source path reports nothing for it', [] );
 	njr_test_logged(
 		'a declined source path is logged, since nothing else records it',
 		'a filter declined the revalidation of /handled-by-the-front-end/'
 	);
 
 	njr_test_redirect_created( [ 'url' => '/an-ordinary-redirect' ] );
-	njr_test_enqueued(
+	njr_test_reported(
 		'a filter declines the paths it names, not redirect revalidation as a whole',
-		[ [ 'https://example.test/an-ordinary-redirect/', 10 ] ]
+		[ njr_test_change( '/an-ordinary-redirect/' ) ]
 	);
 
-	// What the filter is handed is the path that would have been enqueued —
-	// normalised, so a site matches on the same string the queue would hold
+	// What the filter is handed is the path that would have been reported —
+	// normalised, so a site matches on the same string the change would carry
 	// rather than on whatever the source happened to be stored as.
 	njr_test_watching_filter();
 
 	njr_test_redirect_created( [ 'url' => 'https://an-old-domain.test/a-page?ref=newsletter' ] );
 	njr_test_filter_saw( 'the filter is handed the normalised source path', [ '/a-page/' ] );
-	njr_test_enqueued(
+	njr_test_reported(
 		'a filter that decides nothing changes nothing',
-		[ [ 'https://example.test/a-page/', 10 ] ]
+		[ njr_test_change( '/a-page/' ) ]
 	);
 
 	// The redirect travels with the path, so a site can decline by anything the
@@ -933,7 +950,7 @@ namespace {
 	} );
 
 	njr_test_redirect_created( [ 'id' => 7, 'url' => '/declined-by-its-rule' ] );
-	njr_test_enqueued( 'the filter is handed the redirect the path is the source of', [] );
+	njr_test_reported( 'the filter is handed the redirect the path is the source of', [] );
 
 	// The filter has the last word downward only. A redirect the rules already
 	// turned away never reaches it: there is no single path to be asked about,
@@ -941,18 +958,18 @@ namespace {
 	njr_test_watching_filter( true );
 
 	njr_test_redirect_created( [ 'url' => '/blog/(.*)', 'regex' => true ] );
-	njr_test_enqueued( 'a filter returning true does not resurrect a regular expression source', [] );
+	njr_test_reported( 'a filter returning true does not resurrect a regular expression source', [] );
 	njr_test_filter_saw( 'a regular expression source is never put to the filter', [] );
 
 	njr_test_redirect_created( [ 'url' => '/a-trashed-page', 'enabled' => false ] );
-	njr_test_enqueued( 'a filter returning true does not resurrect a disabled redirect', [] );
+	njr_test_reported( 'a filter returning true does not resurrect a disabled redirect', [] );
 	njr_test_filter_saw( 'a disabled redirect is never put to the filter', [] );
 
 	njr_test_redirect_created( [ 'url' => '/' ] );
-	njr_test_enqueued( 'a filter returning true does not resurrect a source that names no path', [] );
+	njr_test_reported( 'a filter returning true does not resurrect a source that names no path', [] );
 	njr_test_filter_saw( 'a source that names no path is never put to the filter', [] );
 
-	// Every event that enqueues a source path asks, not only the one that
+	// Every event that reports a source path asks, not only the one that
 	// creates a redirect. Updating is below: it is the one event that can ask
 	// twice.
 	$njr_test_events = [
@@ -965,14 +982,14 @@ namespace {
 	foreach ( $njr_test_events as $event => $fire ) {
 		njr_test_no_filter();
 		$fire( '/a-changed-path' );
-		njr_test_enqueued(
+		njr_test_reported(
 			"$event revalidates its source path with no filter attached",
-			[ [ 'https://example.test/a-changed-path/', 10 ] ]
+			[ njr_test_change( '/a-changed-path/' ) ]
 		);
 
 		njr_test_declining_filter( [ '/a-changed-path/' ] );
 		$fire( '/a-changed-path' );
-		njr_test_enqueued( "$event asks the filter, which can decline it", [] );
+		njr_test_reported( "$event asks the filter, which can decline it", [] );
 		njr_test_filter_saw( "$event puts its source path to the filter", [ '/a-changed-path/' ] );
 	}
 
@@ -982,9 +999,9 @@ namespace {
 	njr_test_no_filter();
 
 	njr_test_redirect_edited( [ 'url' => '/the-old-source' ], [ 'url' => '/the-new-source' ] );
-	njr_test_enqueued(
+	njr_test_reported(
 		'an update carrying the previous state revalidates both paths with no filter attached',
-		[ [ 'https://example.test/the-old-source/', 10 ], [ 'https://example.test/the-new-source/', 10 ] ]
+		[ njr_test_change( '/the-old-source/' ), njr_test_change( '/the-new-source/' ) ]
 	);
 
 	njr_test_declining_filter( [ '/the-old-source/' ] );
@@ -994,17 +1011,17 @@ namespace {
 		'an update puts the old and the new source path to the filter independently',
 		[ '/the-old-source/', '/the-new-source/' ]
 	);
-	njr_test_enqueued(
+	njr_test_reported(
 		'declining the path a redirect stopped redirecting keeps the one it now redirects',
-		[ [ 'https://example.test/the-new-source/', 10 ] ]
+		[ njr_test_change( '/the-new-source/' ) ]
 	);
 
 	njr_test_declining_filter( [ '/the-new-source/' ] );
 
 	njr_test_redirect_edited( [ 'url' => '/the-old-source' ], [ 'url' => '/the-new-source' ] );
-	njr_test_enqueued(
+	njr_test_reported(
 		'declining the new source path keeps the one the redirect stopped redirecting',
-		[ [ 'https://example.test/the-old-source/', 10 ] ]
+		[ njr_test_change( '/the-old-source/' ) ]
 	);
 
 	njr_test_no_filter();

@@ -1,13 +1,14 @@
 <?php
 /**
- * The two REST routes, read through the queue they enqueue into — issue #100.
+ * The two REST routes, read through the pending changes they report into —
+ * issue #100.
  *
  * These behaviours were checked by hand until this file existed: section J of
  * the extended pass called both routes with curl, and carried the number of this
  * issue because it never should have been a manual step. They need real
- * WordPress state — the options and the queue table — but nothing about them
- * needs a person at a browser, which is what ADR 0012 refuses to keep in the
- * runbook and what ADR 0008 sends here instead.
+ * WordPress state — the options and the plugin's singleton — but nothing about
+ * them needs a person at a browser, which is what ADR 0012 refuses to keep in
+ * the runbook and what ADR 0008 sends here instead.
  *
  * Requests are built as `WP_REST_Request` and dispatched with
  * `rest_do_request()`, so this suite still needs no listening server: the route
@@ -15,27 +16,25 @@
  * through, minus the HTTP.
  *
  * What a route answers with is an **acceptance**, never a delivery — ADR 0010. A
- * 200 here says the permalink reached the queue; the front-end is asked on a
- * later cron run, and nothing in this file can see that far.
+ * 200 here says a path change joined the pending changes; the front-end is told
+ * once the request has ended, and nothing in this file can see that far.
  *
- * On what is sent as `path`: the route hands that parameter to
- * `RevalidateQueue::add_item()` as the **permalink**, verbatim, composing
- * nothing. The tests below therefore send the site's permalink for a path, which
- * is what the queue is defined to hold, and one of them sends a bare path — the
- * form the retired runbook step used — to pin that the route stores what it was
- * given either way.
+ * Each item becomes a **path** change whose `uri` is the path from the domain
+ * root, whether the caller sent a permalink or a path. `priority` is still
+ * accepted, and ignored — there is no queue left for it to order (ADR 0035).
  *
  * @package NextJsRevalidate
  */
 
 namespace NextJsRevalidate\Tests;
 
+use NextJsRevalidate\Change;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\Settings;
 use WP_REST_Request;
 use WP_REST_Response;
 
-class RestApiTest extends QueueTestCase {
+class RestApiTest extends PendingChangesTestCase {
 
 	/**
 	 * A secret that is not the fixture site's.
@@ -46,14 +45,14 @@ class RestApiTest extends QueueTestCase {
 	// ====
 
 	/**
-	 * The accepted case: a caller holding the site's secret enqueues a path, and
+	 * The accepted case: a caller holding the site's secret names a path, and
 	 * the route says so.
 	 *
-	 * The success is about the enqueue and nothing else (ADR 0010) — the queue
-	 * is drained by cron afterwards, so a body read as "the front-end was
-	 * rebuilt" would be reading a claim this route cannot make.
+	 * The success is about the acceptance and nothing else (ADR 0010) — the
+	 * change is delivered after the response is sent, so a body read as "the
+	 * front-end was rebuilt" would be reading a claim this route cannot make.
 	 */
-	public function test_a_correct_secret_enqueues_the_path() {
+	public function test_a_correct_secret_reports_the_path() {
 		$this->configure_site();
 
 		$permalink = $this->permalink_of( '/from-the-rest-api/' );
@@ -74,146 +73,14 @@ class RestApiTest extends QueueTestCase {
 		$this->assertSame( $permalink, $data['results'][0]['path'] );
 		$this->assertTrue( $data['results'][0]['success'] );
 
-		$this->assertQueueRevalidates( [ '/from-the-rest-api/' ] );
+		$this->assertPendingChanges( [ $this->path_change( '/from-the-rest-api/' ) ] );
 	}
 
 	/**
-	 * The priority parameter reaches the queue, and absence of it means 10 — the
-	 * default the route declares.
+	 * A permalink and the path it names are one change, and the route composes
+	 * nothing around a bare path: it is taken as from the domain root.
 	 */
-	public function test_the_single_route_enqueues_at_the_priority_it_was_given() {
-		$this->configure_site();
-
-		$this->call_route(
-			'/revalidate',
-			[
-				'secret' => self::FIXTURE_SECRET,
-				'path'   => $this->permalink_of( '/ordinary/' ),
-			]
-		);
-
-		$this->call_route(
-			'/revalidate',
-			[
-				'secret'   => self::FIXTURE_SECRET,
-				'path'     => $this->permalink_of( '/jumps-the-queue/' ),
-				'priority' => 1,
-			]
-		);
-
-		$this->assertQueueRevalidates( [ '/jumps-the-queue/', '/ordinary/' ] );
-
-		$this->assertQueueRevalidatesAtPriorities(
-			[
-				'/jumps-the-queue/' => 1,
-				'/ordinary/'        => 10,
-			]
-		);
-	}
-
-	/**
-	 * A priority of `0` is the priority the caller asked for, and not an absence
-	 * of one — issue #110.
-	 *
-	 * `0` is the most urgent priority there is, so the failure it guards against
-	 * is a silent one: the handler used to read the parameter for truthiness and
-	 * hand `10` to the queue, and the route still answered 200 with
-	 * `success: true`. The caller is told the enqueue happened, which it did, and
-	 * nothing in the response says it happened anywhere but where it was asked
-	 * for — only the queue can tell, which is what this asserts on.
-	 */
-	public function test_the_single_route_enqueues_at_a_priority_of_zero() {
-		$this->configure_site();
-
-		$response = $this->call_route(
-			'/revalidate',
-			[
-				'secret'   => self::FIXTURE_SECRET,
-				'path'     => $this->permalink_of( '/most-urgent/' ),
-				'priority' => 0,
-			]
-		);
-
-		$this->assertSame( 200, $response->get_status() );
-		$this->assertTrue( $response->get_data()['success'] );
-
-		$this->assertQueueRevalidatesAtPriorities(
-			[ '/most-urgent/' => 0 ],
-			'An explicit `0` reaches the queue as `0`, rather than falling through to the route\'s default of 10.'
-		);
-	}
-
-	/**
-	 * A caller escalating a path it needs fresh now re-submits it at a more
-	 * urgent priority, and the entry it already had is promoted — issue #119.
-	 *
-	 * The route answers 200 with `success: true` on both sides of that fix,
-	 * and honestly so: the permalink is in the queue, which is all an
-	 * acceptance claims (ADR 0010). Only the queue can say whether the priority
-	 * the caller sent took, so that is what this asserts on.
-	 *
-	 * The queue-level cases — the demotion that must not happen, the `id` order
-	 * a promotion keeps — are in `QueuePriorityTest`. This one is the reach:
-	 * the priority survives REST dispatch, the handler and `add_item()`'s dedup
-	 * branch together.
-	 */
-	public function test_re_submitting_a_queued_path_at_a_more_urgent_priority_promotes_it() {
-		$this->configure_site();
-
-		$permalink = $this->permalink_of( '/needed-fresh-now/' );
-
-		$this->call_route(
-			'/revalidate',
-			[
-				'secret' => self::FIXTURE_SECRET,
-				'path'   => $permalink,
-			]
-		);
-
-		$this->call_route(
-			'/revalidate',
-			[
-				'secret'   => self::FIXTURE_SECRET,
-				'path'     => $this->permalink_of( '/bulk-work/' ),
-				'priority' => 5,
-			]
-		);
-
-		$response = $this->call_route(
-			'/revalidate',
-			[
-				'secret'   => self::FIXTURE_SECRET,
-				'path'     => $permalink,
-				'priority' => 1,
-			]
-		);
-
-		$this->assertSame( 200, $response->get_status() );
-		$this->assertTrue( $response->get_data()['success'] );
-
-		$this->assertQueueRevalidates(
-			[ '/needed-fresh-now/', '/bulk-work/' ],
-			'The re-submitted path drains first, and the route did not queue it twice.'
-		);
-
-		$this->assertQueueRevalidatesAtPriorities(
-			[
-				'/needed-fresh-now/' => 1,
-				'/bulk-work/'        => 5,
-			],
-			'The priority sent with the second call reached the entry the queue already held.'
-		);
-	}
-
-	/**
-	 * The queue holds the string the caller sent, and the route composes nothing
-	 * around it — a bare path is stored as a bare path.
-	 *
-	 * This is the form the runbook's curl step used, and it is the reason the
-	 * tests above send permalinks rather than relying on the route to build one:
-	 * there is no composition here to rely on.
-	 */
-	public function test_the_single_route_stores_the_path_it_was_given_verbatim() {
+	public function test_a_bare_path_and_its_permalink_are_one_change() {
 		$this->configure_site();
 
 		$this->call_route(
@@ -224,34 +91,134 @@ class RestApiTest extends QueueTestCase {
 			]
 		);
 
-		$this->assertQueueHolds( [ '/a-bare-path/' ], 'The `path` parameter reaches `add_item()` as the permalink, verbatim.' );
+		$this->assertPendingChanges( [ Change::path( '/a-bare-path/' ) ], 'A bare path is its own `uri`.' );
+
+		$this->call_route(
+			'/revalidate',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'path'   => $this->permalink_of( '/from-the-rest-api/' ),
+			]
+		);
+		$this->call_route(
+			'/revalidate',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'path'   => wp_make_link_relative( $this->permalink_of( '/from-the-rest-api/' ) ),
+			]
+		);
+
+		$this->assertPendingChanges(
+			[ Change::path( '/a-bare-path/' ), $this->path_change( '/from-the-rest-api/' ) ],
+			'A permalink and its path merge into one change.'
+		);
+	}
+
+	/**
+	 * `priority` is accepted as it always was, on both routes, and changes
+	 * nothing: `0` and `1` are no more urgent than the default, because there is
+	 * no queue left to order (ADR 0035).
+	 */
+	public function test_a_priority_is_accepted_and_ignored() {
+		$this->configure_site();
+
+		$ordinary = $this->call_route(
+			'/revalidate',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'path'   => $this->permalink_of( '/ordinary/' ),
+			]
+		);
+
+		$urgent = $this->call_route(
+			'/revalidate',
+			[
+				'secret'   => self::FIXTURE_SECRET,
+				'path'     => $this->permalink_of( '/most-urgent/' ),
+				'priority' => 0,
+			]
+		);
+
+		$batch = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					[
+						'path'     => $this->permalink_of( '/batched/' ),
+						'priority' => 1,
+					],
+				],
+			]
+		);
+
+		$this->assertSame( 200, $ordinary->get_status() );
+		$this->assertSame( 200, $urgent->get_status(), 'A priority the route declared is still accepted.' );
+		$this->assertSame( 200, $batch->get_status() );
+
+		$this->assertPendingChanges(
+			[
+				$this->path_change( '/ordinary/' ),
+				$this->path_change( '/most-urgent/' ),
+				$this->path_change( '/batched/' ),
+			],
+			'The changes are held in the order they were reported, whatever priority they were sent with.'
+		);
+	}
+
+	/**
+	 * A path already held is an acceptance, and stays reported as one.
+	 *
+	 * Two identical changes merge, so the second call adds nothing — and the
+	 * revalidation the caller asked for is still going to happen, which is all
+	 * an acceptance claims.
+	 */
+	public function test_a_path_already_held_is_still_reported_as_a_success() {
+		$this->configure_site();
+
+		$params = [
+			'secret' => self::FIXTURE_SECRET,
+			'path'   => $this->permalink_of( '/asked-for-twice/' ),
+		];
+
+		$first  = $this->call_route( '/revalidate', $params );
+		$second = $this->call_route( '/revalidate', $params );
+
+		$this->assertSame( 200, $first->get_status() );
+		$this->assertTrue( $first->get_data()['results'][0]['success'] );
+
+		$this->assertSame( 200, $second->get_status(), 'Already held is not a mixed result.' );
+		$this->assertTrue( $second->get_data()['success'] );
+		$this->assertTrue( $second->get_data()['results'][0]['success'], 'The change the caller asked for is held; that another call reported it is not the caller\'s failure.' );
+
+		$this->assertPendingChanges( [ $this->path_change( '/asked-for-twice/' ) ], 'Identical changes merge, so the path is held once.' );
 	}
 
 	// The secret
 	// ====
 
 	/**
-	 * A wrong secret is refused, and nothing is enqueued.
+	 * A wrong secret is refused, and nothing is reported.
 	 *
 	 * The half of `check_permission()` a happy-path test cannot see. What this
 	 * pins is the refusal itself: `hash_equals()` is also there to compare in
 	 * constant time, and no test can observe that from here — but a comparison
 	 * loosened into something that accepts the wrong string fails this.
 	 */
-	public function test_a_wrong_secret_is_refused_and_enqueues_nothing() {
+	public function test_a_wrong_secret_is_refused_and_reports_nothing() {
 		$this->configure_site();
 
 		$response = $this->call_route(
 			'/revalidate',
 			[
 				'secret' => self::WRONG_SECRET,
-				'path'   => $this->permalink_of( '/never-enqueued/' ),
+				'path'   => $this->permalink_of( '/never-reported/' ),
 			]
 		);
 
 		$this->assertRestError( $response, 'rest_forbidden', rest_authorization_required_code() );
 
-		$this->assertQueueIsEmpty( 'A caller who failed the permission check enqueued nothing.' );
+		$this->assertNoPendingChanges( 'A caller who failed the permission check reported nothing.' );
 	}
 
 	/**
@@ -259,9 +226,9 @@ class RestApiTest extends QueueTestCase {
 	 * either route, rather than accepting the call.
 	 *
 	 * The one branch where an unconfigured site is answered by the *permission
-	 * callback* rather than by a refusal at enqueue: `check_permission()` looks
-	 * at the secret before it compares anything, so the call never reaches
-	 * `add_item()` and never becomes one of the refusals
+	 * callback* rather than by a refusal: `check_permission()` looks at the
+	 * secret before it compares anything, so the call never reaches the pending
+	 * changes and never becomes one of the refusals
 	 * `docs/adr/0015-an-unconfigured-site-refuses-loudly.md` describes.
 	 */
 	public function test_a_site_with_no_secret_answers_missing_secret_on_either_route() {
@@ -294,7 +261,7 @@ class RestApiTest extends QueueTestCase {
 			'The batch route on a site holding no secret.'
 		);
 
-		$this->assertQueueIsEmpty( 'Neither call was accepted, so neither reached the queue.' );
+		$this->assertNoPendingChanges( 'Neither call was accepted, so neither reported anything.' );
 	}
 
 	/**
@@ -303,16 +270,16 @@ class RestApiTest extends QueueTestCase {
 	 *
 	 * `check_permission()` reads the secret and nothing else, so a half
 	 * configured site gets past it — the refusal comes from
-	 * `RevalidateQueue::add_item()` instead, and lands in the per-item result.
+	 * `PendingChanges::report()` instead, and lands in the per-item result.
 	 *
 	 * The status is 503: nothing was accepted, and the reason is neither the
 	 * caller's request nor anything breaking here — the site has no revalidate
 	 * domain, so nothing sent to it can be revalidated until an operator
 	 * supplies one. It answered 207 until #118, which is a *success* class and
-	 * told a caller checking the status that a revalidation it never queued was
+	 * told a caller checking the status that a revalidation it never got was
 	 * fine. See `docs/adr/0027-a-wholly-failed-request-answers-a-failure-status.md`.
 	 */
-	public function test_a_site_holding_a_secret_but_no_domain_is_refused_at_the_enqueue() {
+	public function test_a_site_holding_a_secret_but_no_domain_is_refused() {
 		update_option( Settings::SETTINGS_SECRET_NAME, self::FIXTURE_SECRET );
 
 		$response = $this->call_route(
@@ -324,7 +291,7 @@ class RestApiTest extends QueueTestCase {
 		);
 
 		$this->assertSame( 503, $response->get_status(), 'Nothing was accepted, and an unconfigured site is why — so the status is not a 2xx of any kind.' );
-		$this->assertTrue( $response->is_error(), 'A caller that checks only whether the response is an error learns that nothing was queued.' );
+		$this->assertTrue( $response->is_error(), 'A caller that checks only whether the response is an error learns that nothing was accepted.' );
 
 		$data = $response->get_data();
 
@@ -333,10 +300,10 @@ class RestApiTest extends QueueTestCase {
 		$this->assertSame(
 			\NextJsRevalidate::init()->settings->not_configured_error()->get_error_message(),
 			$data['results'][0]['message'],
-			'The per-item message is the queue\'s own refusal, not a message this route invented.'
+			'The per-item message is the refusal\'s own, not a message this route invented.'
 		);
 
-		$this->assertQueueIsEmpty( 'A refusal does not reach the queue.' );
+		$this->assertNoPendingChanges( 'A refused change never joins the pending changes.' );
 	}
 
 	/**
@@ -351,11 +318,11 @@ class RestApiTest extends QueueTestCase {
 		$this->reset_log();
 		$this->enable_logs();
 
-		$refusal = $this->enqueue( '/silenced/' );
+		$refusal = $this->pending_changes()->report( Change::path( '/silenced/' ) );
 
 		$this->assertWPError( $refusal );
-		$this->assertSame( 'not_configured', $refusal->get_error_code(), 'The filter reached the queue\'s refusal.' );
-		$this->assertStringContainsString( '⛔ Refused ' . $this->permalink_of( '/silenced/' ), $this->log(), 'The filter reached the refusal\'s log line.' );
+		$this->assertSame( 'not_configured', $refusal->get_error_code(), 'The filter reached the refusal.' );
+		$this->assertStringContainsString( '⛔ Refused a path change', $this->log(), 'The filter reached the refusal\'s log line.' );
 
 		$response = $this->call_route(
 			'/revalidate',
@@ -366,7 +333,7 @@ class RestApiTest extends QueueTestCase {
 		);
 
 		$this->assertSame( 503, $response->get_status(), 'The filter reached the status a REST caller is answered with.' );
-		$this->assertQueueIsEmpty( 'A silenced site refuses at the door like any other unconfigured one.' );
+		$this->assertNoPendingChanges( 'A silenced site refuses at the door like any other unconfigured one.' );
 
 		$this->reset_log();
 	}
@@ -375,9 +342,9 @@ class RestApiTest extends QueueTestCase {
 	// ====
 
 	/**
-	 * Every item of a batch is enqueued, in the order it was sent.
+	 * Every item of a batch is reported, in the order it was sent.
 	 */
-	public function test_the_batch_route_enqueues_every_item_in_the_order_it_was_sent() {
+	public function test_the_batch_route_reports_every_item_in_the_order_it_was_sent() {
 		$this->configure_site();
 
 		$response = $this->call_route(
@@ -394,105 +361,18 @@ class RestApiTest extends QueueTestCase {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertTrue( $response->get_data()['success'] );
 
-		$this->assertQueueRevalidates( [ '/first/', '/second/' ] );
-	}
-
-	/**
-	 * Each item is enqueued at its own priority, which is what orders the drain
-	 * — an item sent second is revalidated first when it asks to be.
-	 */
-	public function test_the_batch_route_enqueues_each_item_at_its_own_priority() {
-		$this->configure_site();
-
-		$this->call_route(
-			'/revalidate/batch',
-			[
-				'secret' => self::FIXTURE_SECRET,
-				'items'  => [
-					[
-						'path'     => $this->permalink_of( '/ordinary/' ),
-						'priority' => 20,
-					],
-					[
-						'path'     => $this->permalink_of( '/jumps-the-queue/' ),
-						'priority' => 1,
-					],
-				],
-			]
-		);
-
-		$this->assertQueueRevalidates( [ '/jumps-the-queue/', '/ordinary/' ] );
-
-		$this->assertQueueRevalidatesAtPriorities(
-			[
-				'/jumps-the-queue/' => 1,
-				'/ordinary/'        => 20,
-			]
-		);
-	}
-
-	/**
-	 * A batch item asking for priority `0` is enqueued at `0` too.
-	 *
-	 * The batch handler reads its priority with `isset()` and so never had the
-	 * defect the single route carried — which is exactly why this case is here:
-	 * the two routes read the same parameter through different code, and the
-	 * pair of tests is what stops them drifting apart again.
-	 */
-	public function test_the_batch_route_enqueues_an_item_at_a_priority_of_zero() {
-		$this->configure_site();
-
-		$response = $this->call_route(
-			'/revalidate/batch',
-			[
-				'secret' => self::FIXTURE_SECRET,
-				'items'  => [
-					[
-						'path'     => $this->permalink_of( '/most-urgent/' ),
-						'priority' => 0,
-					],
-				],
-			]
-		);
-
-		$this->assertSame( 200, $response->get_status() );
-		$this->assertTrue( $response->get_data()['success'] );
-
-		$this->assertQueueRevalidatesAtPriorities(
-			[ '/most-urgent/' => 0 ],
-			'An explicit `0` reaches the queue as `0` on the batch route as well as on the single one.'
-		);
-	}
-
-	/**
-	 * A batch item that asks for no priority is enqueued at 10, the same default
-	 * the single route declares.
-	 */
-	public function test_the_batch_route_enqueues_an_item_without_a_priority_at_the_default() {
-		$this->configure_site();
-
-		$this->call_route(
-			'/revalidate/batch',
-			[
-				'secret' => self::FIXTURE_SECRET,
-				'items'  => [
-					[ 'path' => $this->permalink_of( '/ordinary/' ) ],
-				],
-			]
-		);
-
-		$this->assertQueueRevalidatesAtPriorities( [ '/ordinary/' => 10 ] );
+		$this->assertPendingChanges( [ $this->path_change( '/first/' ), $this->path_change( '/second/' ) ] );
 	}
 
 	/**
 	 * A batch in which one item fails reports that item as failed and the other
-	 * as accepted, and enqueues the one it accepted.
+	 * as accepted, and reports the one it accepted.
 	 *
 	 * This is the one shape 207 Multi-Status describes: one code cannot cover a
-	 * body in which one item was queued and another was not (RFC 4918 §13), and
-	 * the per-item `success` fields are where the caller reads the rest. The
-	 * item missing its path fails on its own, and the item sent after it still
-	 * reaches the queue — sent first, so a batch that stops at its first failure
+	 * body in which one item was accepted and another was not (RFC 4918 §13),
+	 * and the per-item `success` fields are where the caller reads the rest.
+	 * The item missing its path fails on its own, and the item sent after it is
+	 * still reported — sent first, so a batch that stops at its first failure
 	 * fails this too.
 	 */
 	public function test_a_mixed_batch_reports_each_item_on_its_own() {
@@ -524,22 +404,22 @@ class RestApiTest extends QueueTestCase {
 		$this->assertSame( $permalink, $data['results'][1]['path'] );
 		$this->assertTrue( $data['results'][1]['success'], 'The failure before it does not fail this item, nor stop the batch.' );
 
-		$this->assertQueueRevalidates( [ '/accepted/' ], 'The accepted item was enqueued despite the failed one.' );
+		$this->assertPendingChanges( [ $this->path_change( '/accepted/' ) ], 'The accepted item was reported despite the failed one.' );
 	}
 
 	/**
 	 * A batch in which *no* item was accepted answers a failure status, not the
 	 * 207 a mixed one gets — issue #118.
 	 *
-	 * The distinction 207 could not make: every item here was refused, the queue
-	 * is empty, and a caller that checks the status is entitled to learn that
+	 * The distinction 207 could not make: every item here was refused, nothing
+	 * is held, and a caller that checks the status is entitled to learn that
 	 * from the status alone. These routes are how a deploy hook or a CI job asks
 	 * for a revalidation and they have no other feedback channel — they cannot
-	 * see the queue, the log or the drain.
+	 * see the log or the delivery.
 	 */
 	public function test_a_batch_in_which_no_item_was_accepted_answers_a_failure_status() {
 		// A secret and no revalidate domain: the call gets past
-		// `check_permission()` and is refused at the enqueue, item by item.
+		// `check_permission()` and is refused item by item.
 		update_option( Settings::SETTINGS_SECRET_NAME, self::FIXTURE_SECRET );
 
 		$response = $this->call_route(
@@ -563,7 +443,7 @@ class RestApiTest extends QueueTestCase {
 		$this->assertFalse( $data['results'][0]['success'] );
 		$this->assertFalse( $data['results'][1]['success'] );
 
-		$this->assertQueueIsEmpty( 'Nothing was queued, which is what the status now says.' );
+		$this->assertNoPendingChanges( 'Nothing was accepted, which is what the status now says.' );
 	}
 
 	/**
@@ -591,7 +471,7 @@ class RestApiTest extends QueueTestCase {
 		$this->assertFalse( $data['success'] );
 		$this->assertCount( 2, $data['results'], 'An item with no path is reported rather than dropped.' );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	/**
@@ -600,7 +480,7 @@ class RestApiTest extends QueueTestCase {
 	 *
 	 * Skipping it left the body a result short, and a batch that lost an item
 	 * beside an accepted one answered 200 — telling a caller checking the status
-	 * that everything it sent had been queued.
+	 * that everything it sent had been accepted.
 	 */
 	public function test_an_entry_that_is_not_an_object_is_reported_rather_than_dropped() {
 		$this->configure_site();
@@ -627,7 +507,7 @@ class RestApiTest extends QueueTestCase {
 		$this->assertFalse( $data['results'][0]['success'] );
 		$this->assertTrue( $data['results'][1]['success'] );
 
-		$this->assertQueueRevalidates( [ '/accepted/' ] );
+		$this->assertPendingChanges( [ $this->path_change( '/accepted/' ) ] );
 	}
 
 	/**
@@ -656,198 +536,108 @@ class RestApiTest extends QueueTestCase {
 
 		$this->assertSame( 503, $response->get_status(), 'The refusal describes the site, so it is the truth about the whole request.' );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
-	// What the queue answered
+	// What the site's filter decided
 	// ====
 
 	/**
-	 * An insert that did not happen is not an enqueue, and the single route says
-	 * so — issue #93.
+	 * A change the site's own `nextjs_revalidate_change` filter drops was not
+	 * accepted, and the route says so rather than answering 200 for a
+	 * revalidation that will never be sent.
 	 *
-	 * `RevalidateQueue::add_item()` answers a bare `false` when its own
-	 * `$wpdb->insert()` fails, and the route used to read every answer that was
-	 * not a `WP_Error` as an acceptance: the caller was told `success: true`
-	 * with a 200, the body carrying `"data": false` as the only trace, while
-	 * nothing was queued and nothing would ever be revalidated. These routes are
-	 * how a deploy hook or a CI job asks for a revalidation, and they have no
-	 * other feedback channel — the response is the whole contract.
+	 * 500 rather than 400: nothing about the request was wrong, and the answer
+	 * sends a caller to the site — where the filter is — rather than to its own
+	 * payload. The status that used to mean a queue write that did not happen
+	 * here now means a change this site did not take (ADR 0027, amended).
 	 */
-	public function test_the_single_route_reports_a_failed_insert_as_a_failure() {
+	public function test_a_change_the_filter_drops_is_reported_as_not_accepted() {
 		$this->configure_site();
 
-		$permalink = $this->permalink_of( '/the-insert-fails/' );
+		add_filter( 'nextjs_revalidate_change', '__return_false' );
 
-		$response = $this->with_a_failing_insert_on(
-			$permalink,
-			function () use ( $permalink ) {
-				return $this->call_route(
-					'/revalidate',
-					[
-						'secret' => self::FIXTURE_SECRET,
-						'path'   => $permalink,
-					]
-				);
-			}
+		$permalink = $this->permalink_of( '/dropped/' );
+
+		$response = $this->call_route(
+			'/revalidate',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'path'   => $permalink,
+			]
 		);
 
-		$this->assertSame( 500, $response->get_status(), 'Nothing was accepted, and the write failing here is this site\'s own doing rather than the caller\'s.' );
-		$this->assertTrue( $response->is_error(), 'A caller that checks only whether the response is an error learns that nothing was queued.' );
+		$this->assertSame( 500, $response->get_status() );
+		$this->assertTrue( $response->is_error(), 'A caller that checks only whether the response is an error learns that nothing was accepted.' );
 
 		$data = $response->get_data();
 
 		$this->assertFalse( $data['success'] );
 		$this->assertSame( $permalink, $data['results'][0]['path'] );
-		$this->assertFalse( $data['results'][0]['success'], 'Nothing was queued, so nothing was accepted.' );
+		$this->assertFalse( $data['results'][0]['success'] );
+		$this->assertStringContainsString( 'nextjs_revalidate_change', $data['results'][0]['message'], 'The message names the filter, which is where an operator goes next.' );
 
-		$this->assertArrayHasKey( 'message', $data['results'][0], 'A failed item carries a message, because a bare false brings none of its own.' );
-		$this->assertNotSame( '', $data['results'][0]['message'] );
-
-		$this->assertQueueIsEmpty( 'The insert did not happen, which is the whole premise of this test.' );
+		$this->assertNoPendingChanges();
 	}
 
 	/**
 	 * The batch route reads the same answers through the same
-	 * `process_items()`, and reports the item whose insert failed without
-	 * failing the item next to it — issue #93.
+	 * `process_items()`, and reports the item the filter dropped without
+	 * failing the item next to it.
 	 */
-	public function test_the_batch_route_reports_a_failed_insert_on_the_item_it_happened_to() {
+	public function test_the_batch_route_reports_a_dropped_change_on_the_item_it_happened_to() {
 		$this->configure_site();
 
-		$failing  = $this->permalink_of( '/the-insert-fails/' );
-		$accepted = $this->permalink_of( '/accepted/' );
-
-		$response = $this->with_a_failing_insert_on(
-			$failing,
-			function () use ( $failing, $accepted ) {
-				return $this->call_route(
-					'/revalidate/batch',
-					[
-						'secret' => self::FIXTURE_SECRET,
-						'items'  => [
-							[ 'path' => $failing ],
-							[ 'path' => $accepted ],
-						],
-					]
-				);
+		add_filter(
+			'nextjs_revalidate_change',
+			function ( $change ) {
+				return ( is_array( $change ) && isset( $change['uri'] ) && false !== strpos( $change['uri'], '/dropped/' ) ) ? false : $change;
 			}
 		);
 
-		$this->assertSame( 207, $response->get_status(), 'One item failed, so the batch is a mixed result.' );
+		$dropped  = $this->permalink_of( '/dropped/' );
+		$accepted = $this->permalink_of( '/accepted/' );
+
+		$response = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					[ 'path' => $dropped ],
+					[ 'path' => $accepted ],
+				],
+			]
+		);
+
+		$this->assertSame( 207, $response->get_status(), 'One item was dropped, so the batch is a mixed result.' );
 
 		$data = $response->get_data();
 
 		$this->assertFalse( $data['success'] );
 
-		$this->assertSame( $failing, $data['results'][0]['path'] );
+		$this->assertSame( $dropped, $data['results'][0]['path'] );
 		$this->assertFalse( $data['results'][0]['success'] );
 		$this->assertArrayHasKey( 'message', $data['results'][0] );
 
 		$this->assertSame( $accepted, $data['results'][1]['path'] );
-		$this->assertTrue( $data['results'][1]['success'], 'The failed insert before it does not fail this item, nor stop the batch.' );
+		$this->assertTrue( $data['results'][1]['success'], 'The dropped item before it does not fail this item, nor stop the batch.' );
 
-		$this->assertQueueRevalidates( [ '/accepted/' ], 'Only the item whose insert happened is in the queue.' );
-	}
-
-	/**
-	 * A permalink already waiting in the queue is an acceptance, and stays
-	 * reported as one.
-	 *
-	 * The queue answers `1` for a row it inserted and `true` for one already
-	 * there, and both mean it holds the permalink — #50 settled that for the
-	 * public API and it is the same answer here. The pair of calls is what keeps
-	 * the failed-insert tests above from being read as "any answer but `1` is a
-	 * failure".
-	 */
-	public function test_a_permalink_already_waiting_is_still_reported_as_a_success() {
-		$this->configure_site();
-
-		$permalink = $this->permalink_of( '/asked-for-twice/' );
-
-		$params = [
-			'secret' => self::FIXTURE_SECRET,
-			'path'   => $permalink,
-		];
-
-		$first  = $this->call_route( '/revalidate', $params );
-		$second = $this->call_route( '/revalidate', $params );
-
-		$this->assertSame( 200, $first->get_status() );
-		$this->assertTrue( $first->get_data()['results'][0]['success'] );
-
-		$this->assertSame( 200, $second->get_status(), 'Already queued is not a mixed result.' );
-		$this->assertTrue( $second->get_data()['success'] );
-		$this->assertTrue( $second->get_data()['results'][0]['success'], 'The revalidation the caller asked for is queued; that another call queued it is not the caller\'s failure.' );
-
-		$this->assertQueueRevalidates( [ '/asked-for-twice/' ], 'The queue holds the permalink once — its column is UNIQUE.' );
-	}
-
-	// Taking an insert away
-	// ====
-
-	/**
-	 * Call something with the queue's insert of one permalink made not to
-	 * happen, and hand back what it returned.
-	 *
-	 * There is no way to make the real `$wpdb->insert()` fail from a test that
-	 * is not also a way to break the queue table for the rest of the suite —
-	 * the wall `PublicApiTest::test_a_scheduled_purge_whose_write_fails_is_not_registered()`
-	 * hit with `update_option()`. So the write is taken away instead: the
-	 * `query` filter rewrites that one insert into a statement naming a table
-	 * that cannot exist, which writes nothing, touches no table of this
-	 * plugin's and errors — so `$wpdb->insert()` hands back the literal `false`
-	 * a failed insert gives it, rather than a `0` that merely reads as falsy
-	 * alongside it. The distinction is the whole of what #93 is about, and a
-	 * test that pinned falsiness would pass against code reading the answer
-	 * with `0 === $res`.
-	 *
-	 * `$wpdb` is told to suppress errors for the duration, and told again
-	 * afterwards whatever it was set to before: the statement is *meant* to
-	 * fail, and a deliberate failure has no business printing a database error
-	 * into the middle of the suite's output. Nothing outside the call is
-	 * affected — the error lives on `$wpdb->last_error` until the next
-	 * statement replaces it, and the queue's transaction commits the nothing it
-	 * wrote.
-	 *
-	 * Narrow on purpose, and by permalink rather than by table: an insert
-	 * naming this permalink is the only statement touched — the queue's own
-	 * transaction statements, its duplicate check and any insert of another
-	 * item run untouched — and nothing here spells out the queue's table name,
-	 * which `QueueTestCase` explains is the one expression this suite must not
-	 * own. The filter is removed before the assertions read the queue back.
-	 *
-	 * @param string   $permalink The permalink whose insert must not happen.
-	 * @param callable $call      Called with the insert taken away.
-	 *
-	 * @return mixed Whatever $call returned.
-	 */
-	private function with_a_failing_insert_on( $permalink, callable $call ) {
-		global $wpdb;
-
-		$take_the_write_away = function ( $query ) use ( $permalink ) {
-			$is_the_insert = stripos( $query, 'INSERT INTO' ) !== false
-				&& strpos( $query, $permalink ) !== false;
-
-			return $is_the_insert
-				? 'SELECT 1 FROM `nextjs_revalidate_no_such_table`'
-				: $query;
-		};
-
-		add_filter( 'query', $take_the_write_away );
-
-		$errors_were_suppressed = $wpdb->suppress_errors( true );
-
-		try {
-			return $call();
-		} finally {
-			$wpdb->suppress_errors( $errors_were_suppressed );
-			remove_filter( 'query', $take_the_write_away );
-		}
+		$this->assertPendingChanges( [ $this->path_change( '/accepted/' ) ], 'Only the item the filter let through is held.' );
 	}
 
 	// Calling a route
 	// ====
+
+	/**
+	 * The path change a path of this site is reported as: its path from the
+	 * domain root, which on a test site served from a directory includes it.
+	 *
+	 * @param string $path A path of this site, as `/hello-world/`.
+	 * @return array
+	 */
+	private function path_change( $path ) {
+		return Change::path( (string) Change::uri_of( $this->permalink_of( $path ) ) );
+	}
 
 	/**
 	 * Dispatch a POST to one of this plugin's routes and hand back what the

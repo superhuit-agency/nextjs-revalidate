@@ -3,6 +3,7 @@
 namespace NextJsRevalidate\Integrations;
 
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Change;
 use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Logger;
 
@@ -24,8 +25,8 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  *
  * See `docs/adr/0014-redirect-changes-revalidate-the-source-path.md`.
  *
- * @property-read \NextJsRevalidate\RevalidateQueue $queue The revalidation
- *                queue of the site being served, reached through `Base`.
+ * @property-read \NextJsRevalidate\PendingChanges $pendingChanges The pending
+ *                changes of this request, reached through `Base`.
  */
 class Redirection extends Base implements Hookable {
 
@@ -151,13 +152,13 @@ class Redirection extends Base implements Hookable {
 	}
 
 	/**
-	 * Enqueue a revalidation of the redirect's source path.
+	 * Report the redirect's source path as a redirect change.
 	 *
 	 * @param mixed $redirect        The redirect whose source path is stale.
 	 * @param bool  $require_enabled Optional. Whether the redirect has to be
 	 *                               enabled to be a candidate. Default true.
 	 *
-	 * @return bool Whether a revalidation was enqueued.
+	 * @return bool Whether a change was accepted into the pending changes.
 	 */
 	private function revalidate_source_of( $redirect, $require_enabled = true ) {
 
@@ -197,7 +198,7 @@ class Redirection extends Base implements Hookable {
 		 * path is left alone, without the site giving up the revalidations it
 		 * does want.
 		 *
-		 * Applied last, and to every event that enqueues a source path —
+		 * Applied last, and to every event that reports a source path —
 		 * create, update, delete, enable and disable alike, because all five
 		 * arrive here. It is asked once per path rather than once per event, so
 		 * an update that changes a redirect's source puts the path that stops
@@ -220,30 +221,35 @@ class Redirection extends Base implements Hookable {
 
 		// A bulk operation fires these actions once per redirect, and several
 		// redirects can share one source, so the same path arrives here many
-		// times over. It costs one queue entry however often it does: the queue
-		// enqueues a permalink it already holds exactly once. Remembering the
-		// paths here instead would be a second answer to the same question, and
-		// one that outlives the entry it describes — a path enqueued, drained,
-		// and made stale again within one long running process would be skipped
-		// on the strength of the revalidation that already happened.
+		// times over. It costs one change however often it does: identical
+		// changes merge in the pending changes. Remembering the paths here
+		// instead would be a second answer to the same question, and one that
+		// outlives the changes it describes — a path reported, delivered at the
+		// cap, and made stale again within one long running process would be
+		// skipped on the strength of the revalidation that already happened.
 		//
-		// No `is_configured()` guard either: the queue refuses an unconfigured
-		// site at the door and logs the permalink it refused.
-		$is_added = $this->queue->add_item( $this->permalink_of( $path ) );
-
-		return ( $is_added && !is_wp_error($is_added) );
+		// No `is_configured()` guard either: the pending changes refuse an
+		// unconfigured site at the door, and log the refusal.
+		//
+		// The source already names a path from the *domain* root: Redirection
+		// matches its redirects against the request uri, and its post slug
+		// monitor stores the path component of a post's permalink, so on a site
+		// served from a directory that directory is part of every source it
+		// holds. That is exactly what a change's `uri` is, so the path is
+		// reported as it stands rather than composed into anything.
+		return true === $this->pendingChanges->report( Change::redirect( $path ) );
 	}
 
 	/**
-	 * The path a redirect source names, in the form the queue already holds
-	 * post permalinks in.
+	 * The path a redirect source names, in the form post permalinks take on
+	 * this site.
 	 *
 	 * A source can be stored as a bare path, with a query string, or as the
 	 * full url someone pasted; all three name one path, and the query string
 	 * and the domain are dropped to find it. The site's trailing slash
 	 * convention is applied last because the front-end keys on the exact path
 	 * string while Redirection matches either form — an unnormalised path would
-	 * enqueue a revalidation that silently matches nothing, and under ADR 0004
+	 * report a change that silently matches nothing, and under ADR 0004
 	 * nothing retries it.
 	 *
 	 * @param mixed $source The redirect's source, as Redirection stored it.
@@ -263,35 +269,6 @@ class Redirection extends Base implements Hookable {
 
 		// The bare site root is not a source path this integration acts on.
 		return '/' === $path ? '' : $path;
-	}
-
-	/**
-	 * The permalink the queue holds for a source path.
-	 *
-	 * A source names a path from the *domain* root rather than from the site:
-	 * Redirection matches its redirects against the request uri, and its post
-	 * slug monitor stores the path component of a post's permalink, so the
-	 * directory a site is served from is already part of every source it holds.
-	 * The permalink is therefore built from the site's own scheme, host and port
-	 * and that path, rather than by handing the path to `home_url()` — which on
-	 * a site served from a subdirectory would name that directory twice and
-	 * enqueue a path the front-end holds nothing for. On a site at the root of
-	 * its domain the two are the same string.
-	 *
-	 * @param string $path The source path to revalidate.
-	 * @return string
-	 */
-	private function permalink_of( $path ) {
-
-		$home = wp_parse_url( home_url() );
-
-		// A home url this plugin cannot read apart is not worth guessing at:
-		// the site is served from wherever `home_url()` says it is.
-		if ( ! is_array($home) || empty($home['scheme']) || empty($home['host']) ) return home_url( $path );
-
-		$port = empty($home['port']) ? '' : ':' . $home['port'];
-
-		return $home['scheme'] . '://' . $home['host'] . $port . $path;
 	}
 
 	/**
@@ -345,7 +322,7 @@ class Redirection extends Base implements Hookable {
 	 *
 	 * @param int    $id     The redirect's id.
 	 * @param mixed  $source The redirect's source.
-	 * @param string $why    Why nothing was enqueued for it.
+	 * @param string $why    Why nothing was reported for it.
 	 *
 	 * @return void
 	 */

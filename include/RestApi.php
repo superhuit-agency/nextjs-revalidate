@@ -9,8 +9,21 @@ use WP_REST_Response;
 use WP_REST_Server;
 
 /**
- * @property RevalidateQueue $queue
- * @property Settings        $settings
+ * The two inbound routes: a deploy hook, a CI job or an external CMS naming
+ * paths for this site to report.
+ *
+ * Each item becomes a **path** change in this request's pending changes, and
+ * what a route answers is whether it was *accepted* there — never whether the
+ * front-end took it, which happens after the response is sent (ADR 0010,
+ * ADR 0034).
+ *
+ * Still `nextjs-revalidate/v1` in plugin 2.0: a REST namespace versions the REST
+ * API rather than the plugin, and the request these routes take has not changed
+ * — `priority` is still accepted, and ignored, since there is no queue left for
+ * it to order (ADR 0035).
+ *
+ * @property PendingChanges $pendingChanges
+ * @property Settings       $settings
  */
 class RestApi extends Base implements Hookable {
 
@@ -21,10 +34,11 @@ class RestApi extends Base implements Hookable {
 	 *
 	 * The kinds have to be kept apart, because they send whoever is holding the
 	 * response to different places. An item this route could not read is the
-	 * caller's to fix; an insert that did not happen is this site's; and a
-	 * **refusal** is neither — nothing is wrong with the request and nothing
-	 * broke, the site simply has no revalidate domain or secret and can deliver
-	 * nothing until an operator supplies them (ADR 0015).
+	 * caller's to fix; one this site did not take — something threw, or the
+	 * site's own `nextjs_revalidate_change` filter dropped it — is this site's;
+	 * and a **refusal** is neither — nothing is wrong with the request and
+	 * nothing broke, the site simply has no revalidate domain or secret and can
+	 * deliver nothing until an operator supplies them (ADR 0015).
 	 */
 	private const ITEM_BAD_REQUEST = 400;
 	private const ITEM_FAILED      = 500;
@@ -67,11 +81,14 @@ class RestApi extends Base implements Hookable {
 						'type'              => 'string',
 						'sanitize_callback' => 'sanitize_text_field',
 					],
+					// Accepted and ignored: there is no queue left for it to
+					// order. Still declared, and still an integer, so a request
+					// v1 accepted is accepted still, and one it rejected is
+					// rejected still (ADR 0035).
 					'priority' => [
 						'required'          => false,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-						'default'           => RevalidateQueue::DEFAULT_PRIORITY,
 					],
 				],
 			]
@@ -120,9 +137,6 @@ class RestApi extends Base implements Hookable {
 	public function handle_revalidate(WP_REST_Request $request) {
 		// Single-item handler: build the single-item array and delegate
 		$path = $request->get_param('path');
-		// REST dispatch has already applied the route's `default` and `absint`, so
-		// read it as given: a truthiness check would turn an explicit `0` into 10.
-		$priority = absint($request->get_param('priority'));
 		if (empty($path)) {
 			return new WP_REST_Response([
 				'success' => false,
@@ -131,8 +145,7 @@ class RestApi extends Base implements Hookable {
 		}
 
 		$items = [[
-			'path'     => sanitize_text_field($path),
-			'priority' => $priority,
+			'path' => sanitize_text_field($path),
 		]];
 
 		return $this->process_items($items);
@@ -140,6 +153,9 @@ class RestApi extends Base implements Hookable {
 
 	/**
 	 * Handler for batch revalidate route. Expects an 'items' array in the request body.
+	 *
+	 * An item's `priority` is read by nothing: it is accepted, as v1 accepted
+	 * it, and ignored.
 	 */
 	public function handle_revalidate_batch(WP_REST_Request $request) {
 		$body_items = $request->get_param('items');
@@ -158,13 +174,12 @@ class RestApi extends Base implements Hookable {
 			// An entry that is not an object has no `path` to read, so it goes on
 			// as an item with none and is reported like one. Skipping it left the
 			// body a result short, and a batch that lost an item answering 200 as
-			// though everything sent had been queued (#118).
+			// though everything sent had been accepted (#118).
 			if (!is_array($it)) {
 				$it = [];
 			}
 			$items[] = [
-				'path'     => isset($it['path']) ? sanitize_text_field($it['path']) : null,
-				'priority' => isset($it['priority']) ? absint($it['priority']) : RevalidateQueue::DEFAULT_PRIORITY,
+				'path' => isset($it['path']) ? sanitize_text_field($it['path']) : null,
 			];
 		}
 
@@ -172,8 +187,12 @@ class RestApi extends Base implements Hookable {
 	}
 
 	/**
-	 * Shared processing for items array. Returns WP_REST_Response.
-	 * Each item: ['path' => string, 'priority' => int]
+	 * Report each item as a path change, and answer for all of them.
+	 *
+	 * Each item: ['path' => string|null], the path or URL the caller sent.
+	 *
+	 * @param array $items
+	 * @return WP_REST_Response
 	 */
 	private function process_items(array $items) {
 		$results = [];
@@ -183,7 +202,11 @@ class RestApi extends Base implements Hookable {
 		$failed = [];
 
 		foreach ($items as $it) {
-			if (empty($it['path'])) {
+			// What the caller sent, reduced to the path from the domain root —
+			// a permalink and the path it names are the same item.
+			$uri = Change::uri_of($it['path']);
+
+			if (null === $uri) {
 				$results[] = [
 					'path'    => $it['path'],
 					'success' => false,
@@ -194,53 +217,46 @@ class RestApi extends Base implements Hookable {
 			}
 
 			try {
-				// An item is accepted when the queue holds it afterwards, and
-				// failed otherwise (ADR 0010). `add_item()` answers four
-				// different things, and three of them are not a `WP_Error`: `1`
-				// for a row it inserted, `true` for a permalink already waiting
-				// — both honest acceptances — and a bare `false` when its own
-				// insert failed. Reading everything that is not a `WP_Error` as
-				// an acceptance reported that failed insert as `success: true`
-				// with a 200, and a caller reaching these routes has no other
-				// feedback channel to find out otherwise (#93).
-				$accepted = $this->queue->add_item($it['path'], $it['priority']);
+				// An item is accepted when the pending changes hold it
+				// afterwards, and not otherwise (ADR 0010). `report()` answers
+				// three things: `true` for a change it holds, the refusal of an
+				// unconfigured site as a `WP_Error`, and a bare `false` when the
+				// site's own `nextjs_revalidate_change` filter dropped it.
+				$accepted = $this->pendingChanges->report(Change::path($uri));
 				if (is_wp_error($accepted)) {
 					$results[] = [
 						'path'    => $it['path'],
 						'success' => false,
 						'message' => $accepted->get_error_message(),
 					];
-					// The only `WP_Error` the queue produces is the refusal of
-					// an unconfigured site. Anything else arriving here is this
-					// site failing rather than declining, and is answered as
-					// such rather than as a configuration an operator could go
-					// and fix.
+					// The only `WP_Error` the pending changes produce is the
+					// refusal of an unconfigured site. Anything else arriving
+					// here is this site failing rather than declining, and is
+					// answered as such rather than as a configuration an
+					// operator could go and fix.
 					$failed[] = 'not_configured' === $accepted->get_error_code()
 						? self::ITEM_REFUSED
 						: self::ITEM_FAILED;
-				} elseif (!$accepted) {
+				} elseif (true !== $accepted) {
 					$results[] = [
 						'path'    => $it['path'],
 						'success' => false,
-						// A fixed message rather than `$wpdb->last_error`: the
-						// insert failed, and the database's own words for why
-						// are not something to hand back over a route anyone
-						// holding the secret can call. The `WP_Error` above
-						// carries its own because the queue wrote that one for
-						// a caller to read.
-						'message' => 'Could not be added to the revalidation queue.',
+						// The site decided, not the caller: nothing about the
+						// request would make a second attempt any different,
+						// and the filter is where an operator goes to find out
+						// why.
+						'message' => 'Dropped by this site\'s nextjs_revalidate_change filter.',
 					];
 					$failed[] = self::ITEM_FAILED;
 				} else {
 					$results[] = [
 						'path'    => $it['path'],
 						'success' => true,
-						// The queue's raw answer, left as it is: `1` and `true`
-						// both mean the queue holds the permalink, so `success`
-						// above is the whole of what this route promises, and
-						// the field can no longer be the `false` that was the
-						// only trace of a failed insert.
-						'data'    => $accepted,
+						// Always `true` now: the queue's raw answer this field
+						// used to carry — `1` or `true` — has no v2 counterpart,
+						// and a caller of 1.x reading it for truthiness reads
+						// the same thing it always did.
+						'data'    => true,
 					];
 				}
 			} catch (\Exception $e) {
@@ -277,8 +293,8 @@ class RestApi extends Base implements Hookable {
 	 * and the raise-on-error helper of most HTTP clients stays quiet. A deploy
 	 * hook or a CI job doing the ordinary thing — issue the request, check the
 	 * status, trust it — was told everything was fine while nothing had been
-	 * queued, and these callers have no other feedback channel to learn
-	 * otherwise: they cannot see the queue, the log or the drain (#118, #93).
+	 * accepted, and these callers have no other feedback channel to learn
+	 * otherwise: they cannot see the log or the delivery (#118, #93).
 	 *
 	 * The single route sends one item, so it can never reach the 207 branch:
 	 * one outcome is the request's outcome, and there is nothing for a

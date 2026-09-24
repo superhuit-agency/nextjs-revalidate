@@ -33,6 +33,7 @@ along with Next.js revalidate. If not, see {URI to Plugin License}.
 */
 
 use NextJsRevalidate\Assets;
+use NextJsRevalidate\Change;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
@@ -426,56 +427,95 @@ NextJsRevalidate::init();
  */
 
 /**
- * Purge an URL from Next.js cache
- * Triggers a revalidation of the given URL
+ * Report a path as changed, so the front-end revalidates whatever it cached
+ * from it.
  *
- * The revalidation is *accepted*, not performed: this enqueues the permalink and
- * returns, and the queue is drained by cron afterwards. So the answer here can
- * only ever be whether the queue took the revalidation on, never whether the
- * front-end has rebuilt the page — that outcome happens after this call has
- * returned, and delivery is at most once, a failure being recorded in the log
- * and dropped (docs/adr/0004-at-most-once-revalidation.md).
+ * A **path** change — `{ "subject": "path", "uri": … }` — for a path this
+ * plugin has no other way to know about: a page assembled from something that
+ * is not a post, a listing of an external feed, anything site code knows went
+ * stale. What the front-end expires for it is the front-end's decision.
  *
- * @param  string $url       The URL to purge
- * @param  int    $priority  Optional. Used to specify the order in which the url are purged.
- *                           Lower numbers correspond with earlier purge,
- *                           and urls with the same priority are executed in the order in which they were added.
- *                           Default 10.
+ * The change is *accepted*, not delivered: it joins this request's pending
+ * changes, and they are sent to the front-end once the request has answered.
+ * So the answer here can only ever be whether the change was taken on, never
+ * whether the front-end took it — that happens after this call has returned,
+ * and delivery is at most once, a failure being recorded in the log and
+ * dropped (docs/adr/0010-the-public-api-reports-acceptance-not-delivery.md).
  *
- * @return bool        Whether the revalidation was accepted into the queue.
- *                     False on a refusal — the site is unconfigured, and nothing
- *                     it accepted could be delivered — and false when the write
- *                     itself failed, whether that was the insert or the
- *                     promotion of a permalink the queue already held.
+ * @since 2.0.0
+ *
+ * @param string $url A URL, or a path. A URL is reduced to its path from the
+ *                    domain root, dropping the query string and the fragment;
+ *                    a path is taken as from the domain root already.
+ *
+ * @return bool Whether the change was accepted into the pending changes. False
+ *              on a refusal — the site is unconfigured, and nothing it accepted
+ *              could be delivered — false when the `nextjs_revalidate_change`
+ *              filter dropped it, and false for a URL that names no path.
  */
-function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
-	$njr = NextJsRevalidate::init();
+function nextjs_revalidate_path( $url ) {
+	$uri = Change::uri_of( $url );
 
-	$accepted = $njr->queue->add_item( $url, $priority );
+	if ( null === $uri ) return false;
 
 	// A refusal arrives as a WP_Error, which is truthy; it is a false here.
-	// Callers needing the reason read it from the queue directly, as the REST
+	// Callers needing the reason read it from `report()` directly, as the REST
 	// routes do — this function's documented answer is a bool.
-	return ( $accepted && !is_wp_error($accepted) );
+	return true === NextJsRevalidate::init()->pendingChanges->report( Change::path( $uri ) );
 }
 
 /**
- * Schedule an URL purge from Next.js cache
- * Triggers a revalidation of the given URL at the given date time
+ * Register a path to be reported as changed at a future date time — a
+ * **scheduled purge**.
  *
- * Registering a scheduled purge is not enqueuing a revalidation: the permalink
- * reaches the queue when the date time passes, and is refused there like any
- * other revalidation if the site is unconfigured by then.
+ * Registering one is not reporting a change: the path is reported by the cron
+ * request that finds it due, and is refused there like any other change if the
+ * site is unconfigured by then. The entry is dropped either way.
  *
- * @param  String $datetime The date time when to purge
- * @param  String $url      The URL to purge
+ * @since 2.0.0
  *
- * @return Bool             Whether this call registered the scheduled purge.
- *                          False when the URL is already registered for that
- *                          date time — the schedule stands, this call added
- *                          nothing to it — and false when the write failed.
+ * @param string $datetime The date time from which the path is due.
+ * @param string $url      A URL, or a path. Registered as given, and reduced to
+ *                         its path from the domain root when it comes due.
+ *
+ * @return bool Whether this call registered the scheduled purge. False when the
+ *              URL is already registered for that date time — the schedule
+ *              stands, this call added nothing to it — and false when the
+ *              write failed.
+ */
+function nextjs_revalidate_schedule_path( $datetime, $url ) {
+	return NextJsRevalidate::init()->cronScheduledPurges->schedule_purge( $datetime, $url );
+}
+
+/**
+ * Purge an URL from Next.js cache.
+ *
+ * @deprecated 2.0.0 Use nextjs_revalidate_path(). Removed in 3.0.0 (ADR 0035).
+ *
+ * @param string $url      The URL, or path, to revalidate.
+ * @param int    $priority Accepted and ignored: there is no queue left for it
+ *                         to order.
+ *
+ * @return bool What nextjs_revalidate_path() answers.
+ */
+function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
+	_deprecated_function( __FUNCTION__, '2.0.0', 'nextjs_revalidate_path()' );
+
+	return nextjs_revalidate_path( $url );
+}
+
+/**
+ * Schedule an URL purge from Next.js cache.
+ *
+ * @deprecated 2.0.0 Use nextjs_revalidate_schedule_path(). Removed in 3.0.0 (ADR 0035).
+ *
+ * @param string $datetime The date time when to purge.
+ * @param string $url      The URL, or path, to revalidate.
+ *
+ * @return bool What nextjs_revalidate_schedule_path() answers.
  */
 function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
-	$njr = NextJsRevalidate::init();
-	return $njr->cronScheduledPurges->schedule_purge( $datetime, $url );
+	_deprecated_function( __FUNCTION__, '2.0.0', 'nextjs_revalidate_schedule_path()' );
+
+	return nextjs_revalidate_schedule_path( $datetime, $url );
 }

@@ -155,3 +155,33 @@ script, so it runs in the gate an unattended agent is judged by. The reach is
 the wholly-failed batch and the precedence between a refusal and an unreadable
 item. `tests/rest-queue-answer-test.php` keeps its own status assertions, which
 moved with this change; the rule is not its subject.
+
+## Amended for v2: no queue write to fail
+
+Built in #158, under ADR 0034 and ADR 0035. Each item is now reported as a
+**path** change into the request's pending changes, and "accepted" means held
+there rather than in the queue. The rule — decided by the outcomes, 503 over 500
+over 400, 207 only for a mixed batch — stands unchanged; one row of the second
+table does not:
+
+| Why it was not accepted | Status |
+| --- | --- |
+| No `path` — this route cannot read the item | `400` |
+| The site is unconfigured — a **refusal** (ADR 0015) | `503` |
+| Something threw, or the site's own `nextjs_revalidate_change` filter dropped the change | `500` |
+
+**The queue write that did not happen is gone**, with the queue: nothing an item
+does can fail to be written any more.
+
+**A change the filter dropped is a 500.** It is the one outcome v2 adds, and it
+was not accepted — nothing will be sent for it — so a 2xx would be the lie this
+record exists to remove. It is not the caller's doing, which rules out 400, and
+not the unconfigured site 503 names. It is this site's, which is what the 500 row
+already meant; the per-item message names the filter, which is where an operator
+goes next.
+
+The body keeps its shape. `data` on an accepted item carried the queue's raw
+answer, `1` or `true`; it is now always `true`, which reads the same to a caller
+that tested it for truthiness. `tests/rest-queue-answer-test.php` is now
+`tests/rest-change-answer-test.php`, and pins what is reported as well as how
+the answer is read.

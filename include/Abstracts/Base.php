@@ -15,9 +15,9 @@ use NextJsRevalidate;
  *
  * That is deliberate rather than an oversight. The list a subclass declares is
  * its collaborators written down — `RevalidateAll` reaches the queue, the
- * settings and `Revalidate`; `Cron\ScheduledPurges` reaches the queue and
- * nothing else — and declaring them here instead would hand all six to all of
- * them and say nothing about any one.
+ * settings and `Revalidate`; `Cron\ScheduledPurges` reaches the pending
+ * changes and nothing else — and declaring them here instead would hand all
+ * six to all of them and say nothing about any one.
  */
 abstract class Base {
 

@@ -172,23 +172,30 @@ repairs it at the end.
 Precondition: spine state, Redirection active (installed from `.wp-env.json`).
 Complete its setup wizard once if prompted.
 
+The oracle is the **revalidate server console**: a redirect is reported as a
+**redirect change**, delivered in one v2 request once the save has answered, so
+each revalidation below is a line like
+`= Revalidating (v2): {"subject":"redirect","uri":"/old-path/"}` — never a
+queue row.
+
 - [ ] **Tools → Redirection → add a redirect** from `/old-path/` to
-      `/runbook-post/`, enabled. Expect a revalidation of `/old-path/` — the
-      **source**, not the target. The front-end's cached 404 for that path is
-      what is now wrong.
+      `/runbook-post/`, enabled. Expect
+      `{"subject":"redirect","uri":"/old-path/"}` in the console — the
+      **source**, not the target, and a `redirect` change rather than a `path`
+      one. The front-end's cached 404 for that path is what is now wrong.
 - [ ] **Edit it, changing the source to `/older-path/`.** Expect **one**
-      revalidation, of `/older-path/`, and none of `/old-path/`. Redirection
+      redirect change, for `/older-path/`, and none for `/old-path/`. Redirection
       5.9.0 and later hand over only the redirect's id on an edit, so nothing
       carries the source it had — `/old-path/` keeps redirecting on the
       front-end until its cache entry expires. That is the recorded limit in
       `docs/adr/0014-redirect-changes-revalidate-the-source-path.md`, not a
-      regression; a second revalidation here means upstream started passing
-      the previous state again.
-- [ ] **Disable it, enable it, then delete it.** Expect a revalidation of its
-      source each time.
+      regression; a second redirect change here means upstream started
+      passing the previous state again.
+- [ ] **Disable it, enable it, then delete it.** Expect a redirect change for
+      its source each time, one v2 request per action.
 - [ ] **Add a regex redirect** (tick "Regex", source `^/blog/(.*)`). Expect **no**
-      revalidation, and a log line saying it was skipped because "its source is a
-      regular expression, which names no single path".
+      request in the console, and a log line saying it was skipped because
+      "its source is a regular expression, which names no single path".
 
 ## 8. Deactivation
 

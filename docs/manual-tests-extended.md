@@ -57,20 +57,22 @@ them at its end, so run this after it or check the Next.js API tab first.
       path field showing `/`, a "Send probe" button, and the note that a probe
       uses the *saved* settings.
 - [ ] **Type `/runbook-post/` and press Send probe.** Expect
-      `= Revalidating: /runbook-post/` in the revalidate server console — a
-      probe is a real rebuild, not a dry run — and a success notice on the
-      settings screen: "The front-end rebuilt
+      `= Revalidating (v2): {"subject":"path","uri":"/runbook-post/"}` in the
+      revalidate server console — one v2 request carrying one **path** change;
+      a probe is a real revalidation, not a dry run — and a success notice on
+      the settings screen: "The front-end rebuilt
       http://localhost:8080/runbook-post/."
 - [ ] **Check the log.** Expect one line
       `🔎 Probe: ✅ Revalidated in 0.04s http://localhost:8080/runbook-post/`,
-      carrying neither a queue id nor a priority — a probe has neither.
-- [ ] **Check the queue table.** Expect **no** row for that permalink: a probe
-      is delivered in the request that asked for it and never enqueued.
+      and no `✅ Revalidated 1 change (path)` line after it: a probe is
+      delivered on its own, while the operator waits, and never joins the
+      request's pending changes to be sent a second time when it ends.
 - [ ] **Reload the settings screen.** Expect the notice gone and **no** second
       line in the console: the answer comes back through a redirect, so a
       refresh does not quietly probe again.
-- [ ] **Empty the field and probe.** Expect the home page — `/` in the console,
-      `http://localhost:8080/` in the notice.
+- [ ] **Empty the field and probe.** Expect the home page —
+      `{"subject":"path","uri":"/"}` in the console, `http://localhost:8080/`
+      in the notice.
 - [ ] **Paste the full permalink** `http://localhost:8080/runbook-page/` **and
       probe.** Expect exactly what typing `/runbook-page/` gives: only the path
       is kept.
@@ -232,8 +234,11 @@ in one v2 `POST`, and nothing about it reaches the queue. Expect
       Expect an entry carrying the post's future timestamp.
 - [ ] **Confirm the cron is set**:
       `npx wp-env run cli wp cron event list | grep scheduled_purges`.
-- [ ] **Wait for the time to pass and load an admin page.** Expect a revalidation
-      of the now-published path, and the option entry gone.
+- [ ] **Wait for the time to pass and load an admin page.** Expect
+      `{"subject":"path","uri":…}` for the now-published path in the
+      revalidate server console — a due scheduled purge is reported as a
+      **path** change by the cron request that finds it due — and the option
+      entry gone.
 
 ## J. The log file
 
@@ -324,20 +329,22 @@ Redirection's own bulk screen.
 - [ ] **Tools → Redirection → add five enabled redirects**, from `/bulk-a/`,
       `/bulk-b/`, `/bulk-c/` and twice from `/bulk-dup/` — two rules sharing one
       source, which is the case the rest of this section is about.
-- [ ] **Select all five → Bulk Actions → Disable → Apply**, then open Settings →
-      Next.js revalidate → Queue *before* it drains. Expect **four** rows — one
-      per distinct source. The two redirects sharing `/bulk-dup/` cost one row
-      between them.
-- [ ] **Drain it, then select all five → Bulk Actions → Enable → Apply.** Expect
-      four rows again: a bulk route reaches this plugin once per redirect
-      whichever way the switch went.
-- [ ] **Drain it, then select all five → Bulk Actions → Delete → Apply.** Expect
-      four rows once more: nothing is capped above a threshold and nothing
-      escalates to a revalidate all. The count is bounded by the rules that
-      existed.
+- [ ] **Select all five → Bulk Actions → Disable → Apply.** Expect **one**
+      `= Revalidating (v2): …` line in the revalidate server console, carrying
+      **four** `{"subject":"redirect",…}` changes — one per distinct source —
+      and `✅ Revalidated 4 changes (redirect ×4)` in the log. The two
+      redirects sharing `/bulk-dup/` cost one change between them.
+- [ ] **Select all five → Bulk Actions → Enable → Apply.** Expect one request
+      carrying four redirect changes again: a bulk route reaches this plugin
+      once per redirect whichever way the switch went.
+- [ ] **Select all five → Bulk Actions → Delete → Apply.** Expect one request
+      carrying four redirect changes once more: nothing is capped above a
+      threshold and nothing escalates to a revalidate all. The count is
+      bounded by the rules that existed.
 - [ ] **Add a regex redirect, source `^/bulk-regex/(.*)`, and bulk-delete it
-      alone.** Expect **no** row, and a log line saying it was skipped because
-      "its source is a regular expression, which names no single path".
+      alone.** Expect **no** request in the console, and a log line saying it
+      was skipped because "its source is a regular expression, which names no
+      single path".
 
 ## N. Uninstallation
 

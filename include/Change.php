@@ -86,6 +86,42 @@ final class Change {
 	}
 
 	/**
+	 * The `uri` a URL or a path names: its path from the domain root.
+	 *
+	 * What the public API, the inbound REST routes and a scheduled purge are
+	 * handed is whatever their caller had to hand — a permalink as often as a
+	 * path — and both name one `uri`. The scheme, the host and the port are
+	 * dropped, and with them the query string and the fragment, which are not
+	 * part of a path; a path keeps its trailing slash, or its lack of one,
+	 * exactly as it was given, because the front-end keys on the exact string.
+	 *
+	 * A URL is reduced rather than resolved against this site: its path is
+	 * already from the domain root, directory and all, which is what `uri` is.
+	 * A path is taken as from the domain root too, and given the leading slash
+	 * it may have been sent without.
+	 *
+	 * @param mixed $url A URL, or a path.
+	 * @return string|null The `uri`, or null when there is none to read: not a
+	 *                     string, empty, or a URL too malformed to parse.
+	 */
+	public static function uri_of( $url ): ?string {
+
+		if ( ! is_string( $url ) ) return null;
+
+		$url = trim( $url );
+		if ( '' === $url ) return null;
+
+		$path = wp_parse_url( $url, PHP_URL_PATH );
+
+		// `false` is a URL `parse_url()` could not read at all, which names
+		// nothing; `null` is one that parsed and carries no path — a bare
+		// domain, whose path is the root.
+		if ( false === $path ) return null;
+
+		return '/' . ltrim( (string) $path, '/' );
+	}
+
+	/**
 	 * A menu, and the locations it is assigned to.
 	 *
 	 * @param int      $id        The menu's term ID.

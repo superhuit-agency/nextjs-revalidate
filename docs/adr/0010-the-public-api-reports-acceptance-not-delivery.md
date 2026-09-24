@@ -85,3 +85,20 @@ reason (ADR 0008): the acceptance path runs through `NextJsRevalidate::init()`,
 the settings and `$wpdb`, none of which a standalone script can stub its way to.
 It therefore does not run in the AFK sandbox's gate (ADR 0006), and did not run
 in the container this change was written in.
+
+## Amended for v2: the same contract, under v2 names
+
+Built in #158, under ADR 0034 and ADR 0035. `nextjs_revalidate_path()` and
+`nextjs_revalidate_schedule_path()` carry this contract now, and the two names
+above are deprecated wrappers around them until v3. What is accepted is a
+**path** change into the request's pending changes rather than a permalink into
+the queue, and it is delivered once the request has answered rather than on a
+later cron run — still after the function has returned, so the answer is still
+*accepted* and never *delivered*.
+
+`nextjs_revalidate_path()` answers `true` only when the change is held. A
+refusal is `false`, as before; so is a change the site's own
+`nextjs_revalidate_change` filter dropped, which is the one new way to be
+refused a hearing, and a URL that names no path. The failed-insert `false` is
+gone with the insert. The REST routes still read the reason where this function
+reads a bool — from `PendingChanges::report()` now, rather than from the queue.

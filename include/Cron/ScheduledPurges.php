@@ -5,25 +5,20 @@ namespace NextJsRevalidate\Cron;
 use DateTime;
 use DateTimeZone;
 use NextJsRevalidate\Abstracts\Base;
+use NextJsRevalidate\Change;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\Logger;
 
 /**
- * @property \NextJsRevalidate\RevalidateQueue $queue
+ * The **scheduled purges**: paths registered to be revalidated at a future
+ * time, each reported as a path change by the cron request that finds it due.
+ *
+ * @property \NextJsRevalidate\PendingChanges $pendingChanges
  */
 class ScheduledPurges extends Base implements Hookable {
 
 	const CRON_HOOK_NAME = 'nextjs-revalidate-scheduled_purges';
 	const OPTION_NAME    = 'nextjs-revalidate-scheduled_purges';
-
-	/**
-	 * The queue priority a scheduled purge is enqueued at when it comes due.
-	 *
-	 * Elevated deliberately, rather than left to the queue's default: content
-	 * whose publication or expiry date has just passed is more urgent than an
-	 * ordinary save, so it drains ahead of the default 10. It stays behind
-	 * anything a caller explicitly deemed more urgent, which is why it is not 0.
-	 */
-	const QUEUE_PRIORITY = 5;
 
 	private $timezone;
 
@@ -35,6 +30,16 @@ class ScheduledPurges extends Base implements Hookable {
 		add_action( self::CRON_HOOK_NAME, [$this, 'run_cron_hook'] );
 	}
 
+	/**
+	 * Report every scheduled purge whose time has passed, and forget it.
+	 *
+	 * Each URL of a due entry becomes a path change in this request's pending
+	 * changes, delivered when the cron request ends. The entry is dropped
+	 * whatever became of its changes: an unconfigured site refuses them, and a
+	 * refusal is final rather than something to keep the entry for.
+	 *
+	 * @return void
+	 */
 	public function run_cron_hook() {
 
 		$entries = get_option( self::OPTION_NAME, [] );
@@ -46,7 +51,7 @@ class ScheduledPurges extends Base implements Hookable {
 			$next_purge_datetime = new DateTime( $datetime );
 			if ( $next_purge_datetime <= $now ) {
 				foreach ($urls as $url) {
-					$this->queue->add_item( $url, self::QUEUE_PRIORITY );
+					$this->report_path( $url );
 				}
 			}
 			else {
@@ -58,6 +63,33 @@ class ScheduledPurges extends Base implements Hookable {
 		update_option( self::OPTION_NAME, $left_entries );
 
 		$this->schedule_cron();
+	}
+
+	/**
+	 * Report one due URL as a path change.
+	 *
+	 * Registered as it was given — a permalink as often as a path — and reduced
+	 * to its `uri` here, when it is reported.
+	 *
+	 * @param mixed $url The URL the scheduled purge was registered for.
+	 * @return void
+	 */
+	private function report_path( $url ) {
+
+		$uri = Change::uri_of( $url );
+
+		if ( null === $uri ) {
+			Logger::log(
+				sprintf( '❌ Dropped a scheduled purge of %s — it names no path', is_string( $url ) ? $url : gettype( $url ) ),
+				__FILE__,
+				Logger::ERROR
+			);
+			return;
+		}
+
+		// No `is_configured()` guard: the pending changes refuse an
+		// unconfigured site at the door, and log the refusal.
+		$this->pendingChanges->report( Change::path( $uri ) );
 	}
 
 	public function schedule_cron() {

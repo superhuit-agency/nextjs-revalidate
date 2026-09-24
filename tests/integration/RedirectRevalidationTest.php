@@ -2,8 +2,8 @@
 /**
  * A redirect changes, its source path revalidates — issue #9.
  *
- * The seam is the revalidation queue's contents: each test arranges a redirect,
- * fires the event Redirection fires, and asserts which paths the queue then
+ * The seam is the pending changes: each test arranges a redirect, fires the
+ * event Redirection fires, and asserts which redirect changes the request then
  * holds. Nothing here asserts that a class was constructed, that a hook was
  * added, or how the source path was derived — renaming the handler or
  * restructuring the normalisation should break none of it.
@@ -17,11 +17,12 @@
 
 namespace NextJsRevalidate\Tests;
 
+use NextJsRevalidate\Change;
 use NextJsRevalidate\Settings;
 use Red_Group;
 use Red_Item;
 
-class RedirectRevalidationTest extends QueueTestCase {
+class RedirectRevalidationTest extends PendingChangesTestCase {
 
 	/**
 	 * The group the fixture redirects belong to. Redirection stores every
@@ -38,7 +39,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 			$this->markTestSkipped( 'The Redirection plugin is not installed in this environment.' );
 		}
 
-		// A source path is enqueued in the trailing slash form the site's
+		// A source path is reported in the trailing slash form the site's
 		// permalinks take, so what that form is has to be the test's decision
 		// rather than whatever the environment was left holding.
 		$this->set_permalink_structure( '/%postname%/' );
@@ -53,9 +54,9 @@ class RedirectRevalidationTest extends QueueTestCase {
 	}
 
 	/**
-	 * Redirects outlive the rollback whenever the test enqueued anything — the
-	 * queue's own `COMMIT` commits them too, exactly as `QueueTestCase`
-	 * describes for posts — so they are cleared here, after it.
+	 * Redirects outlive the rollback: `reset_redirects()` truncates their table,
+	 * and a `TRUNCATE` commits the transaction the test runs in — so they are
+	 * cleared here, after it.
 	 */
 	public function tear_down() {
 		parent::tear_down();
@@ -76,10 +77,9 @@ class RedirectRevalidationTest extends QueueTestCase {
 
 		$this->create_redirect( [ 'url' => '/about-us' ] );
 
-		$this->assertQueueRevalidates( [ '/about-us/' ] );
-		$this->assertQueueRevalidatesAtPriorities(
-			[ '/about-us/' => 10 ],
-			'A redirect revalidation holds no special place in the queue.'
+		$this->assertReportsRedirects(
+			[ '/about-us/' ],
+			'A redirect change, not a path change: "the redirect at this path changed" is a different fact to a front-end.'
 		);
 	}
 
@@ -94,7 +94,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 
 		$this->create_redirect( [ 'url' => '/a-trashed-page', 'status' => 'disabled' ] );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	/**
@@ -107,7 +107,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 
 		$this->create_redirect( [ 'url' => '/blog/(.*)', 'regex' => 1 ] );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 		$this->assertStringContainsString(
 			'/blog/(.*)',
 			$this->log(),
@@ -128,7 +128,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 			'action_data' => [ 'agent' => 'Firefox', 'url_from' => '/somewhere-else/' ],
 		] );
 
-		$this->assertQueueRevalidates( [ '/seen-by-one-browser/' ] );
+		$this->assertReportsRedirects( [ '/seen-by-one-browser/' ] );
 	}
 
 	// Deleting, disabling, enabling
@@ -140,7 +140,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->configure_site();
 		$redirect->delete();
 
-		$this->assertQueueRevalidates( [ '/deleted/' ] );
+		$this->assertReportsRedirects( [ '/deleted/' ] );
 	}
 
 	public function test_disabling_a_redirect_revalidates_its_source_path() {
@@ -149,7 +149,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->configure_site();
 		$redirect->disable();
 
-		$this->assertQueueRevalidates(
+		$this->assertReportsRedirects(
 			[ '/switched-off/' ],
 			'Disabling is an off switch, not a delayed one: the redirect reads as disabled by the time we hear about it.'
 		);
@@ -161,7 +161,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->configure_site();
 		$redirect->enable();
 
-		$this->assertQueueRevalidates( [ '/switched-on/' ] );
+		$this->assertReportsRedirects( [ '/switched-on/' ] );
 	}
 
 	/**
@@ -175,7 +175,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->configure_site();
 		$redirect->delete();
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	/**
@@ -188,7 +188,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->configure_site();
 		$redirect->delete();
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	/**
@@ -213,7 +213,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 		do_action( 'redirection_redirect_enabled', $switched_on->get_id() );
 		do_action( 'redirection_redirect_disabled', $switched_off->get_id() );
 
-		$this->assertQueueRevalidates( [ '/switched-on-by-id/', '/switched-off-by-id/' ] );
+		$this->assertReportsRedirects( [ '/switched-on-by-id/', '/switched-off-by-id/' ] );
 	}
 
 	/**
@@ -226,7 +226,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 		do_action( 'redirection_redirect_enabled', 987654 );
 		do_action( 'redirection_redirect_disabled', 987654 );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	// Updating
@@ -241,7 +241,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 			'action_data' => [ 'url' => '/the-new-destination/' ],
 		] ) );
 
-		$this->assertQueueRevalidates( [ '/moved-target/' ] );
+		$this->assertReportsRedirects( [ '/moved-target/' ] );
 	}
 
 	/**
@@ -263,7 +263,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->configure_site();
 		do_action( 'redirection_redirect_updated', $previous, Red_Item::get_by_id( $redirect->get_id() ) );
 
-		$this->assertQueueRevalidates( [ '/the-old-source/', '/the-new-source/' ] );
+		$this->assertReportsRedirects( [ '/the-old-source/', '/the-new-source/' ] );
 	}
 
 	/**
@@ -280,7 +280,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 			$this->redirect_row( [ 'url' => '/a-literal-source/(.*)', 'regex' => 1 ] )
 		);
 
-		$this->assertQueueRevalidates( [ '/a-literal-source/' ] );
+		$this->assertReportsRedirects( [ '/a-literal-source/' ] );
 	}
 
 	/**
@@ -295,7 +295,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 			$this->redirect_row( [ 'url' => '/blog-home' ] )
 		);
 
-		$this->assertQueueRevalidates( [ '/blog-home/' ] );
+		$this->assertReportsRedirects( [ '/blog-home/' ] );
 	}
 
 	/**
@@ -310,14 +310,14 @@ class RedirectRevalidationTest extends QueueTestCase {
 			$this->redirect_row( [ 'url' => '/a-new-source', 'status' => 'disabled' ] )
 		);
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	/**
-	 * An edit that left the source alone hands the queue one path twice, and
-	 * costs one revalidation — the queue holds a permalink it already has
-	 * exactly once, which is where this is decided. Asserted here rather than
-	 * in the standalone suite because only the real queue can answer it.
+	 * An edit that left the source alone hands one path over twice, and costs
+	 * one change — identical changes merge in the pending changes, which is
+	 * where this is decided. Asserted here rather than in the standalone suite
+	 * because only the real pending changes can answer it.
 	 */
 	public function test_an_edit_that_leaves_the_source_alone_costs_one_revalidation() {
 		$this->configure_site();
@@ -327,7 +327,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 			$this->redirect_row( [ 'url' => '/an-unchanged-source' ] )
 		);
 
-		$this->assertQueueRevalidates( [ '/an-unchanged-source/' ] );
+		$this->assertReportsRedirects( [ '/an-unchanged-source/' ] );
 	}
 
 	// The source path
@@ -338,7 +338,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 
 		$this->redirect_updated( $this->redirect_row( [ 'url' => '/a-page?ref=newsletter' ] ) );
 
-		$this->assertQueueRevalidates( [ '/a-page/' ] );
+		$this->assertReportsRedirects( [ '/a-page/' ] );
 	}
 
 	public function test_a_source_stored_with_a_domain_revalidates_only_its_path() {
@@ -346,7 +346,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 
 		$this->redirect_updated( $this->redirect_row( [ 'url' => 'https://an-old-domain.test/a-page/' ] ) );
 
-		$this->assertQueueRevalidates( [ '/a-page/' ] );
+		$this->assertReportsRedirects( [ '/a-page/' ] );
 	}
 
 	public function test_a_source_that_names_no_path_revalidates_nothing() {
@@ -355,13 +355,13 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->redirect_updated( $this->redirect_row( [ 'url' => '/' ] ) );
 		$this->redirect_updated( $this->redirect_row( [ 'url' => '' ] ) );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	/**
 	 * The site's own convention, whichever way it goes: the front-end keys on
 	 * the exact path string, so a source has to arrive in the form the rest of
-	 * the queue already holds.
+	 * the site's post permalinks take.
 	 */
 	public function test_the_source_path_follows_a_site_whose_permalinks_carry_no_trailing_slash() {
 		$this->set_permalink_structure( '/%postname%' );
@@ -369,25 +369,24 @@ class RedirectRevalidationTest extends QueueTestCase {
 
 		$this->create_redirect( [ 'url' => '/about-us/' ] );
 
-		$this->assertQueueRevalidates( [ '/about-us' ] );
+		$this->assertReportsRedirects( [ '/about-us' ] );
 	}
 
 	/**
 	 * A source names a path from the *domain* root: Redirection matches its
 	 * redirects against the request uri, and its monitor stores the path
 	 * component of a post's permalink, so a site served from a subdirectory
-	 * has that directory in every source it holds. The permalink the queue is
-	 * handed names it once — a second helping would revalidate a path the
+	 * has that directory in every source it holds. The change's `uri` — a path
+	 * from the domain root — names it once — a second helping would revalidate a path the
 	 * front-end has nothing behind, and under ADR 0004 nothing retries it.
 	 */
 	public function test_a_site_served_from_a_subdirectory_names_that_directory_once() {
 		$origin = home_url();
 
 		// Served from a directory for the length of this test only. Filtered
-		// rather than stored, because a test that enqueues anything commits the
-		// transaction its options would otherwise roll back — see
-		// `QueueTestCase::tear_down()` — while a filter is taken back down
-		// whatever the test does.
+		// rather than stored, because `set_up()` truncates Redirection's table,
+		// which commits the transaction its options would otherwise roll back —
+		// while a filter is taken back down whatever the test does.
 		add_filter(
 			'pre_option_home',
 			function () use ( $origin ) {
@@ -399,7 +398,10 @@ class RedirectRevalidationTest extends QueueTestCase {
 
 		$this->create_redirect( [ 'url' => '/blog/about-us' ] );
 
-		$this->assertQueueHolds( [ $origin . '/blog/about-us/' ] );
+		$this->assertReportsRedirects(
+			[ (string) wp_parse_url( $origin . '/blog/about-us/', PHP_URL_PATH ) ],
+			'The directory is named once, as the source names it.'
+		);
 	}
 
 	// Bulk operations
@@ -407,8 +409,8 @@ class RedirectRevalidationTest extends QueueTestCase {
 
 	/**
 	 * A bulk operation fires the per redirect actions in a loop. It is absorbed
-	 * rather than capped — but the queue describes work to be done, so a path
-	 * several redirects share costs one entry.
+	 * rather than capped — but identical changes merge, so a path several
+	 * redirects share costs one change.
 	 */
 	public function test_a_bulk_operation_costs_one_revalidation_per_distinct_source_path() {
 		$redirects = [];
@@ -424,21 +426,21 @@ class RedirectRevalidationTest extends QueueTestCase {
 			$redirect->delete();
 		}
 
-		$this->assertQueueRevalidates( [ '/campaign-legacy/', '/campaign/' ] );
+		$this->assertReportsRedirects( [ '/campaign-legacy/', '/campaign/' ] );
 	}
 
 	/**
 	 * The deduplication above, isolated: every redirect in the batch shares one
-	 * source, and the batch costs exactly one queue entry.
+	 * source, and the batch costs exactly one change.
 	 *
 	 * Asserted rather than inherited, and asserted *here* rather than against
-	 * the queue directly, because this is the one place a single click in
-	 * wp-admin can produce unbounded queue growth. The integration hands the
-	 * same permalink over once per redirect on purpose — it keeps no memory of
-	 * what it has seen, see ADR 0014 — so what collapses them is
-	 * `RevalidateQueue::add_item()`, which enqueues a permalink it already
-	 * holds exactly once. That is a claim about MySQL as much as about PHP,
-	 * which is why it lives in this suite and not in a standalone script.
+	 * the pending changes directly, because this is the one place a single
+	 * click in wp-admin can produce an unbounded run of changes. The
+	 * integration hands the same path over once per redirect on purpose — it
+	 * keeps no memory of what it has seen, see ADR 0014 — so what collapses
+	 * them is `PendingChanges::report()`, which merges a change identical to
+	 * one it already holds. Asserted through Redirection's own bulk-shaped
+	 * calls, which only this suite can make.
 	 */
 	public function test_a_bulk_operation_over_redirects_sharing_a_source_revalidates_it_exactly_once() {
 		$redirects = [];
@@ -451,9 +453,9 @@ class RedirectRevalidationTest extends QueueTestCase {
 			$redirect->disable();
 		}
 
-		$this->assertQueueRevalidates(
+		$this->assertReportsRedirects(
 			[ '/campaign/' ],
-			'25 redirects sharing one source cost more than one queue entry: the queue is no longer deduplicating.'
+			'25 redirects sharing one source cost more than one change: the pending changes are no longer merging them.'
 		);
 	}
 
@@ -481,7 +483,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 			$redirect->delete();
 		}
 
-		$this->assertQueueRevalidates( $paths, 'A bulk delete enqueues one revalidation per distinct source path, uncapped.' );
+		$this->assertReportsRedirects( $paths, 'A bulk delete reports one change per distinct source path, uncapped.' );
 	}
 
 	// The site has the last word
@@ -502,7 +504,23 @@ class RedirectRevalidationTest extends QueueTestCase {
 		$this->create_redirect( [ 'url' => '/handled-by-the-front-end' ] );
 		$this->create_redirect( [ 'url' => '/an-ordinary-redirect' ] );
 
-		$this->assertQueueRevalidates( [ '/an-ordinary-redirect/' ] );
+		$this->assertReportsRedirects( [ '/an-ordinary-redirect/' ] );
+	}
+
+	// Assertions
+	// ====
+
+	/**
+	 * Assert the request holds exactly these redirect changes, one per source
+	 * path, in the order they were reported.
+	 *
+	 * @param string[] $uris    The source paths, from the domain root.
+	 * @param string   $message Optional.
+	 *
+	 * @return void
+	 */
+	private function assertReportsRedirects( array $uris, $message = '' ) {
+		$this->assertPendingChanges( array_map( [ Change::class, 'redirect' ], $uris ), $message );
 	}
 
 	// Fixtures
@@ -544,13 +562,13 @@ class RedirectRevalidationTest extends QueueTestCase {
 	}
 
 	/**
-	 * A redirect that exists before the test's event, and that enqueued nothing
+	 * A redirect that exists before the test's event, and that reported nothing
 	 * on its way in.
 	 *
 	 * An unconfigured site refuses every revalidation, which is what leaves the
-	 * queue empty for the event the test is actually about — creating the
-	 * fixture *after* configuring the site would enqueue its source too, and
-	 * the queue holds one entry per path either way, so the assertion could not
+	 * pending changes empty for the event the test is actually about — creating
+	 * the fixture *after* configuring the site would report its source too, and
+	 * identical changes merge into one either way, so the assertion could not
 	 * tell the two apart.
 	 *
 	 * @param array $details What this redirect is about.
@@ -623,7 +641,7 @@ class RedirectRevalidationTest extends QueueTestCase {
 	 *
 	 * Written as a query rather than through Redirection's API on purpose:
 	 * deleting a redirect through the API fires the action this file is about,
-	 * so a teardown that used it would enqueue the very paths the next test
+	 * so a teardown that used it would report the very paths the next test
 	 * asserts on. The groups are left where they are — they are not what a test
 	 * arranges, and the tables outlive the class.
 	 *
