@@ -66,7 +66,7 @@ class RestApiTest extends QueueTestCase {
 			]
 		);
 
-		$this->assertSame( 200, $response->get_status(), 'Every item was accepted, so the route answers 200 rather than the 207 it reports a mixed result with.' );
+		$this->assertSame( 200, $response->get_status(), 'The item was accepted, so the route answers 200.' );
 
 		$data = $response->get_data();
 
@@ -303,8 +303,14 @@ class RestApiTest extends QueueTestCase {
 	 *
 	 * `check_permission()` reads the secret and nothing else, so a half
 	 * configured site gets past it — the refusal comes from
-	 * `RevalidateQueue::add_item()` instead, and lands in the per-item result
-	 * with the 207 `process_items()` answers a mixed batch with.
+	 * `RevalidateQueue::add_item()` instead, and lands in the per-item result.
+	 *
+	 * The status is 503: nothing was accepted, and the reason is neither the
+	 * caller's request nor anything breaking here — the site has no revalidate
+	 * domain, so nothing sent to it can be revalidated until an operator
+	 * supplies one. It answered 207 until #118, which is a *success* class and
+	 * told a caller checking the status that a revalidation it never queued was
+	 * fine. See `docs/adr/0027-a-wholly-failed-request-answers-a-failure-status.md`.
 	 */
 	public function test_a_site_holding_a_secret_but_no_domain_is_refused_at_the_enqueue() {
 		update_option( Settings::SETTINGS_SECRET_NAME, self::FIXTURE_SECRET );
@@ -317,7 +323,8 @@ class RestApiTest extends QueueTestCase {
 			]
 		);
 
-		$this->assertSame( 207, $response->get_status(), 'A refused item is a failed item, and the route reports that per item.' );
+		$this->assertSame( 503, $response->get_status(), 'Nothing was accepted, and an unconfigured site is why — so the status is not a 2xx of any kind.' );
+		$this->assertTrue( $response->is_error(), 'A caller that checks only whether the response is an error learns that nothing was queued.' );
 
 		$data = $response->get_data();
 
@@ -449,9 +456,10 @@ class RestApiTest extends QueueTestCase {
 	 * A batch in which one item fails reports that item as failed and the other
 	 * as accepted, and enqueues the one it accepted.
 	 *
-	 * The refusal test above sends a single item, so a 207 there cannot tell a
-	 * per-item result from a whole batch marked failed. This can: the item
-	 * missing its path fails on its own, and the item sent after it still
+	 * This is the one shape 207 Multi-Status describes: one code cannot cover a
+	 * body in which one item was queued and another was not (RFC 4918 §13), and
+	 * the per-item `success` fields are where the caller reads the rest. The
+	 * item missing its path fails on its own, and the item sent after it still
 	 * reaches the queue — sent first, so a batch that stops at its first failure
 	 * fails this too.
 	 */
@@ -487,6 +495,138 @@ class RestApiTest extends QueueTestCase {
 		$this->assertQueueRevalidates( [ '/accepted/' ], 'The accepted item was enqueued despite the failed one.' );
 	}
 
+	/**
+	 * A batch in which *no* item was accepted answers a failure status, not the
+	 * 207 a mixed one gets — issue #118.
+	 *
+	 * The distinction 207 could not make: every item here was refused, the queue
+	 * is empty, and a caller that checks the status is entitled to learn that
+	 * from the status alone. These routes are how a deploy hook or a CI job asks
+	 * for a revalidation and they have no other feedback channel — they cannot
+	 * see the queue, the log or the drain.
+	 */
+	public function test_a_batch_in_which_no_item_was_accepted_answers_a_failure_status() {
+		// A secret and no revalidate domain: the call gets past
+		// `check_permission()` and is refused at the enqueue, item by item.
+		update_option( Settings::SETTINGS_SECRET_NAME, self::FIXTURE_SECRET );
+
+		$response = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					[ 'path' => $this->permalink_of( '/refused/' ) ],
+					[ 'path' => $this->permalink_of( '/refused-too/' ) ],
+				],
+			]
+		);
+
+		$this->assertSame( 503, $response->get_status(), 'Nothing was accepted, and every item was refused for the same reason — so that reason is the request\'s answer.' );
+		$this->assertTrue( $response->is_error(), 'A 207 here was a success class: `res.ok`, and `is_error()`, both said the request was fine.' );
+
+		$data = $response->get_data();
+
+		$this->assertFalse( $data['success'] );
+		$this->assertCount( 2, $data['results'], 'Every item still has a result of its own.' );
+		$this->assertFalse( $data['results'][0]['success'] );
+		$this->assertFalse( $data['results'][1]['success'] );
+
+		$this->assertQueueIsEmpty( 'Nothing was queued, which is what the status now says.' );
+	}
+
+	/**
+	 * A batch whose every item this route could not read answers 400: the items
+	 * are the caller's to fix, and nothing on this site failed.
+	 */
+	public function test_a_batch_whose_every_item_is_missing_its_path_answers_400() {
+		$this->configure_site();
+
+		$response = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					[ 'priority' => 1 ],
+					[ 'priority' => 2 ],
+				],
+			]
+		);
+
+		$this->assertSame( 400, $response->get_status(), 'Nothing was accepted, and the items are why.' );
+
+		$data = $response->get_data();
+
+		$this->assertFalse( $data['success'] );
+		$this->assertCount( 2, $data['results'], 'An item with no path is reported rather than dropped.' );
+
+		$this->assertQueueIsEmpty();
+	}
+
+	/**
+	 * An entry of `items` that is not an object is reported as an item with no
+	 * path, never skipped.
+	 *
+	 * Skipping it left the body a result short, and a batch that lost an item
+	 * beside an accepted one answered 200 — telling a caller checking the status
+	 * that everything it sent had been queued.
+	 */
+	public function test_an_entry_that_is_not_an_object_is_reported_rather_than_dropped() {
+		$this->configure_site();
+
+		$permalink = $this->permalink_of( '/accepted/' );
+
+		$response = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					'/not-an-object/',
+					[ 'path' => $permalink ],
+				],
+			]
+		);
+
+		$this->assertSame( 207, $response->get_status(), 'One entry could not be read and one was accepted, so the batch is a mixed result — not a 200.' );
+
+		$data = $response->get_data();
+
+		$this->assertCount( 2, $data['results'], 'Every entry sent has a result, the unreadable one included.' );
+		$this->assertNull( $data['results'][0]['path'] );
+		$this->assertFalse( $data['results'][0]['success'] );
+		$this->assertTrue( $data['results'][1]['success'] );
+
+		$this->assertQueueRevalidates( [ '/accepted/' ] );
+	}
+
+	/**
+	 * A wholly-failed batch whose items failed for different reasons answers the
+	 * refusal, not the unreadable item beside it.
+	 *
+	 * A caller told 400 goes looking at what it sent, and what it sent is not the
+	 * whole story here: this site revalidates nothing at all until it is
+	 * configured, and the item that was well-formed would have failed too. So the
+	 * refusal outranks it — the rule
+	 * `docs/adr/0027-a-wholly-failed-request-answers-a-failure-status.md` records.
+	 */
+	public function test_a_wholly_failed_batch_answers_the_refusal_over_the_unreadable_item() {
+		update_option( Settings::SETTINGS_SECRET_NAME, self::FIXTURE_SECRET );
+
+		$response = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					[ 'priority' => 1 ],
+					[ 'path' => $this->permalink_of( '/refused/' ) ],
+				],
+			]
+		);
+
+		$this->assertSame( 503, $response->get_status(), 'The refusal describes the site, so it is the truth about the whole request.' );
+
+		$this->assertQueueIsEmpty();
+	}
+
 	// What the queue answered
 	// ====
 
@@ -520,7 +660,8 @@ class RestApiTest extends QueueTestCase {
 			}
 		);
 
-		$this->assertSame( 207, $response->get_status(), 'The item failed, so the route answers the same 207 it reports a refusal with, rather than a 200.' );
+		$this->assertSame( 500, $response->get_status(), 'Nothing was accepted, and the write failing here is this site\'s own doing rather than the caller\'s.' );
+		$this->assertTrue( $response->is_error(), 'A caller that checks only whether the response is an error learns that nothing was queued.' );
 
 		$data = $response->get_data();
 

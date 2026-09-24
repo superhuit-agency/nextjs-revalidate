@@ -173,3 +173,13 @@ so returning `true` there revalidates nothing.
   revalidates its page. Only draft and trash did before, so the front-end kept
   serving the page indefinitely. A private post moved out of private is covered
   the same way.
+* Changed: the REST routes answer a failure status when nothing was queued. Every
+  failed request answered 207 Multi-Status before, which is a success class — so
+  a deploy hook or a CI job checking the status was told a revalidation it never
+  got was fine. A request in which nothing was accepted now answers 400 when the
+  items were unreadable, 503 when the site is unconfigured and 500 when a queue
+  write failed; 207 is left to a batch in which some items were accepted and some
+  were not, and a request whose items were all accepted still answers 200. The
+  routes are documented in the README for the first time. An entry of a batch's
+  `items` that is not an object is now reported as an item with no path rather
+  than skipped, so it can no longer vanish from a batch that answered 200.
