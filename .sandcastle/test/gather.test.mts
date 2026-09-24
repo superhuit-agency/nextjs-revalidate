@@ -44,4 +44,17 @@ describe('parentFromBody', () => {
 			null
 		);
 	});
+
+	it('does not read the lower-case sub-issue form out of prose either — #28 would have gone to #29', () => {
+		assert.equal(
+			parentFromBody('The settings migration planned in the sub-issue of #29 is exactly that kind of migration.'),
+			null
+		);
+	});
+
+	it('does not read a marker dressed in markdown — the tracker doc asks for it plain', () => {
+		assert.equal(parentFromBody('**Part of #29**'), null);
+		assert.equal(parentFromBody('> Part of #29'), null);
+		assert.equal(parentFromBody('- Part of #29'), null);
+	});
 });
