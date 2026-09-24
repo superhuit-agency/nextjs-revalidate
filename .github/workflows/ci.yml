@@ -14,6 +14,12 @@
 # `push` on `main` is here as well as `pull_request`, so a merge that silently
 # combined two green branches into a red `main` is visible on `main` itself.
 #
+# `v1.x` is the v1 maintenance line (ADR 0031), cut from the `v1.7.0` tag. GitHub
+# runs a branch's pushes and pull requests with the `ci.yml` *in that branch*, so
+# it is listed here before the tag exists: the branch inherits this file, and its
+# first fix gets the same checks as a fix to `main`. On `main` the entry does
+# nothing until the branch exists.
+#
 # There are deliberately no `paths` filters. A check that skips itself on some
 # diffs cannot be a required status check — GitHub waits forever for the run that
 # never started — and every script here is minutes at most.
@@ -23,9 +29,11 @@ on:
   pull_request:
     branches:
       - main
+      - v1.x
   push:
     branches:
       - main
+      - v1.x
 
 # Pushing again to a PR branch makes the previous run's verdict worthless.
 concurrency:

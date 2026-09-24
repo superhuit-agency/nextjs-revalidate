@@ -71,12 +71,38 @@ jobs:
         with:
           args: zip -qq -r nextjs-revalidate-${{  github.ref_name }}.zip nextjs-revalidate
 
+      # Created as a draft, and published by the next step. The action cannot say
+      # whether a release is "Latest", and GitHub makes every newly published
+      # release Latest by default, so a v1.7.1 tagged after v2.0.0 would take it
+      # (ADR 0031). A draft is never Latest. The changelog stays the action's: it
+      # picks the previous tag by semver, so a v1.x release lists v1.x commits.
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
+          draft: true
           files: |
             nextjs-revalidate-${{  github.ref_name }}.zip
+
+      # "Latest" goes to the highest version released so far, never to the newest
+      # release: this tag takes it only when no published release outranks it.
+      # `sort -V` puts v1.10.0 above v1.9.0, which a plain sort does not.
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          highest=$(
+            {
+              gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+                --limit 1000 --json tagName --jq '.[].tagName'
+              echo "$TAG"
+            } | sort -V | tail -n 1
+          )
+          if [ "$highest" = "$TAG" ]; then latest=true; else latest=false; fi
+          echo "Highest released version: $highest. Publishing $TAG with Latest=$latest."
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest="$latest"
 
       - name: Upload to release-belt
         uses: easingthemes/ssh-deploy@main
