@@ -689,5 +689,8 @@ needs `composer install` first — PHPStan is a dev dependency.
 is its own piece of work.
 
 Requiring a green run to merge is a repo setting, not a file — branch protection
-on `main`, with **Typecheck** and **PHP 7.4** as required status checks. Until
-that is switched on, CI reports and merging is still possible over a red run.
+on `main` and `v1.x`, with **Typecheck** and **PHP 7.4** as required status
+checks, both pinned to the GitHub Actions app. A branch need not be up to date
+with its base to merge: the `push` run on `main` is what catches two green
+branches combining into a red one. Admins are not held to it, so a release bump
+can still be pushed straight to `main`.
