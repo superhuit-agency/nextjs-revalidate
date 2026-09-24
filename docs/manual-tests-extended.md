@@ -533,6 +533,15 @@ what the backfill exists to avoid needing.
 - [ ] **Publish a post and confirm 1.6.9 revalidates it.** Expect
       `= Revalidating: /…/` in the dev server console. Enter the upgrade from a
       *working* site, so that a broken one afterwards means something.
+- [ ] **Leave an entry waiting in 1.6.9's queue**, so the upgrade has a row to
+      carry rather than an empty table:
+      ```sh
+      npx wp-env run cli wp db query "INSERT INTO wp_revalidate_queue (permalink, priority) VALUES ('http://localhost:8080/left-waiting/', 7)"
+      ```
+      Expect `wp db query "SELECT permalink, priority FROM wp_revalidate_queue"`
+      to list it at priority 7. A row inserted this way schedules no drain, so it
+      sits until something else does. Do it last in this section, and stop the
+      site next.
 
 ## Y. The upgrade
 
@@ -554,9 +563,26 @@ what the backfill exists to avoid needing.
       `npx wp-env run cli -- ls -a wp-content/uploads` shows no
       `nextjs-revalidate.log`, and `tail` of the path under **Enable logs** on
       the Debug tab shows the lines 1.6.9 wrote in X.
-- [ ] **Update the post published in U.** Expect a revalidation of its path, and
-      a queue table that now exists, created by the upgrade rather than by a
-      fresh activation.
+- [ ] **Expect the queue's unique key moved onto the hash column**:
+      ```sh
+      npx wp-env run cli wp db query "SHOW INDEX FROM wp_revalidate_queue"
+      ```
+      Expect one `permalink_hash` key, with `Non_unique` 0 and an empty
+      `Sub_part`, and **no** key named `permalink`. The key this replaces was
+      declared over a `TEXT` column, which only MariaDB accepts — on standard
+      MySQL the `CREATE TABLE` was refused outright and the site has no queue
+      table at all (ADR 0029). wp-env's database is MariaDB, so this
+      stack can show the upgrade and never the refusal.
+- [ ] **Expect the entry left waiting in X carried, and hashed**:
+      ```sh
+      npx wp-env run cli wp db query "SELECT permalink, permalink_hash, priority FROM wp_revalidate_queue"
+      ```
+      Expect the row still there at priority 7, with a 64-character
+      `permalink_hash` beside it. Check this before the next step: updating a
+      post schedules a drain, which takes the row with it.
+- [ ] **Update the post published in U.** Expect a revalidation of its path in
+      the dev server console: the table carried through the upgrade takes a new
+      entry under its new key.
 - [ ] **Reload wp-admin several times.** Expect the ledger to stay put and
       nothing to be re-migrated: a migration decides by the ledger, never by the
       plugin version.

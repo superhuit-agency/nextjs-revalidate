@@ -64,6 +64,14 @@ $GLOBALS['njr_sweeps'] = 0;
 /** The sites the sweep reached, in order, since the last reset. @var array */
 $GLOBALS['njr_visited'] = [];
 
+/**
+ * The sites whose queue table the migration asked to bring up to date, in the
+ * order they were asked.
+ *
+ * @var int[]
+ */
+$GLOBALS['njr_tables_migrated'] = [];
+
 /** The site id the sweep should die on, to model a sweep cut short. @var int|null */
 $GLOBALS['njr_interrupt_at'] = null;
 
@@ -145,6 +153,21 @@ function trailingslashit( $string ) { return rtrim( $string, '/\\' ) . '/'; }
 function wp_upload_dir() { return [ 'basedir' => sys_get_temp_dir() . '/njr-network-sweep-test-no-uploads' ]; }
 
 /**
+ * The revalidation queue, as much of it as a migration reaches.
+ *
+ * `Settings::migrate_db()` asks the queue to bring its table to the shape the
+ * running code expects (ADR 0029): a site's table is its data exactly as its
+ * options are, and the same request has to carry both. There is no database
+ * here, so this records that it was asked rather than doing anything.
+ */
+class NJR_Queue_Double {
+
+	public function migrate_table() {
+		$GLOBALS['njr_tables_migrated'][] = $GLOBALS['njr_current'];
+	}
+}
+
+/**
  * A double for the composition root, standing in for its sweep helper.
  *
  * It reproduces the helper's contract rather than its body: a single install
@@ -154,6 +177,26 @@ function wp_upload_dir() { return [ 'basedir' => sys_get_temp_dir() . '/njr-netw
  * helper offers a seam for, and both of which this file is here to pin.
  */
 class NextJsRevalidate {
+
+	/** @var NextJsRevalidate|null */
+	private static $instance;
+
+	/** @var NJR_Queue_Double */
+	public $queue;
+
+	public function __construct() {
+		$this->queue = new NJR_Queue_Double();
+	}
+
+	/**
+	 * The root `Abstracts\Base` reaches a collaborator through, which is how
+	 * `migrate_db()` gets at the queue.
+	 */
+	public static function init() {
+		if ( ! isset( self::$instance ) ) self::$instance = new self();
+
+		return self::$instance;
+	}
 
 	public static function is_network_active() {
 		return $GLOBALS['njr_is_multisite'] && $GLOBALS['njr_network_active'];
@@ -245,6 +288,7 @@ function network( array $sites, array $network = [] ) {
 	$GLOBALS['njr_is_super_admin']  = true;
 	$GLOBALS['njr_sweeps']          = 0;
 	$GLOBALS['njr_visited']         = [];
+	$GLOBALS['njr_tables_migrated'] = [];
 	$GLOBALS['njr_interrupt_at']    = null;
 	$GLOBALS['njr_ms_only_called']  = false;
 
@@ -293,6 +337,11 @@ $settings = network( [
 ] );
 $settings->sweep_migrations();
 check_same( [ 1, 2, 3 ], $GLOBALS['njr_visited'], 'the sweep reaches every site of the network' );
+check_same(
+	[ 1, 2, 3 ],
+	$GLOBALS['njr_tables_migrated'],
+	'every site migrates its queue table too, and not only its options'
+);
 check_same(
 	[ 1 => '1.7.0', 2 => '1.7.0', 3 => '1.7.0' ],
 	ledgers(),

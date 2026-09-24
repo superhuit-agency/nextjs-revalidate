@@ -17,7 +17,7 @@
  * the number being wrong is the whole of the bug. ADR 0028 settled it at 5.6.
  *
  * `npm run analyse:php` holds every core function, method and class the plugin
- * calls to that floor (ADR 0029). This holds the rest:
+ * calls to that floor (ADR 0030). This holds the rest:
  *
  * 1. The four places that state the floor agree: the plugin header, which core
  *    reads; `readme.txt`, which WordPress.org reads; README.md, which a person

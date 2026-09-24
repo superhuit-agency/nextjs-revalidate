@@ -189,3 +189,14 @@ so returning `true` there revalidates nothing.
   routes are documented in the README for the first time. An entry of a batch's
   `items` that is not an object is now reported as an item with no path rather
   than skipped, so it can no longer vanish from a batch that answered 200.
+* Fixed: the revalidation queue's table is now created on standard MySQL. Its
+  unique key was declared over a `TEXT` column with no prefix length, which only
+  MariaDB accepts — everywhere else the `CREATE TABLE` was refused outright, the
+  site was left with no queue table at all, and every revalidation it enqueued
+  failed silently. The key now sits on a fixed-width hash of the permalink, so
+  the deduplication the queue depends on means the same thing on every database.
+  An existing table is migrated to that shape on the first admin request or the
+  first revalidation after the upgrade, whichever comes first, carrying whatever
+  it was holding; a site that never managed to create one gets it there too. A
+  table that cannot be created or migrated is now reported in the log. Two
+  permalinks differing only in case are now queued as the two paths they are.

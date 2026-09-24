@@ -21,7 +21,7 @@
  * result cache, so this costs the analysis after it nothing.
  *
  * Run by `npm run analyse:php`, ahead of the analysis, or on its own with
- * `php config/phpstan/floor-canary/check.php`. ADR 0029.
+ * `php config/phpstan/floor-canary/check.php`. ADR 0030.
  */
 
 $root     = dirname( __DIR__, 3 );

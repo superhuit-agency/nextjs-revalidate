@@ -33,7 +33,7 @@ use PHPStan\Rules\RuleErrorBuilder;
  * What it cannot see is hooks — `add_action( 'wp_after_insert_post', … )` is a
  * call to a 2.0 function with a string in it, and the stubs carry no `do_action`
  * bodies to read a hook's `@since` from. `tests/wordpress-floor-test.php` holds
- * the hooks that set the floor; ADR 0029 records the limit.
+ * the hooks that set the floor; ADR 0030 records the limit.
  *
  * A function call inside a `function_exists()` check on that function, and a
  * `new` or static call inside a `class_exists()` check on its class, is the

@@ -1,7 +1,7 @@
 # The WordPress floor is the newest core API the plugin calls, declared as `MAJOR.MINOR`
 
 Decided while fixing #122. The gate that holds it is
-[ADR 0029](0029-the-analysis-holds-calls-to-the-wordpress-floor.md).
+[ADR 0030](0030-the-analysis-holds-calls-to-the-wordpress-floor.md).
 
 `Requires at least` said `5.0.0`, in `nextjs-revalidate.php` and `readme.txt`
 both, from before this plugin had most of what it now does. It was not true.
@@ -142,7 +142,7 @@ holds `Tested up to` together across the two files that carry it.
 
 A new call to a core function, method or class newer than the floor fails
 `npm run analyse:php`, naming the API and the release it arrived in — see
-[ADR 0029](0029-the-analysis-holds-calls-to-the-wordpress-floor.md). Hooks are
+[ADR 0030](0030-the-analysis-holds-calls-to-the-wordpress-floor.md). Hooks are
 the part it cannot see, so the three in the table above that set a floor are
 listed in the test by hand, with the number of arguments the plugin needs from
 `deleted_post`. **Registering a hook introduced after the floor means adding it
