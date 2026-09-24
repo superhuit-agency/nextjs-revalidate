@@ -873,7 +873,7 @@ class RevalidateQueue extends Base implements Hookable {
 	function ajax_queue_progress() {
 		if ( !isset($_GET['action']) || $_GET['action'] !== 'nextjs-revalidate-queue-progress' ) return;
 
-		if ( false === check_ajax_referer( 'nextjs-revalidate-revalidate_queue_progress' ) ) return;
+		check_ajax_referer( 'nextjs-revalidate-revalidate_queue_progress' );
 
 		$queue = $this->get_queue();
 		$nb_left = count($queue);
