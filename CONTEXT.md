@@ -350,6 +350,15 @@ file's header. The single source of truth for what release this is.
 _Avoid_: NJR_VERSION as a concept distinct from the header — the constant is
 derived from the header, not maintained alongside it.
 
+**WordPress floor**:
+The oldest WordPress release the plugin declares it runs on — `Requires at
+least` — and set by the newest core API the plugin uses, not by preference.
+Written `MAJOR.MINOR`, and stated in four places the test suite holds together;
+the analysis fails on a use of anything core introduced after it. Below it the
+plugin is not degraded but refused: core, from 5.2 on, declines the activation.
+_Avoid_: Minimum version, WP requirement — both leave open whether it is a
+recommendation; supported versions, which is a support promise and not this.
+
 **DB version**:
 The version of the plugin whose data shape a given site's stored options match.
 Distinct from the plugin version: a site can be running new code over old data,

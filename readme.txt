@@ -165,9 +165,9 @@ so returning `true` there revalidates nothing.
   whose front-end resolves redirects some other way.
 * Changed: the plugin now requires WordPress 5.6, not 5.0. `wp_after_insert_post`
   — the hook a save revalidates from — has only existed since 5.6, so on 5.0
-  through 5.5 the plugin activated, showed every admin screen, purged all on
-  demand, and silently revalidated nothing when a post was saved. The declared
-  requirement now matches what the code needs; WordPress itself refuses the
+  through 5.5 the plugin activated and showed every admin screen, and saving a
+  post silently revalidated nothing. The declared requirement now matches what
+  the code needs, and from WordPress 5.2 on, WordPress itself refuses the
   activation below it.
 * Fixed: permanently deleting a post now revalidates its path. Only trashing did
   before, so a post deleted outright — "Delete Permanently", `wp_delete_post()`,
