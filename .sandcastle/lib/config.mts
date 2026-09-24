@@ -55,7 +55,7 @@ export const IDLE_TIMEOUT_SECONDS = 600;
 export const IMPLEMENTER_MODEL = 'claude-opus-5-5';
 
 /** The implementer's reasoning effort, passed to Claude Code as `--effort`. */
-export const IMPLEMENTER_EFFORT = 'high';
+export const IMPLEMENTER_EFFORT = 'medium';
 
 /**
  * The model that writes an epic PR's body — the one agent in the finalize
