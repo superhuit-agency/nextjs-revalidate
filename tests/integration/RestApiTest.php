@@ -339,6 +339,38 @@ class RestApiTest extends QueueTestCase {
 		$this->assertQueueIsEmpty( 'A refusal does not reach the queue.' );
 	}
 
+	/**
+	 * A site that silences its unconfigured notice silences the notice and
+	 * nothing else (#79). The filter is about who is *told*; the refusal, its
+	 * log line and the status a caller reads are the site's truth, and stay it.
+	 */
+	public function test_a_site_that_silences_its_notice_is_still_refused_and_still_logs_it() {
+		update_option( Settings::SETTINGS_SECRET_NAME, self::FIXTURE_SECRET );
+		add_filter( 'nextjs_revalidate_show_unconfigured_notice', '__return_false' );
+
+		$this->reset_log();
+		$this->enable_logs();
+
+		$refusal = $this->enqueue( '/silenced/' );
+
+		$this->assertWPError( $refusal );
+		$this->assertSame( 'not_configured', $refusal->get_error_code(), 'The filter reached the queue\'s refusal.' );
+		$this->assertStringContainsString( '⛔ Refused ' . $this->permalink_of( '/silenced/' ), $this->log(), 'The filter reached the refusal\'s log line.' );
+
+		$response = $this->call_route(
+			'/revalidate',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'path'   => $this->permalink_of( '/silenced/' ),
+			]
+		);
+
+		$this->assertSame( 503, $response->get_status(), 'The filter reached the status a REST caller is answered with.' );
+		$this->assertQueueIsEmpty( 'A silenced site refuses at the door like any other unconfigured one.' );
+
+		$this->reset_log();
+	}
+
 	// The batch route
 	// ====
 

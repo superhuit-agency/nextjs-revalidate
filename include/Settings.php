@@ -938,6 +938,34 @@ class Settings extends Base implements Hookable {
 	}
 
 	/**
+	 * Whether this site's unconfigured notice speaks to whoever is reading.
+	 *
+	 * Decided once, here, and consulted by both notices that can carry it:
+	 * `unconfigured_notice()` itself, and `FailureWindow::get_degraded_notice()`
+	 * where it speaks in the unconfigured notice's place on a block editor
+	 * screen. A site that asked for silence must not be told the same thing by
+	 * the other notice instead.
+	 *
+	 * The filter is asked last, once the site and the reader have both
+	 * qualified: a configured site, or a reader outside the audience, never
+	 * reaches it. It is code rather than a setting on purpose — a stored "hide
+	 * this" is the dismissible notice ADR 0015 rejected, under another name. It
+	 * silences the notice only: the site still refuses every revalidation, and
+	 * still logs each refusal.
+	 *
+	 * @return bool
+	 */
+	public function shows_unconfigured_notice() {
+		if ( $this->is_configured() ) return false;
+
+		// Only bother people whose work is being silently dropped,
+		// or who can do something about it.
+		if ( !current_user_can( 'manage_options' ) && !current_user_can( 'edit_posts' ) ) return false;
+
+		return (bool) apply_filters( 'nextjs_revalidate_show_unconfigured_notice', true, $this->missing_settings() );
+	}
+
+	/**
 	 * Tell whoever is looking at the admin that this site revalidates nothing.
 	 *
 	 * Not dismissible on purpose: an unconfigured site accepts edits and looks
@@ -945,13 +973,9 @@ class Settings extends Base implements Hookable {
 	 * exactly the silence this is here to break.
 	 */
 	public function unconfigured_notice() {
-		if ( $this->is_configured() ) return;
+		if ( !$this->shows_unconfigured_notice() ) return;
 
 		$can_configure = current_user_can( 'manage_options' );
-
-		// Only bother people whose work is being silently dropped,
-		// or who can do something about it.
-		if ( !$can_configure && !current_user_can( 'edit_posts' ) ) return;
 
 		$missing = $this->missing_settings();
 		if ( count($missing) > 1 )                     $what = __( 'its revalidate domain and secret are missing', 'nextjs-revalidate' );

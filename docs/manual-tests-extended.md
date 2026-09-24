@@ -290,6 +290,30 @@ Create a subscriber once:
 - [ ] **As the subscriber, load the posts list.** Expect no Purge cache row
       action and no Purge caches bulk action. Restore the secret afterwards.
 
+A site that is unconfigured on purpose can silence its notice with the
+`nextjs_revalidate_show_unconfigured_notice` filter. The steps below run as the
+administrator.
+
+- [ ] **Set the secret to `wrong-secret` and update a post three times, forcing
+      the cron after each, then clear the revalidate domain and open the post in
+      the block editor.** Expect the degraded notice in the block editor, standing
+      in for the unconfigured notice that core hides there. This is the baseline
+      the next step silences.
+- [ ] **Silence the notice, then reload the post in the block editor:**
+      ```sh
+      npx wp-env run cli -- bash -c 'mkdir -p wp-content/mu-plugins && cat > wp-content/mu-plugins/njr-runbook-silence.php <<PHP
+      <?php add_filter("nextjs_revalidate_show_unconfigured_notice", "__return_false");
+      PHP'
+      ```
+      Expect **no** degraded notice in the block editor.
+- [ ] **Load the Dashboard, the posts list and the Next.js revalidate settings
+      screen.** Expect **no** unconfigured notice and **no** degraded notice on
+      any of them.
+- [ ] **Remove the filter and reload the Dashboard:**
+      `npx wp-env run cli -- rm wp-content/mu-plugins/njr-runbook-silence.php`.
+      Expect the unconfigured notice back. Restore the domain and the secret
+      afterwards.
+
 ## L. The French translation
 
 - [ ] **Settings → General → Site Language → Français, save.**

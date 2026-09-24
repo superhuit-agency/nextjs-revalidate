@@ -514,6 +514,40 @@ actions. Return `false` to keep it out of the queue.
 | permalink | string\|false | The post permalink. False if the post is not revalidatable |
 | post_id | int | The post ID |
 
+### nextjs_revalidate_show_unconfigured_notice
+
+Filters whether an unconfigured site shows its unconfigured notice. Return
+`false` to silence it on a site that is unconfigured on purpose, such as a
+network's staging subsite.
+
+It is asked last, and only on an unconfigured site, for a user who would
+otherwise see the notice. A configured site never reaches it, and neither does
+a user who can neither `manage_options` nor `edit_posts`. It covers every
+admin screen, and the block editor too: there, the degraded revalidation notice
+stands in for the unconfigured one when the site's recent revalidations failed,
+and the filter silences that stand-in with it. On a configured site, the
+degraded notice ignores this filter.
+
+It silences the notice and nothing else. An unconfigured site still refuses
+every revalidation, still logs each refusal when logs are on, and its REST
+routes still answer 503.
+
+#### Usage
+```php
+// In an mu-plugin: silence the notice on the network's staging subsite only.
+add_filter( 'nextjs_revalidate_show_unconfigured_notice', function( $show, $missing_settings ) {
+	if ( 3 === get_current_blog_id() ) return false;
+	return $show;
+}, 10, 2 );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| show | bool | Whether the notice is shown. Defaults to `true` |
+| missing_settings | string[] | The settings the site is missing: any of `domain` and `secret` |
+
 
 ## Tests
 
