@@ -17,8 +17,6 @@ use PHPStan\Reflection\ReflectionProvider;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
 use PHPStan\Rules\RuleErrorBuilder;
-use PHPStan\Type\Accessory\HasMethodType;
-use PHPStan\Type\TypeUtils;
 
 /**
  * The WordPress half of the compatibility gate: a call to a core API newer than
@@ -37,9 +35,13 @@ use PHPStan\Type\TypeUtils;
  * bodies to read a hook's `@since` from. `tests/wordpress-floor-test.php` holds
  * the hooks that set the floor; ADR 0029 records the limit.
  *
- * A call inside a `function_exists()`, `class_exists()` or `method_exists()`
- * check on what it calls is the sanctioned way to use a newer API below its
- * release, so it is not reported.
+ * A function call inside a `function_exists()` check on that function, and a
+ * `new` or static call inside a `class_exists()` check on its class, is the
+ * sanctioned way to use a newer API below its release, so it is not reported.
+ * A `method_exists()` check cannot be honoured the same way: the stubs already
+ * declare the method, so PHPStan has nothing to narrow — and reports the check
+ * itself as always true. A guarded call to a newer method says so with an
+ * inline ignore of `nextjsRevalidate.wordpressFloor`, and its reason.
  *
  * The floor comes from `parameters.wordpressFloor` in phpstan.neon rather than
  * from the plugin header, because PHPStan's result cache is keyed on the
@@ -77,18 +79,18 @@ final class WordPressFloorRule implements Rule {
 		$found = $this->resolve( $node, $scope );
 		if ( null === $found ) return [];
 
-		[ $what, $doc, $guard ] = $found;
+		[ $what, $doc, $remedy ] = $found;
 		$since = self::since( $doc );
 
 		if ( null === $since || version_compare( self::full( $since ), self::full( $this->floor ), '<=' ) ) return [];
 
 		return [
 			RuleErrorBuilder::message( sprintf(
-				'%s was added in WordPress %s, above the %s floor the plugin declares (`Requires at least`). Raise the floor (ADR 0028), or guard the call with %s.',
+				'%s was added in WordPress %s, above the %s floor the plugin declares (`Requires at least`). Raise the floor (ADR 0028), or %s.',
 				$what,
 				$since,
 				$this->floor,
-				$guard
+				$remedy
 			) )
 				->identifier( 'nextjsRevalidate.wordpressFloor' )
 				->build(),
@@ -97,8 +99,8 @@ final class WordPressFloorRule implements Rule {
 
 	/**
 	 * What an unguarded call reaches in core: a name for the message, the
-	 * docblock carrying its `@since`, and the check that would guard it. Null
-	 * when it is not core's, is already guarded, or cannot be resolved.
+	 * docblock carrying its `@since`, and what to do short of raising the floor.
+	 * Null when it is not core's, is already guarded, or cannot be resolved.
 	 *
 	 * @return array{string, ?string, string}|null
 	 */
@@ -109,14 +111,14 @@ final class WordPressFloorRule implements Rule {
 			$function = $this->reflectionProvider->getFunction( $node->name, $scope );
 			if ( ! self::is_core( $function->getFileName() ) || $scope->isInFunctionExists( $function->getName() ) ) return null;
 
-			return [ sprintf( 'Function %s()', $function->getName() ), $function->getDocComment(), 'function_exists()' ];
+			return [ sprintf( 'Function %s()', $function->getName() ), $function->getDocComment(), 'guard the call with function_exists()' ];
 		}
 
 		if ( $node instanceof New_ ) {
 			$class = $node->class instanceof Name ? $this->class_reflection( $scope->resolveName( $node->class ) ) : null;
 			if ( null === $class || ! self::is_core( $class->getFileName() ) || $scope->isInClassExists( $class->getName() ) ) return null;
 
-			return [ sprintf( 'Class %s', $class->getName() ), $class->getNativeReflection()->getDocComment() ?: null, 'class_exists()' ];
+			return [ sprintf( 'Class %s', $class->getName() ), $class->getNativeReflection()->getDocComment() ?: null, 'guard it with class_exists()' ];
 		}
 
 		if ( $node instanceof MethodCall || $node instanceof NullsafeMethodCall ) {
@@ -126,13 +128,7 @@ final class WordPressFloorRule implements Rule {
 			$type = $scope->getType( $node->var );
 			if ( ! $type->hasMethod( $name )->yes() ) return null;
 
-			// `method_exists( $screen, 'x' )` narrows `$screen` to `WP_Screen&hasMethod(x)`.
-			foreach ( TypeUtils::getAccessoryTypes( $type ) as $accessory ) {
-				if ( $accessory instanceof HasMethodType && $accessory->hasMethod( $name )->yes() ) return null;
-			}
-
 			$method = $type->getMethod( $name, $scope );
-			$guard  = 'method_exists()';
 		} elseif ( $node instanceof StaticCall ) {
 			if ( ! $node->class instanceof Name || ! $node->name instanceof Identifier ) return null;
 
@@ -140,7 +136,6 @@ final class WordPressFloorRule implements Rule {
 			if ( null === $class || ! $class->hasMethod( $node->name->toString() ) || $scope->isInClassExists( $class->getName() ) ) return null;
 
 			$method = $class->getMethod( $node->name->toString(), $scope );
-			$guard  = 'class_exists()';
 		} else {
 			return null;
 		}
@@ -152,7 +147,11 @@ final class WordPressFloorRule implements Rule {
 		$doc = $method->getDocComment();
 		if ( null === self::since( $doc ) ) $doc = $declaring->getNativeReflection()->getDocComment() ?: null;
 
-		return [ sprintf( 'Method %s::%s()', $declaring->getName(), $method->getName() ), $doc, $guard ];
+		return [
+			sprintf( 'Method %s::%s()', $declaring->getName(), $method->getName() ),
+			$doc,
+			'if the call is guarded, mark it `@phpstan-ignore nextjsRevalidate.wordpressFloor` and say why',
+		];
 	}
 
 	private function class_reflection( string $name ): ?ClassReflection {

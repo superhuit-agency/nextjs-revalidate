@@ -32,10 +32,19 @@ the call with function_exists().
 🪪 nextjsRevalidate.wordpressFloor
 ```
 
-A method with no `@since` of its own is dated by its class. A call inside a
-`function_exists()`, `class_exists()` or `method_exists()` check on what it calls
-is not reported: that is how a plugin uses a newer API below its release, and
-PHPStan's scope already knows when a call sits inside one.
+A method with no `@since` of its own is dated by its class. A function call
+inside a `function_exists()` check on that function, and a `new` or static call
+inside a `class_exists()` check on its class, is not reported: that is how a
+plugin uses a newer API below its release, and PHPStan's scope already knows
+when a call sits inside one.
+
+`method_exists()` is not honoured, because it cannot be. The stubs describe the
+newest core, where the method exists, so PHPStan has nothing to narrow — and
+reports the guard itself as always true (`function.alreadyNarrowedType`), which
+at this level fails the analysis on its own; it is why ADR 0026 dropped the one
+the plugin had. A call to a newer method that really is guarded says so with an
+inline `@phpstan-ignore nextjsRevalidate.wordpressFloor` and its reason, and the
+rule's message for a method says that.
 
 It runs as part of `npm run analyse:php`, so it is in the same CI job as the
 analysis ADR 0016 set up and in the harness's gate, and it passes on the current
@@ -43,6 +52,33 @@ code with nothing added to the baseline. Lowering `wordpressFloor` to `4.9`
 reports exactly `is_taxonomy_viewable()` (5.1.0) and
 `WP_Screen::is_block_editor()` (5.0.0) — the two function-shaped rows of ADR
 0028's sweep, found without the sweep.
+
+The rule is itself in the analysed paths — the file, not `config/phpstan/` —
+because PHPStan only notices an edit to an extension it analyses. Outside them,
+an edited rule leaves the result cache answering for the old one, and PHPStan
+fails the run with a warning saying so.
+
+## A canary proves the rule is still reporting
+
+The rule fails open. If a `php-stubs/wordpress-stubs` release moves its file, or
+a PHPStan major changes what reflection answers, it stops recognising core and
+reports nothing — and an analysis that reports nothing is green. A check that
+has stopped running looks exactly like one that passes, which is #122 again.
+
+So `npm run analyse:php` runs `config/phpstan/floor-canary/check.php` first. It
+analyses `fixture.php` beside it, alone, with the project's own `phpstan.neon`,
+and fails unless the rule reports exactly the fixture's unguarded calls newer
+than `wordpressFloor` — a function, a `new`, an instance method and a static
+method — and nothing else is reported. Each call in the fixture is marked with
+the release it arrived in, so the expectation follows the floor rather than being
+written down twice; a floor above every marked call fails the canary too, since
+it would then prove nothing.
+
+It was checked against the ways it exists to catch: the rule's stubs path
+changed, the rule removed from `phpstan.neon`, the `function_exists()` check
+dropped, the floor raised past the fixture. Each fails it, naming the line. It
+analyses one file, so it neither reads nor writes the result cache, and it costs
+a couple of seconds.
 
 ## The floor it reads is a copy, held to the others by a test
 
@@ -88,6 +124,12 @@ registering hooks often enough for the list to be a burden; three rows are not.
 the calls somebody remembered to write down, which is the failure it is meant to
 prevent.
 
+**PHPStan's `RuleTestCase`.** The conventional way to test a rule, and a PHPUnit
+suite — which here runs only inside wp-env (`npm run test:integration`), and CI
+does not start one. The canary is a shell step's exit code, which is what the CI
+job already runs, and it tests the rule as registered rather than as constructed
+by a test.
+
 **Reading the floor from the plugin header.** One copy instead of four, and a
 result cache that answers for a floor that is no longer there. Local runs would
 disagree with CI, which starts cold.
@@ -103,6 +145,7 @@ tracks the current release and copies core's annotations, so an API core
 documents wrongly is dated wrongly here too; an API with no `@since` at all,
 on itself or its class, is not reported.
 
-The rule is PHP the analysis loads, not PHP the plugin ships. It lives under
-`config/phpstan/`, is autoloaded through `autoload-dev`, and like every tracked
-PHP file is parsed by `npm run lint:php` on 7.4.
+The rule and its canary are PHP the analysis loads, not PHP the plugin ships.
+They live under `config/phpstan/`, outside the release allowlist; the rule is
+autoloaded through `autoload-dev`, and like every tracked PHP file both are
+parsed by `npm run lint:php` on 7.4.

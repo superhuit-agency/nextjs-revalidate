@@ -82,6 +82,12 @@ parameters:
 		# The plugin file itself: the composition root, the two public API
 		# functions and the activation hooks all live in it, and it ships.
 		- nextjs-revalidate.php
+		# The WordPress floor rule, which ships nothing but is loaded into every
+		# run. PHPStan only notices an edit to an extension it analyses: outside
+		# these paths, a changed rule leaves a stale result cache and a warning
+		# that fails the run. The file alone, not config/phpstan — the canary
+		# fixture beside it is meant to fail and is analysed on its own (ADR 0029).
+		- config/phpstan/WordPressFloorRule.php
 
 	# A `{min, max}` range, not a single version. PHPStan 2.x is what supports
 	# this shape — an older major reads `phpVersion` as one int and would analyse
@@ -101,7 +107,9 @@ parameters:
 	# verdict standing when only the header moved. `tests/wordpress-floor-test.php`
 	# fails when any of the four disagree, so moving the floor is one edit in each
 	# and the gate refuses anything less. `MAJOR.MINOR`, for the reason ADR 0028
-	# gives. Hooks are outside what the rule can see — ADR 0029.
+	# gives. Hooks are outside what the rule can see, and
+	# `config/phpstan/floor-canary/` proves the rule still reports before each
+	# analysis trusts it — ADR 0029.
 	wordpressFloor: '5.6'
 
 parametersSchema:
