@@ -1,78 +1,71 @@
 # Next.js Revalidate
 
-A WordPress plugin that tells a headless Next.js front-end to rebuild its cached
-pages when the corresponding WordPress content changes.
+A WordPress plugin that tells a headless Next.js front-end which WordPress
+content changed, so the front-end can revalidate whatever it cached from it.
 
 > Seeded during triage of #28 (migration versioning). Terms outside that area are
 > the minimum needed for the rest to read, and should be sharpened as they come up.
+>
+> Reshaped for v2 while grilling #81, which moves the plugin from naming paths to
+> reporting changes — see ADRs 0033–0035.
 
 ## Language
 
 ### Revalidation
 
+**Change**:
+Something that happened to one WordPress subject — a post, a term, a redirect's
+path, the templates — that may leave cache entries on the front-end stale.
+Described as WordPress sees it, never as the front-end caches it: the plugin
+reports changes, and the front-end decides which cache entries each one expires.
+_Avoid_: Event — WordPress's hooks, and a field on the wire; fact; payload; tag —
+the front-end's side of the line.
+
 **Revalidation**:
-Asking the Next.js front-end to discard and rebuild the cached version of a
-single path. The unit of work this plugin exists to produce.
-_Avoid_: Purge, cache clear, invalidation
+Telling the front-end about changes, so it revalidates whatever it cached from
+them. What the plugin delivers, and the unit a **failure**, a **refusal** and the
+**failure window** are counted in.
+_Avoid_: Purge, cache clear, invalidation — the front-end marks entries stale and
+rebuilds them on demand; nothing is cleared.
 
 **Revalidate all**:
-A bulk operation that enqueues a revalidation for every publicly reachable page
-of one or more post types, and for the archive of every term of every
-**revalidatable taxonomy** registered for them.
+An operator's request that the front-end revalidate everything it cached from
+the site, or from one post type and the **revalidatable taxonomies** registered
+for it. Reported as a single change, never as the pages it covers.
 _Avoid_: Purge all
 
-**Revalidation queue**:
-The durable, ordered set of revalidations awaiting delivery to the front-end.
-Drained by cron rather than during the request that created the entries.
-
-A **revalidation** is of a path, but a queue entry stores the **permalink** — the
-absolute URL, as the front-end is asked for it. The distinction is not
-bookkeeping: the table a queue entry lands in follows `switch_to_blog()`, while
-the permalink written into it resolves against whichever site is current, so the
-two can disagree on a network. Say "the queue holds permalinks"; reserve "path"
-for the thing being revalidated.
-_Avoid_: Job list, backlog
-
-**Queue priority**:
-The number deciding when one queue entry drains relative to the others. Lower is
-sooner, entries sharing a priority drain oldest first, and `0` is a priority like
-any other — the most urgent there is, never an absence of one.
-
-It belongs to the entry rather than to the revalidation that produced it. A
-permalink is queued once, so a second submission of one already waiting has no
-entry of its own to carry a priority: it **promotes** the existing entry when it
-asks for a more urgent one, and changes nothing when it does not. Nothing demotes
-an entry — the rule is the minimum of the two, so a caller asking for a path to
-be revalidated can never slow down work something else deemed urgent.
-_Avoid_: Weight, rank, order — the drain order is what a priority produces, not
-another word for it. Distinct from a WordPress **hook priority**, which orders
-callbacks on one hook and has nothing to do with the queue.
+**Pending changes**:
+The changes one request has produced and not yet delivered. Two changes to the
+same subject merge into one — the state before the first and the state after the
+last — so a post saved three times in a request is reported once. Delivered when
+the request ends, or earlier in chunks when a long request, such as an import,
+produces many.
+_Avoid_: Queue — nothing outlives the request that produced it; batch.
 
 **Scheduled purge**:
-A revalidation registered to happen at a future time rather than immediately,
-used for content with a publication or expiry date. When it comes due it is
-enqueued at an elevated **queue priority** (5, ahead of the default 10): content
-whose date has just passed is more urgent than an ordinary save, but still
-below anything a caller explicitly deemed more urgent.
+A path registered to be revalidated at a future time rather than immediately,
+used for content with a publication or expiry date. Kept until its time passes,
+then reported as a path change by the request that finds it due.
 
 **Probe**:
 A revalidation the operator asks for directly, in order to observe its outcome.
-Delivered in the request that asked for it rather than through the **revalidation
-queue**, and answered to the operator rather than recorded — a probe is never a
+Delivered while the operator waits rather than with the request's **pending
+changes**, and answered to the operator rather than recorded — a probe is never a
 **failure** and never enters the **failure window**, because nothing about it
-samples the queue's traffic.
+samples the site's ordinary traffic.
 
-Not a read-only check: a probe rebuilds the path it names, on the live front-end,
-exactly as any other revalidation would. The operator's motive is the diagnosis;
+Not a read-only check: a probe reports a real path change, and the live front-end
+revalidates what it cached from that path exactly as it would for any other. The operator's motive is the diagnosis;
 the rebuild is real and happens anyway.
 _Avoid_: Test — reserved for checks performed against *this plugin*, see **Manual
 test**; ping, health check — both suggest the front-end is asked something
 cheaper than a rebuild.
 
 **Failure**:
-A revalidation that was enqueued, attempted against the front-end, and did not
-succeed. Recorded and dropped rather than retried: delivery is at most once, so a
-failure is the end of that revalidation's life. Distinct from a **refusal**,
+A revalidation that was attempted against the front-end and did not succeed —
+the whole request, whatever number of changes it carried, since the front-end
+answers for them together. Recorded and dropped rather than retried: delivery is
+at most once, so a failure is the end of every change that revalidation carried. Distinct from a **refusal**,
 which is declined without the front-end being asked anything at all.
 _Avoid_: Error, rejected, unsuccessful purge
 
@@ -102,8 +95,8 @@ revalidation at all; it is not refused, it was never a candidate.
 A post **leaves the front-end** when the save that changed it moved it from a
 status the status axis admits (publish or private) to one it does not — draft,
 pending, future, trash, or any custom status. The front-end still holds the page
-the post had, so that page is revalidated one last time, from the permalink the
-post had *before* the save, to make it a 404. Defined against the status axis
+the post had, so the change reports the address the post had *before* the save
+and none after it, and the front-end can make that page a 404. Defined against the status axis
 rather than as a list of destinations, so it covers every status — including
 ones a workflow plugin registers — and follows the axis if it is ever widened.
 Private counts as on the front-end: private → trash leaves it, publish → private
@@ -162,8 +155,8 @@ post** — WordPress's own `is_post_type_viewable()` — with attachments taken 
 because an uploaded file is not a page the front-end holds.
 
 An offer, and not a gate: that is the whole of the term. Being offered decides
-nothing about whether a revalidation is enqueued, which is **revalidatable
-post**'s question and is asked of every post either way. A type this plugin does
+nothing about whether a change is reported, which is **revalidatable post**'s
+question and is asked of every post either way. A type this plugin does
 not offer can still have revalidatable posts, through the post filter — and it
 is then the site saying so, not this plugin.
 _Avoid_: Public post type — `public` is a different setting and the two disagree
@@ -179,23 +172,16 @@ every template, with `core/template-part` blocks inlined and Polylang's
 translation variants attached. Not this plugin's data and never assembled here —
 the front-end builds it over WPGraphQL and caches it behind a cache tag. What
 this plugin knows about it is only which WordPress changes make it stale: a
-`wp_template` or `wp_template_part` saved or deleted, or a theme switched.
+`wp_template` or `wp_template_part` saved or deleted, or a theme switched — each
+reported as a templates change, like any other change, never naming which
+template.
 _Avoid_: Template cache, templates — the snapshot is one value covering all of
 them, and a page holds no part of it separately.
 
-**Snapshot invalidation**:
-Telling the front-end, in one request to the **FSE endpoint**, that its **FSE
-snapshot** is stale. Not a **revalidation** and not a bulk one: nothing is
-enqueued, no permalink is composed, and no page is named — the front-end drops a
-cache tag and its pages rebuild lazily as they are asked for. So it never
-produces a **failure** in the sense the **failure window** holds, because it was
-never in the **revalidation queue** to be attempted from.
-
-The one exception to "invalidation" being a word this project avoids, and the
-exception is what the term is for: it names the act that is genuinely not a
-revalidation of a path.
-_Avoid_: FSE revalidation, revalidating the templates — both suggest a path is
-being rebuilt, which is the distinction this term exists to keep.
+> Until v2 a stale snapshot had its own endpoint and its own term, **snapshot
+> invalidation**, because it was the one request that did not revalidate a path.
+> Once no request revalidates a path, it is a revalidation like the rest, and
+> the term is retired.
 
 ### Integrations
 
@@ -218,11 +204,11 @@ path rather than a regex, and it is enabled. A redirect that is not revalidatabl
 produces no revalidation at all; it was never a candidate.
 
 The site has the last word here too, but downward only: a filter is applied after
-those axes, over the source path that would be enqueued, and can decline any of
+those axes, over the source path a change would report, and can decline any of
 them — the escape hatch for a site whose front-end resolves redirects some other
 way. Unlike the **revalidatable post** filter it cannot admit what the axes
 declined, because a redirect they declined has no single path to hand it. Every
-event that enqueues a source path asks it, and an update that changes the source
+event that reports a source path asks it, and an update that changes the source
 asks about the old path and the new one separately.
 _Avoid_: Valid redirect — a regex redirect is perfectly valid, just not a single
 path.
@@ -253,9 +239,11 @@ would sensibly keep.
 >
 > A setting whose default differs between a new install and an existing site
 > cannot be answered that way at all — the two hold the same empty row. The FSE
-> gate is the one such setting: `''` reads as off, and the `on` a new install
-> starts with is written into the row at setup, by `define_settings()`, on the
-> evidence that the site held none of this plugin's rows.
+> gate was the one such setting: `''` read as off, and the `on` a new install
+> started with was written into the row at setup, by `define_settings()`, on the
+> evidence that the site held none of this plugin's rows. v2 removes the gate
+> with the FSE endpoint (ADR 0034), leaving no setting of that kind; the rule
+> stands for the next one.
 
 > The option table is authoritative for **reads**, registration, seeding and
 > teardown alike: each enumerates the same declaration, so a setting cannot be
@@ -272,11 +260,11 @@ _Avoid_: Revalidate URL, front-end URL — the URL is composed, and naming the
 stored half after the composed whole is what made a second endpoint unaddressable.
 
 **Endpoint path**:
-The route one kind of revalidation is served at on that app — `/api/revalidate`
-for a single path, `/api/revalidate-fse` for the FSE snapshot. Stored per
-endpoint and optional: a path left empty composes from the **default path** for
-that endpoint, so a standard install supplies a domain and a secret and nothing
-else. Whatever the operator's app routes, kept verbatim — never derived from
+The route revalidations are served at on that app — `/api/revalidate` by
+default. Optional: a path left empty composes from the **default path**, so a
+standard install supplies a domain and a secret and nothing else. There is one
+from v2, every change travelling to the same route; v1 kept a second for the FSE
+snapshot. Whatever the operator's app routes, kept verbatim — never derived from
 another path by string surgery.
 
 **Endpoint URL**:
@@ -303,12 +291,12 @@ says nothing about whether an operator has since supplied these two values.
 **Refusal**:
 Declining to deliver a revalidation that could not be delivered, in preference to
 accepting one and dropping it later. The response to an unconfigured site.
-Normally the answer at enqueue time, so a refused revalidation usually never
-reaches the queue at all; a site whose settings are cleared while items are
-pending is refused at the drain instead, which is the same answer given later.
+Given when the change is produced, so a refused change never joins the
+**pending changes** at all; a site whose settings are cleared before the request
+ends is refused at delivery instead, which is the same answer given later.
 Distinct from **failure**, which is a revalidation that reached the front-end and
 did not succeed — what separates the two is whether anything was ever asked of
-the front-end, not how far down the queue the answer was given.
+the front-end, not when the answer was given.
 _Avoid_: Skip, ignore — both suggest the revalidation was unimportant rather than
 undeliverable.
 
@@ -336,6 +324,11 @@ Two passes, and neither covers the other: a `secret=` query arg is blanked **by
 shape**, with the configured value never consulted, and the configured secret is
 then replaced **by value** wherever else it appears — in every spelling it can
 travel in, since a URL carries it `urlencode()`d rather than as it was typed.
+
+> From v2 the secret travels in an `Authorization` header rather than a query
+> arg, so the by-shape pass has nothing left to find in a request of this
+> plugin's own; the by-value pass is what still applies, because a transport
+> message can quote a header back.
 Deliberately unguarded by
 any minimum length — a one-character secret is a legal configuration, so it is
 redacted like any other and the surrounding diagnostic is allowed to come out
@@ -411,8 +404,8 @@ state except the **swept version**.
 _Avoid_: Multisite as a noun — it is a mode the install is in, not a thing.
 
 **Site setup**:
-Everything one site needs before it can revalidate: its queue table, its
-registered options, its scheduled cron. Applied identically whether the site is
+Everything one site needs before it can revalidate: its registered options and
+its scheduled cron. Applied identically whether the site is
 the only one on a single install, an existing site reached by a sweep, or a site
 created later.
 _Avoid_: Install, provision, activate — activation is the WordPress event that
