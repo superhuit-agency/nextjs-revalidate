@@ -39,13 +39,6 @@ page.
 - [ ] **Put a trailing slash on the domain** — `http://host.docker.internal:8083/`
       — save, update, run cron. Expect a success, and no `//` in the logged
       permalink's endpoint.
-- [ ] **Set the FSE revalidate path to `/fse`, save, and save a template part**
-      (section H has how). Expect a failure in the log naming `http_404`: the
-      dev server serves the FSE endpoint at the default `/api/revalidate-fse`, so
-      a path the operator supplied is *expected* to 404 here. That the request
-      went to `/fse` at all is what this proves.
-- [ ] **Clear the FSE revalidate path, leaving it empty, save.** Expect the field
-      to show its placeholder `/api/revalidate-fse`.
 - [ ] **Set the domain to `ftp://host.docker.internal:8083` and save.** (The
       field is `type="url"`, so the browser itself stops a value with no scheme
       at all; `ftp://` gets past it.) Expect a single error notice on the
@@ -195,46 +188,33 @@ is installed, and the bundled Twenty Twenty-Four and later are block themes.
 Restore the theme that was active when the section is done.
 
 The oracle here is the **revalidate server console**, not the queue: an FSE
-change is a **snapshot invalidation**, and nothing about it reaches the queue.
-Expect `= Invalidating: the FSE snapshot` and no queue rows at all.
+change is a **templates change**, delivered with the request's pending changes
+in one v2 `POST`, and nothing about it reaches the queue. Expect
+`= Revalidating (v2): {"subject":"templates"}` and no queue rows at all.
 
-- [ ] **Settings → Next.js revalidate → On FSE update.** Expect one switch,
-      **Revalidate on FSE update**, and expect it **on** — this stack is a new
-      install, and it is the only setting seeded with a value rather than an
-      empty one. Confirm the row says so:
-      `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`.
-      Expect `on`. (A site *upgrading* into this release starts off instead;
-      section Y covers that.)
 - [ ] **Appearance → Editor → Patterns → a template part (Footer) → move a block
-      → Save.** Expect **exactly one** `= Invalidating: the FSE snapshot` in the
-      console, and `✅ Invalidated the FSE snapshot` in the log. Not two — the
-      site editor's save reaches more than one hook and they are coalesced.
+      → Save.** Expect **exactly one** `= Revalidating (v2): {"subject":"templates"}`
+      in the console — one request, carrying one change — and
+      `✅ Revalidated 1 change (templates)` in the log. Not two: the site
+      editor's save reaches more than one hook, and identical changes merge.
 - [ ] **Confirm the queue stayed empty**:
       `npx wp-env run cli wp db query "SELECT COUNT(*) FROM wp_revalidate_queue"`.
       Expect 0. No page was named, and none needed to be.
 - [ ] **Edit a template (Editor → Templates → Single) and Save.** Expect one
-      invalidation.
+      templates change.
 - [ ] **Reset that template to its theme default** — Editor → Templates → the
-      template's ⋮ → **Reset**. Expect one invalidation: the reset *deletes* the
-      database post, and there is no save to hook.
+      template's ⋮ → **Reset**. Expect one templates change: the reset *deletes*
+      the database post, and there is no save to hook.
 - [ ] **Switch themes**: activate another installed theme, then switch back.
-      Expect one invalidation per switch — every template changed at once.
-- [ ] **Save an ordinary post.** Expect a queue row and **no** invalidation: the
-      two paths are independent, and a post has not touched the snapshot.
+      Expect one templates change per switch — every template changed at once.
+- [ ] **Save an ordinary post.** Expect a queue row and **no** templates change:
+      a post has not touched the snapshot.
 - [ ] **Save a navigation menu** (Appearance → Menus, with the On menu update
-      setting off). Expect **no** invalidation. Menu items are fetched at request
-      time by the front-end and are deliberately not in the snapshot.
-- [ ] **Switch the On FSE update setting off, save, and edit a template part
-      again.** Expect **nothing** in the console and nothing in the log — the
-      escape hatch for a front-end that does not serve the endpoint yet.
-- [ ] **Confirm the switch stayed off across a reload** of the settings screen.
-      The row is empty now rather than `off` — an unchecked switch submits
-      nothing — and empty reads as off, which is the same thing a site that has
-      never touched it reads as.
-- [ ] **Switch it back on, save, and confirm an edit invalidates again.**
+      setting off). Expect **no** templates change. Menu items are fetched at
+      request time by the front-end and are deliberately not in the snapshot.
 - [ ] **Clear the secret, save, and edit a template part.** Expect
-      `⛔ Refused the FSE snapshot invalidation — site not configured (missing:
-      secret)` in the log and **no** request in the console. Restore the secret.
+      `⛔ Refused a templates change — site not configured (missing: secret)` in
+      the log and **no** request in the console. Restore the secret.
 
 ## I. Scheduled purge
 
@@ -362,9 +342,8 @@ Run this last in Part 1 — it destroys the site's plugin data.
       `npx wp-env run cli wp db query "SHOW TABLES LIKE 'wp_revalidate_queue'"`.
       Expect no rows.
 - [ ] **Expect every option gone.** Check `nextjs_revalidate-domain`,
-      `-endpoint_path`, `-fse_endpoint_path`, `-secret`,
+      `-endpoint_path`, `-secret`,
       `-allow_revalidate_all`, `nextjs_revalidate-revalidate-on-menu-save`,
-      `nextjs_revalidate-revalidate-on-fse-save`,
       `nextjs_revalidate-debug`, `nextjs_revalidate-db_version`,
       `nextjs_revalidate-log_suffix`, `nextjs_revalidate-failure_window`,
       `nextjs-revalidate-scheduled_purges`. Expect all "could not be found".
@@ -617,22 +596,11 @@ what the backfill exists to avoid needing.
 - [ ] **Reload wp-admin several times.** Expect the ledger to stay put and
       nothing to be re-migrated: a migration decides by the ledger, never by the
       plugin version.
-- [ ] **Expect the FSE gate off** — the whole point of the asymmetry. On the
-      settings screen, **On FSE update → Revalidate on FSE update** is
-      unchecked, and
-      `npx wp-env run cli wp option get nextjs_revalidate-revalidate-on-fse-save`
-      answers an empty value or "could not be found", never `on`. This site's
-      front-end is whatever it already was, and it may serve no FSE endpoint at
-      all.
-- [ ] **Edit a template part and confirm nothing is sent** — no line in the
-      revalidate server console, nothing in the log. An upgraded site does not
-      start making a request it was never making.
-- [ ] **Deactivate and reactivate the plugin, then look again.** Expect the gate
-      still off: setup seeds `on` only for a site holding none of this plugin's
-      rows, and this one has held them since 1.6.9.
-- [ ] **Switch it on, save, and edit a template part.** Expect one
-      `= Invalidating: the FSE snapshot`. The operator opting in is the whole
-      of the upgrade path.
+- [ ] **Edit a template part** (section H has how — this needs a block theme).
+      Expect one `= Revalidating (v2): {"subject":"templates"}` in the console,
+      sent to the `/revalidate` path the split carried over: an upgraded site
+      reports its templates like a new one, with no FSE switch to turn on — v2
+      removed it.
 
 ## Z. Backfill from an older shape
 

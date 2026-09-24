@@ -6,7 +6,7 @@
  * Two things are asserted, and they are the two halves of ADR-0003:
  *
  *  1. **Constructing a Hookable touches no global state.** Every one of the
- *     ten classes is constructed with the recorder watching, and the recorder
+ *     twelve classes is constructed with the recorder watching, and the recorder
  *     stays empty. This is the property the whole convention exists for: an
  *     instance can be obtained for a single method call without paying for the
  *     hooks.
@@ -108,6 +108,8 @@ require_once __DIR__ . '/../include/I18n.php';
 require_once __DIR__ . '/../include/Assets.php';
 require_once __DIR__ . '/../include/Settings.php';
 require_once __DIR__ . '/../include/FailureWindow.php';
+require_once __DIR__ . '/../include/Change.php';
+require_once __DIR__ . '/../include/PendingChanges.php';
 require_once __DIR__ . '/../include/Revalidate.php';
 require_once __DIR__ . '/../include/Probe.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
@@ -122,6 +124,7 @@ use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Probe;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\Revalidate;
@@ -164,6 +167,10 @@ $expected_per_class = [
 	FailureWindow::class => [
 		[ 'admin_notices',         'degraded_notice',        10, 1 ],
 		[ 'admin_enqueue_scripts', 'enqueue_editor_notice',  11, 1 ],
+	],
+
+	PendingChanges::class => [
+		[ 'shutdown', 'deliver', 10, 1 ],
 	],
 
 	Revalidate::class => [

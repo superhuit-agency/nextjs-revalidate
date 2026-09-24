@@ -3,8 +3,8 @@
  * The secret, kept out of every message the transport hands back —
  * `Traits\FrontEndRequest`.
  *
- * Every request this plugin makes carries the secret as a query arg, and two of
- * the outcomes the trait answers carry a string of *arbitrary origin* back with
+ * Every request this plugin makes carries the secret — v1's `GET` as a query
+ * arg, v2's `POST` in an `Authorization` header — and two of the outcomes the trait answers carry a string of *arbitrary origin* back with
  * them: `unreachable` carries whatever the HTTP transport said, and `exception`
  * carries whatever anything in the request path threw. Those strings reach an
  * admin notice, a REST response and a log file in `wp-content/uploads` that
@@ -52,6 +52,14 @@ $GLOBALS['njr_test_secret'] = '';
 
 function __( $text, $domain = null ) { return $text; }
 
+function wp_remote_post( $url, $args = [] ) {
+	$response = $GLOBALS['njr_test_response'];
+
+	return is_callable( $response ) ? $response() : $response;
+}
+
+function wp_json_encode( $data ) { return json_encode( $data ); }
+
 function wp_remote_get( $url, $args = [] ) {
 	$response = $GLOBALS['njr_test_response'];
 
@@ -88,7 +96,7 @@ require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
  * The trait's using class, reduced to what the trait actually asks of one: a
  * `settings` holding a secret, and a way in from outside.
  *
- * Driven directly rather than through `Revalidate` or `FseSnapshot` because the
+ * Driven directly rather than through `Revalidate` or `PendingChanges` because the
  * seam under test is the trait — the whole point of ADR 0020 is that a caller
  * cannot opt out of this, so a test that went through one caller would prove
  * the weaker thing. `purge-outcome-test.php` covers the trip through
@@ -110,6 +118,10 @@ class NextJsRevalidate_Test_Transport {
 
 	public function send( $url ) {
 		return $this->send_front_end_request( $url, 60 );
+	}
+
+	public function send_changes( $url ) {
+		return $this->send_front_end_changes( $url, [ 'version' => 2, 'changes' => [ [ 'subject' => 'templates' ] ] ], 5 );
 	}
 }
 
@@ -274,6 +286,26 @@ try {
 	$thrown = true;
 }
 njr_test_assert( ! $thrown, 'a throw inside the request is still caught rather than escaping' );
+
+// The v2 `POST` carries the secret in a header rather than a URL, so the by-shape
+// pass has nothing to find in a message quoting it — and a transport is as free
+// to quote a header back as a URL. The by-value pass is what covers it, through
+// the same mint as the `GET`.
+foreach (
+	[
+		'a transport error' => njr_test_transport_error( "refused: Authorization: Bearer $secret" ),
+		'a throw'           => njr_test_throw( "cannot send header Authorization: Bearer $secret" ),
+	] as $what => $response
+) {
+	$GLOBALS['njr_test_secret']   = $secret;
+	$GLOBALS['njr_test_response'] = $response;
+
+	$outcome = ( new NextJsRevalidate_Test_Transport() )->send_changes( 'https://front-end.test/api/revalidate' );
+	$message = is_wp_error( $outcome ) ? $outcome->get_error_message() : '';
+
+	njr_test_assert( false === strpos( $message, $secret ), "$what from the POST quoting the Authorization header does not carry the secret out" );
+	njr_test_assert( false !== strpos( $message, 'Bearer ***' ), "$what from the POST keeps the rest of the message" );
+}
 
 // The seam
 // ====
@@ -445,7 +477,7 @@ foreach ( array_merge( njr_php_files( $root, 'include' ), [ 'nextjs-revalidate.p
 		$failures++;
 		printf(
 			"FAIL — %s:%d mints a WP_Error carrying a message of foreign origin without redact_secret(): %s\n"
-				. "       Every request this plugin makes holds the secret in a query arg, and this message\n"
+				. "       Every request this plugin makes carries the secret, and this message\n"
 				. "       reaches the log file in wp-content/uploads. See docs/adr/0023-the-transport-redacts-the-secret.md.\n",
 			$file,
 			$line,

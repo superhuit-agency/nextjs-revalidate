@@ -109,7 +109,7 @@ class NextJsRevalidate_Test_Settings {
 	 * Compose the endpoint the way `Settings` does — the domain plus the path,
 	 * which a fixture site never overrides.
 	 */
-	public function revalidate_endpoint_url() {
+	public function endpoint_url() {
 		$domain = rtrim( (string) $this->domain, '/' );
 
 		return '' === $domain ? '' : $domain . '/api/revalidate';

@@ -37,6 +37,7 @@ use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Integrations\Redirection;
+use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Probe;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
@@ -83,7 +84,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 /**
  * Every object the composition root constructs is private, and `__get()` below
  * hands any of them back to a reader outside this class — which is how
- * `Abstracts\Base` reaches the five it shares, how `Assets` and `Logger` reach
+ * `Abstracts\Base` reaches the six it shares, how `Assets` and `Logger` reach
  * the one each of them needs, and how the two API functions at the foot of this
  * file reach theirs.
  *
@@ -97,6 +98,7 @@ require_once __DIR__ . '/vendor/autoload.php';
  * @property-read Probe           $probe
  * @property-read Settings        $settings
  * @property-read FailureWindow   $failureWindow
+ * @property-read PendingChanges  $pendingChanges
  * @property-read ScheduledPurges $cronScheduledPurges
  * @property-read RevalidateAll   $revalidateAll
  * @property-read FseSnapshot     $fseSnapshot
@@ -111,6 +113,7 @@ class NextJsRevalidate {
 	private Probe $probe;
 	private Settings $settings;
 	private FailureWindow $failureWindow;
+	private PendingChanges $pendingChanges;
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
 	private FseSnapshot $fseSnapshot;
@@ -154,6 +157,7 @@ class NextJsRevalidate {
 		$this->assets              = $this->hookable( new Assets() );
 		$this->settings            = $this->hookable( new Settings() );
 		$this->failureWindow       = $this->hookable( new FailureWindow() );
+		$this->pendingChanges      = $this->hookable( new PendingChanges() );
 		$this->revalidate          = $this->hookable( new Revalidate() );
 		$this->probe               = $this->hookable( new Probe() );
 		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );

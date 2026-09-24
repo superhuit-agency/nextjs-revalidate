@@ -65,15 +65,15 @@ Precondition: section 1 done.
 - [ ] **Confirm the queue table exists**:
       `npx wp-env run cli wp db query "SHOW TABLES LIKE 'wp_revalidate_queue'"`.
       Expect one row.
-- [ ] **Settings → Next.js revalidate.** Expect seven tabs — **Next.js API**,
-      **Allow purge all**, **On menu update**, **On FSE update**, **Debug**,
-      **Queue**, **Probe** — with a count badge on Queue. Click each: expect one
-      panel visible at a time, Probe included, though it is a form of its own.
-      (All seven stacked means a broken `settings.js`.)
+- [ ] **Settings → Next.js revalidate.** Expect six tabs — **Next.js API**,
+      **Allow purge all**, **On menu update**, **Debug**, **Queue**, **Probe** —
+      with a count badge on Queue, and no **On FSE update** tab: v2 removed it.
+      Click each: expect one panel visible at a time, Probe included, though it
+      is a form of its own. (All six stacked means a broken `settings.js`.)
 - [ ] **On Next.js API, confirm the seeded values**: domain
-      `http://host.docker.internal:8083`, revalidate path `/revalidate`, FSE
-      revalidate path empty but showing a `/api/revalidate-fse` placeholder,
-      secret `my-super-secret`. On Debug, confirm "enable logs" is on, and note
+      `http://host.docker.internal:8083`, revalidate path `/revalidate`, secret
+      `my-super-secret` — and no FSE revalidate path field: there is one
+      endpoint from v2. On Debug, confirm "enable logs" is on, and note
       the log path printed beneath it — the **Log file** oracle reads it.
 - [ ] **On Allow purge all, tick `post` and `page`, save.** Expect the
       settings-saved notice and both still ticked after the reload.

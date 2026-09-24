@@ -86,11 +86,11 @@ $cases = [
 		[],
 	],
 
-	// #29 — the paths are optional by design: a site that supplies neither is
-	// configured, and composes both endpoints from their defaults.
+	// #29 — the path is optional by design: a site that supplies none is
+	// configured, and composes its endpoint from the default.
 	[
-		'a site holding no paths is still configured',
-		[ $domain => 'https://front-end.test', $secret => 's3cret', NextJsRevalidate\Settings::SETTINGS_ENDPOINT_PATH_NAME => '', NextJsRevalidate\Settings::SETTINGS_FSE_ENDPOINT_PATH_NAME => '' ],
+		'a site holding no path is still configured',
+		[ $domain => 'https://front-end.test', $secret => 's3cret', NextJsRevalidate\Settings::SETTINGS_ENDPOINT_PATH_NAME => '' ],
 		[],
 	],
 
@@ -255,114 +255,38 @@ foreach ( $empty_checks as [ $name, $expected_empty ] ) {
 	}
 }
 
-// The gate a new install starts with, and an existing site does not.
+// Setup seeds empty values, and nothing else.
 // ====
 //
-// #30 — an FSE change invalidates the front-end's snapshot, but only on a site
-// that says so in as many words. The empty value reads as off like every other
-// setting's, because a site upgrading into this release and a site that has
-// just switched the gate off store exactly the same row — and of those two, the
-// one that must not start making requests is the site whose front-end may not
-// serve the endpoint at all. `define_settings()` is what puts the `on` in a new
-// install's row; see the seeding cases below.
+// Until v2 a new install was seeded with the FSE gate on (#30). The gate went
+// with the FSE snapshot's own endpoint (ADR 0034), so setup now writes every
+// setting's empty value on any site, new or not — and neither of the rows v2
+// removed.
 
-$fse_save = NextJsRevalidate\Settings::SETTINGS_REVALIDATE_ON_FSE_SAVE;
+$removed = [
+	NextJsRevalidate\Settings::LEGACY_FSE_ENDPOINT_PATH_NAME,
+	NextJsRevalidate\Settings::LEGACY_REVALIDATE_ON_FSE_SAVE,
+];
 
-foreach ( [
-	[ 'a site holding no row does not invalidate the snapshot', [],                        false ],
-	[ 'a site holding the empty value does not either',         [ $fse_save => '' ],       false ],
-	[ 'a row stored as false is an absent row',                 [ $fse_save => false ],    false ],
-	[ 'a site seeded on at setup invalidates the snapshot',     [ $fse_save => 'on' ],     true  ],
-	[ 'a site that switched it off does not',                   [ $fse_save => 'off' ],    false ],
-	// The switch has exactly two positions, and only one of them is written.
-	[ 'whitespace is a field nobody filled in',                 [ $fse_save => '  ' ],     false ],
-	[ 'a value nothing writes is not an on switch',             [ $fse_save => 'banana' ], false ],
-] as [ $description, $options, $expected ] ) {
-	$GLOBALS['njr_test_options'] = $options;
+$GLOBALS['njr_test_options'] = [];
+$settings->define_settings();
 
-	$actual = $settings->revalidates_on_fse_save();
+$seeded = $GLOBALS['njr_test_options'];
 
-	if ( $actual === $expected ) {
-		printf( "ok   — %s\n", $description );
-	}
-	else {
-		$failures++;
-		printf( "FAIL — %s (expected %s, got %s)\n", $description, var_export( $expected, true ), var_export( $actual, true ) );
-	}
+if ( [] === array_intersect( $removed, array_keys( $seeded ) ) ) {
+	printf( "ok   — a new install is not seeded with either setting v2 removed\n" );
+}
+else {
+	$failures++;
+	printf( "FAIL — a new install is seeded with a setting v2 removed: %s\n", json_encode( $seeded ) );
 }
 
-// Which site starts with the gate on.
-// ====
-//
-// #30 — the decision is taken once, at setup, on evidence about the site: a
-// site holding none of this plugin's rows has never run it and is seeded `on`;
-// a site reached by an upgrade, a reactivation or a network sweep holds rows
-// already and keeps the empty value, which reads as off. A version gate could
-// not tell those apart — every site predating the ledger is backfilled to the
-// release that introduces it — and neither could the stored value, because the
-// upgraded site and the site that has just switched the gate off store the
-// same empty row.
-
-foreach ( [
-	[
-		'a new install is seeded with the gate on',
-		[],
-		true,
-	],
-	[
-		'a site set up by an earlier release keeps the gate off',
-		[ NextJsRevalidate\Settings::SETTINGS_DOMAIN_NAME => 'https://front-end.test' ],
-		false,
-	],
-	[
-		'a site holding nothing but an empty row keeps the gate off',
-		[ NextJsRevalidate\Settings::SETTINGS_SECRET_NAME => '' ],
-		false,
-	],
-	[
-		'a 1.6.x site holding only the legacy URL keeps the gate off',
-		[ NextJsRevalidate\Settings::LEGACY_URL_OPTION_NAME => 'https://front-end.test/api/revalidate' ],
-		false,
-	],
-	[
-		'a site holding only the migration ledger keeps the gate off',
-		[ NextJsRevalidate\Settings::DB_VERSION_OPTION_NAME => '1.6.0' ],
-		false,
-	],
-	[
-		'setting a site up twice does not seed it again',
-		[],
-		false,
-		'twice',
-	],
-	[
-		'setting up an operator who switched it on leaves the row alone',
-		[ $fse_save => 'on' ],
-		true,
-	],
-] as $case ) {
-	[ $description, $options, $expected ] = $case;
-
-	$GLOBALS['njr_test_options'] = $options;
-
-	$settings->define_settings();
-
-	// The second setup is the reactivation: the rows the first one created are
-	// exactly the evidence that says this site is not new any more.
-	if ( isset($case[3]) ) {
-		$GLOBALS['njr_test_options'][ $fse_save ] = '';
-		$settings->define_settings();
-	}
-
-	$actual = $settings->revalidates_on_fse_save();
-
-	if ( $actual === $expected ) {
-		printf( "ok   — %s\n", $description );
-	}
-	else {
-		$failures++;
-		printf( "FAIL — %s (expected %s, got %s)\n", $description, var_export( $expected, true ), var_export( $actual, true ) );
-	}
+if ( [] === array_filter( $seeded, function ( $value ) { return ! empty( $value ); } ) ) {
+	printf( "ok   — a new install is seeded with empty values only\n" );
+}
+else {
+	$failures++;
+	printf( "FAIL — a new install is seeded with a value: %s\n", json_encode( $seeded ) );
 }
 
 $GLOBALS['njr_test_options'] = [ $domain => 'https://front-end.test', $secret => 's3cret' ];

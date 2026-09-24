@@ -114,12 +114,19 @@ class FailureWindow extends Base implements Hookable {
 	 * Record the outcome of one revalidation attempt, dropping the oldest
 	 * outcome once the window is full.
 	 *
+	 * One attempt is one request to the front-end: a drained queue item, or a
+	 * site's pending changes delivered together — recorded once however many
+	 * changes that request carried, because the front-end answered once for
+	 * all of them. A window counting changes would let one bad minute during a
+	 * bulk edit pin the notice for ten requests after the front-end recovered
+	 * (ADR 0034).
+	 *
 	 * Everything that is not a success is a failure, whether or not it named a
 	 * cause: the condition is about failure, not about diagnosis, and an
 	 * unnamed cause is not a reason to stay silent.
 	 *
 	 * Two outcomes must not reach here, and one rule excludes both: what this
-	 * window samples is the *queue's own traffic*, and nothing else.
+	 * window samples is the *site's own revalidation traffic*, and nothing else.
 	 *
 	 *  - A **refusal** — an unconfigured site was never attempted against the
 	 *    front-end at all, so it is no evidence about the front-end.
@@ -130,7 +137,8 @@ class FailureWindow extends Base implements Hookable {
 	 *    one would let a diagnostic silence its own alarm. See
 	 *    `docs/adr/0013-a-probe-is-not-evidence.md`.
 	 *
-	 * @param true|WP_Error $outcome What `Revalidate::purge()` answered. Only
+	 * @param true|WP_Error $outcome What the request answered — `Revalidate::purge()`
+	 *                               or a delivery of pending changes. Only
 	 *                               `true` is a success: any other value —
 	 *                               including the `false` older code answered
 	 *                               with — is counted as a failure naming no

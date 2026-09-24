@@ -100,6 +100,35 @@ claim is that a caller cannot opt out. The seam is a token scan over `include/`
 for every `new WP_Error(...)` whose message argument mentions
 `get_error_message()` or `getMessage()`, each of which must also mention
 `redact_secret()`. `purge-outcome-test.php` and `FseSnapshotTest.php` each pin
-one end-to-end trip through a real caller reading a real setting, which is what
-would catch the redaction going through a `settings` the trait's own fixture
-supplies and no real class does.
+one end-to-end trip through a real caller reading a real setting (the second
+one moved in v2 — see the amendment below), which is what would catch the
+redaction going through a `settings` the trait's own fixture supplies and no
+real class does.
+
+## Amended for v2: the secret travels in a header
+
+Built in #156, under ADR 0034. The v2 request is a `POST` carrying the secret as
+`Authorization: Bearer <secret>`, minted by the same trait —
+`send_front_end_changes()` beside v1's `send_front_end_request()`, both through
+one private method that is the only place a request's `WP_Error` is made. So
+the seam this record pins is still one seam, and the structural test still
+counts the trait's mints and checks each one.
+
+**The by-value pass is what covers the header.** A transport quoting the request
+back quotes `Bearer <secret>`, not a `secret=` arg, and only the configured
+value can find that. `tests/transport-redaction-test.php` drives it through the
+`POST` as well as the `GET`.
+
+**The by-shape pass stays.** While the revalidation queue still sends v1's `GET`
+with `secret=` in its URL, it is doing exactly the work it was written for. Once
+nothing sends that `GET`, the pass finds nothing in a message about a request of
+this plugin's own, and it is left in place as a harmless no-op rather than
+removed: it costs one `preg_replace()` per failure, it still catches a secret
+that has been changed since the message was minted, and taking it out would be
+a change to the one function whose whole job is to fail safe.
+
+**The end-to-end trip moved.** `FseSnapshot` no longer sends anything, so the
+trip through a real caller reading a real setting is
+`tests/pending-changes-test.php` — the real `Settings` and the real `Logger`,
+with a transport error quoting the header and a log file that must not hold the
+secret afterwards — beside `purge-outcome-test.php` for the `GET`.

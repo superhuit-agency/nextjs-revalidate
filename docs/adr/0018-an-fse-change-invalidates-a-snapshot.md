@@ -179,3 +179,52 @@ prove that the front-end's snapshot actually refreshed — that is a Next.js app
 on a staging host, and the acceptance criterion naming tipee.ch is a manual check
 against that stack. What this repo can prove stops at "exactly one request went
 to the FSE endpoint, with the secret, when a template was saved".
+
+## Amended for v2: a `templates` change, on the one endpoint
+
+Built in #156, under ADR 0033 and ADR 0034. Most of this record described the
+*shape* of the request, and v2 changed that shape for every revalidation, so the
+reasons it gave for the FSE snapshot being the exception no longer hold. What
+stands and what goes:
+
+**There is no FSE endpoint.** A template or template part saved or deleted, or a
+theme switched, reports a `{ "subject": "templates" }` change into the **pending
+changes**, and it travels in the same `POST` to the same **endpoint path** as
+every other change of the request. The FSE endpoint path setting and the
+**revalidate on FSE save** switch are gone from `Settings::OPTIONS` and from the
+settings screen, and so is the tab that held the switch. Their rows on existing
+sites are the upgrade's to delete; until then nothing reads them, and an
+uninstall takes them with the rest.
+
+**There is no gate, and so no new-install seeding.** The switch existed so a
+front-end that did not serve `/api/revalidate-fse` was never asked for it. A v2
+front-end serves the contract and ignores a subject it does not cache (ADR 0033,
+rule 1), so there is nothing left to guard, and `define_settings()` seeds every
+setting empty on every site. The rule the seeding followed — a default that
+differs between a new install and an existing site is decided at setup, on
+evidence about the site — stands in `CONTEXT.md` for the next setting that needs
+it.
+
+**It is a revalidation, and it enters the failure window.** "It is not a
+revalidation" was true while a revalidation meant a path; ADR 0033 redefined it
+as telling the front-end about changes. The request carrying a `templates`
+change is recorded once in the window, like any request, whatever else it
+carried. The log line is the delivery's: `✅ Revalidated 1 change (templates)`,
+where it used to read `✅ Invalidated the FSE snapshot`.
+
+**The refusal moved to the moment of the change.** An unconfigured site refuses
+the `templates` change when the hook fires — `⛔ Refused a templates change —
+site not configured (missing: …)` — and never holds it, as it refuses every
+change. One refusal per hook, where it used to be one per request.
+
+**Coalescing and delivery stand, generalised.** One telling per request however
+many hooks fire, deferred to `shutdown`, the editor answered first through
+`fastcgi_finish_request()` or LiteSpeed's equivalent: all of it moved from
+`FseSnapshot` into `PendingChanges`, which does it for every subject. Identical
+`templates` changes collapse into one, which is the whole of this record's
+coalescing restated as a merge rule. The timeout is ADR 0034's five seconds,
+not the fifteen given here.
+
+**Menus are still out, and not naming the template still stands.** Neither was a
+fact about the request's shape. `FseSnapshot` is now a producer and nothing
+else: four hooks, and `Change::templates()`.

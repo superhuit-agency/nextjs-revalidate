@@ -52,6 +52,8 @@ $GLOBALS['njr_test_requests'] = [];
  */
 $GLOBALS['njr_test_response'] = [ 'response' => [ 'code' => 200 ] ];
 
+$GLOBALS['njr_test_posts'] = [];
+
 // WordPress stubs
 // ====
 
@@ -132,6 +134,19 @@ function wp_remote_get( $url, $args = [] ) {
 	return $GLOBALS['njr_test_response'];
 }
 
+/**
+ * Every `wp_remote_post()` made since the last reset, as `[ url, args ]`.
+ */
+function wp_remote_post( $url, $args = [] ) {
+	$GLOBALS['njr_test_posts'][] = [ $url, $args ];
+
+	return $GLOBALS['njr_test_response'];
+}
+
+function wp_json_encode( $data ) { return json_encode( $data ); }
+
+function get_current_blog_id() { return 1; }
+
 function wp_remote_retrieve_response_code( $response ) {
 	return $response['response']['code'] ?? '';
 }
@@ -196,7 +211,9 @@ require_once __DIR__ . '/../include/Traits/BlockEditorScreen.php';
 require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
 require_once __DIR__ . '/../include/Logger.php';
 require_once __DIR__ . '/../include/Revalidate.php';
-require_once __DIR__ . '/../include/FseSnapshot.php';
+require_once __DIR__ . '/../include/FailureWindow.php';
+require_once __DIR__ . '/../include/Change.php';
+require_once __DIR__ . '/../include/PendingChanges.php';
 require_once __DIR__ . '/../include/RevalidateQueue.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
@@ -204,9 +221,7 @@ use NextJsRevalidate\Settings;
 
 const DOMAIN   = Settings::SETTINGS_DOMAIN_NAME;
 const PATH_OPT = Settings::SETTINGS_ENDPOINT_PATH_NAME;
-const FSE_PATH = Settings::SETTINGS_FSE_ENDPOINT_PATH_NAME;
 const SECRET   = Settings::SETTINGS_SECRET_NAME;
-const FSE_SAVE = Settings::SETTINGS_REVALIDATE_ON_FSE_SAVE;
 const SWITCHES = [
 	Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,
 	Settings::SETTINGS_REVALIDATE_ON_MENU_SAVE,
@@ -258,9 +273,9 @@ function save( $name, $value ) {
 // One loop, and every setting in it carries a callback: a setting added to the
 // table without one is stored exactly as typed, which is this bug over again.
 check_same(
-	[ DOMAIN, PATH_OPT, FSE_PATH, SECRET, Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, Settings::SETTINGS_REVALIDATE_ON_MENU_SAVE, FSE_SAVE, Settings::SETTINGS_DEBUG ],
+	[ DOMAIN, PATH_OPT, SECRET, Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, Settings::SETTINGS_REVALIDATE_ON_MENU_SAVE, Settings::SETTINGS_DEBUG ],
 	array_keys( $GLOBALS['njr_test_sanitizers'] ),
-	'all eight settings are registered with a sanitize callback'
+	'all six settings are registered with a sanitize callback'
 );
 
 // The domain
@@ -313,10 +328,10 @@ check_same( 1, count( $GLOBALS['njr_test_settings_errors'] ), 'running the domai
 site( [] );
 check_same( 'https://example.com', save( DOMAIN, ' https://example.com?x=1 ' ), 'a first domain survives the second pass core makes through the callback' );
 
-// The endpoint paths
+// The endpoint path
 // ====
 
-foreach ( [ PATH_OPT, FSE_PATH ] as $option ) {
+foreach ( [ PATH_OPT ] as $option ) {
 	foreach ( [
 		[ ' /api/revalidate?secret=x ', '/api/revalidate',  'a path is trimmed and its query dropped' ],
 		[ '/api/revalidate#top',        '/api/revalidate',  'a path loses its fragment' ],
@@ -359,17 +374,6 @@ foreach ( SWITCHES as $option ) {
 	check_same( [ 'not_registered_yet' => 'on' ], save( $option, [ 'not_registered_yet' => 'on' ] ), "$option keeps a switch for a post type it cannot see" );
 }
 
-// The FSE switch
-// ====
-
-foreach ( [ [ 'on', 'on' ], [ '1', 'on' ], [ 'true', 'on' ], [ true, 'on' ], [ ' ON ', 'on' ], [ '', '' ], [ 'off', '' ], [ null, '' ], [ 'banana', '' ], [ [ 'on' ], '' ] ] as [ $input, $expected ] ) {
-	site( [ FSE_SAVE => 'before' ] );
-	check_same( $expected, save( FSE_SAVE, $input ), sprintf( 'the FSE switch stores %s for %s', json_encode( $expected ), json_encode( $input ) ) );
-
-	// What is stored is exactly what the gate reads.
-	check_same( 'on' === $expected, $settings->revalidates_on_fse_save(), sprintf( 'and the gate reads %s as %s', json_encode( $expected ), 'on' === $expected ? 'on' : 'off' ) );
-}
-
 // Every callback answers its own output unchanged
 // ====
 //
@@ -381,7 +385,6 @@ foreach ( [
 	[ 'sanitize_path',          [ ' /api/revalidate?secret=x ', '/a#b?c', '' ] ],
 	[ 'sanitize_secret',        [ "  my secret/+%\n", '' ] ],
 	[ 'sanitize_switch_set',    [ [ 'post' => 'on', 'page' => 'yes', 3 => 'on' ], 'on', [] ] ],
-	[ 'sanitize_single_switch', [ 'true', 'off', '' ] ],
 ] as [ $callback, $inputs ] ) {
 	foreach ( $inputs as $input ) {
 		site( [] );
@@ -396,7 +399,6 @@ foreach ( [
 
 site( [] );
 $settings->define_settings();
-check_same( 'on', get_option( FSE_SAVE ), 'a new install is still seeded with the FSE switch on' );
 check_same( '', get_option( DOMAIN ), 'a new install is seeded with an empty domain' );
 check_same( [], get_option( Settings::SETTINGS_DEBUG ), 'and an empty set of switches' );
 check_same( [], $GLOBALS['njr_test_settings_errors'], 'seeding a new install adds no settings error' );
@@ -418,11 +420,13 @@ check_same(
 	'the revalidate endpoint is sent the trimmed secret'
 );
 
-$fse = new NextJsRevalidate\FseSnapshot();
+$pending = new NextJsRevalidate\PendingChanges();
+$pending->report( NextJsRevalidate\Change::templates() );
+$pending->deliver();
 check_same(
-	'https://front-end.test/api/revalidate-fse?secret=s3cret',
-	$fse->build_invalidate_uri(),
-	'the FSE endpoint is sent the trimmed secret'
+	'Bearer s3cret',
+	$GLOBALS['njr_test_posts'][0][1]['headers']['Authorization'] ?? null,
+	'the pending changes are sent the trimmed secret'
 );
 
 $rest = new NextJsRevalidate\RestApi();

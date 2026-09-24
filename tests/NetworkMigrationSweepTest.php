@@ -442,10 +442,8 @@ check_same( '', notice( $settings ), 'an ordinary network renders no notice' );
 // A plugin activated site by site on a network is a per-site plugin that happens
 // to live on one: each site reaches `migrate_db()` on its own `admin_init`, and
 // nothing here may reach across to the sites it was never activated on. Writing
-// this plugin's rows there is not a harmless stray either — `holds_any_data()`
-// reads one as proof the plugin has run on that site, so a site activated for
-// the first time afterwards is taken for an existing one and never gets the
-// settings seeded only for a new install.
+// this plugin's rows there is not a harmless stray either — a ledger stamped
+// into a site describes data that site does not hold.
 $settings = network( [ 1 => [], 2 => [], 3 => [] ] );
 $GLOBALS['njr_network_active'] = false;
 $settings->sweep_migrations();

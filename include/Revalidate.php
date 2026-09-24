@@ -304,10 +304,10 @@ class Revalidate extends Base implements Hookable {
 		// later. It is also the guard for any other caller.
 		if ( !$this->settings->is_configured() ) return $this->settings->not_configured_error();
 
-		// The transport, and the naming of what comes back, are shared with the
-		// FSE snapshot invalidation — see `Traits\FrontEndRequest`. A minute is
-		// what a rebuild is given: this runs from the queue's cron, never from
-		// the request an editor is waiting on.
+		// The transport, and the naming of what comes back, are shared with
+		// the delivery of the pending changes — see `Traits\FrontEndRequest`.
+		// A minute is what a rebuild is given: this runs from the queue's
+		// cron, never from the request an editor is waiting on.
 		return $this->send_front_end_request( $this->build_revalidate_uri( $permalink ), 60 );
 	}
 
@@ -317,7 +317,7 @@ class Revalidate extends Base implements Hookable {
 				'path'   => wp_make_link_relative( $permalink ),
 				'secret' => $this->settings->secret
 			],
-			$this->settings->revalidate_endpoint_url()
+			$this->settings->endpoint_url()
 		);
 	}
 

@@ -14,11 +14,9 @@ use NextJsRevalidate\Interfaces\Hookable;
  *
  * @property string $domain                  The scheme, host and port of the front-end.
  * @property string $endpoint_path           The revalidate route, or '' for the default.
- * @property string $fse_endpoint_path       The FSE revalidate route, or '' for the default.
  * @property string $secret                  The shared secret every request carries, read trimmed.
  * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
- * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — 'on' or '' (a row saved before 1.7.0 may hold 'off').
  * @property array  $debug                   Debug switches, keyed by name.
  *
  * The plugin's own objects are reached through the same `__get()`, off the
@@ -36,12 +34,19 @@ class Settings extends Base implements Hookable {
 
 	const SETTINGS_DOMAIN_NAME = 'nextjs_revalidate-domain';
 	const SETTINGS_ENDPOINT_PATH_NAME = 'nextjs_revalidate-endpoint_path';
-	const SETTINGS_FSE_ENDPOINT_PATH_NAME = 'nextjs_revalidate-fse_endpoint_path';
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
 	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
-	const SETTINGS_REVALIDATE_ON_FSE_SAVE = 'nextjs_revalidate-revalidate-on-fse-save';
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
+
+	/**
+	 * The two settings v2 removed with the FSE snapshot's own endpoint (ADR 0034):
+	 * its endpoint path, and the switch that gated it. No longer in the table
+	 * below, so nothing reads, registers or seeds them; named only so that an
+	 * uninstall takes a row a site still holds, and so the upgrade can delete it.
+	 */
+	const LEGACY_FSE_ENDPOINT_PATH_NAME = 'nextjs_revalidate-fse_endpoint_path';
+	const LEGACY_REVALIDATE_ON_FSE_SAVE = 'nextjs_revalidate-revalidate-on-fse-save';
 
 	/**
 	 * The settings this plugin reads, declared once.
@@ -61,24 +66,21 @@ class Settings extends Base implements Hookable {
 	private const OPTIONS = [
 		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_domain'        ] ],
 		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,        'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
-		'fse_endpoint_path'       => [ 'name' => self::SETTINGS_FSE_ENDPOINT_PATH_NAME,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
 		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_secret'        ], 'read' => [ self::class, 'sanitize_secret' ] ],
 		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
 		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
-		'revalidate_on_fse_save'  => [ 'name' => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_single_switch' ] ],
 		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
 	];
 
 	/**
-	 * The path each endpoint is reached at on a Next.js app that has not been
+	 * The path the endpoint is reached at on a Next.js app that has not been
 	 * told otherwise.
 	 *
 	 * A default rather than a seeded value: an empty path field means "whatever
 	 * this release ships", so an app that renames its route later is a one-field
-	 * edit, and a standard install never has to look at these at all.
+	 * edit, and a standard install never has to look at it at all.
 	 */
 	const DEFAULT_ENDPOINT_PATH = '/api/revalidate';
-	const DEFAULT_FSE_ENDPOINT_PATH = '/api/revalidate-fse';
 
 	/**
 	 * The single, fully-qualified revalidate URL this plugin stored until 1.7.0.
@@ -217,7 +219,6 @@ class Settings extends Base implements Hookable {
 			[ 'id' => 'api',            'title' => __('Next.js API', 'nextjs-revalidate')     ],
 			[ 'id' => 'allow_all_opts', 'title' => __('Allow purge all', 'nextjs-revalidate') ],
 			[ 'id' => 'on_menu_save',   'title' => __('On menu update', 'nextjs-revalidate')  ],
-			[ 'id' => 'on_fse_save',    'title' => __('On FSE update', 'nextjs-revalidate')   ],
 			[ 'id' => 'debug',          'title' => __('Debug', 'nextjs-revalidate')           ],
 			[ 'id' => 'queue',          'title' => __('Queue', 'nextjs-revalidate') . sprintf('<span class="badge">%s</span>', $nb_in_queue) ],
 			[ 'id' => 'probe',          'title' => __('Probe', 'nextjs-revalidate')          ],
@@ -321,42 +322,18 @@ class Settings extends Base implements Hookable {
 			'nextjs-revalidate-section'
 		);
 
-		// The paths are optional, and the placeholder is how an operator knows
+		// The path is optional, and the placeholder is how an operator knows
 		// it: a field left empty is the default shown in it, not a blank.
-		$path_field = function ( $option_name, $value, $default, $help ) {
-			printf(
-				'<input type="text" id="%1$s" name="%1$s" value="%2$s" placeholder="%3$s" class="regular-text code" /><p class="description">%4$s</p>',
-				$option_name,
-				esc_attr( $value ),
-				esc_attr( $default ),
-				esc_html( $help )
-			);
-		};
-
 		add_settings_field(
 			'nextjs_path',
 			__('Revalidate path', 'nextjs-revalidate'),
-			function ($args) use ( $path_field ) {
-				$path_field(
+			function ($args) {
+				printf(
+					'<input type="text" id="%1$s" name="%1$s" value="%2$s" placeholder="%3$s" class="regular-text code" /><p class="description">%4$s</p>',
 					self::SETTINGS_ENDPOINT_PATH_NAME,
-					$this->endpoint_path,
-					self::DEFAULT_ENDPOINT_PATH,
-					__('Optional. The route that revalidates a single path on the front-end. Leave empty for the default.', 'nextjs-revalidate')
-				);
-			},
-			self::PAGE_NAME,
-			'nextjs-revalidate-section'
-		);
-
-		add_settings_field(
-			'nextjs_fse_path',
-			__('FSE revalidate path', 'nextjs-revalidate'),
-			function ($args) use ( $path_field ) {
-				$path_field(
-					self::SETTINGS_FSE_ENDPOINT_PATH_NAME,
-					$this->fse_endpoint_path,
-					self::DEFAULT_FSE_ENDPOINT_PATH,
-					__('Optional. The route that invalidates the front-end’s FSE template snapshot. Leave empty for the default.', 'nextjs-revalidate')
+					esc_attr( $this->endpoint_path ),
+					esc_attr( self::DEFAULT_ENDPOINT_PATH ),
+					esc_html__('Optional. The route every revalidation is sent to on the front-end. Leave empty for the default.', 'nextjs-revalidate')
 				);
 			},
 			self::PAGE_NAME,
@@ -478,43 +455,6 @@ class Settings extends Base implements Hookable {
 				'name'      => self::SETTINGS_REVALIDATE_ON_MENU_SAVE.'[all]',
 				'checked'   => $this->revalidate_on_menu_save['all'] ?? false,
 				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
-			]
-		);
-
-
-		// On FSE save section settings
-		//
-		// One switch, and deliberately not the per-post-type shape of the
-		// section above: that shape exists because "revalidate all" has to
-		// enumerate post types in order to enqueue a URL for each. Here the
-		// front-end is told once that its snapshot is stale and rebuilds its
-		// pages itself, so a post type is not a choice anybody could make.
-		add_settings_section(
-			'nextjs-revalidate-section-revalidate-on-fse-save',
-			__('On FSE update options', 'nextjs-revalidate'),
-			function() {
-				printf( '<p>%s</p>', __('Editing a template or a template part in the site editor changes every page at once. The front-end is told, in one request, that its template snapshot is stale.', 'nextjs-revalidate') );
-			},
-			self::PAGE_NAME,
-			[
-				'before_section' => '<section aria-hidden="true" id="tab-panel--on_fse_save" role="tabpanel" tabindex="-1" aria-labelledby="tab-on_fse_save">',
-				'after_section'  => '</section>',
-			]
-		);
-
-		$id = "revalidate-on-fse-save";
-		add_settings_field(
-			$id,
-			__('Revalidate on FSE update', 'nextjs-revalidate'),
-			'Kuuak\WordPressSettingFields\Fields::switch',
-			self::PAGE_NAME,
-			'nextjs-revalidate-section-revalidate-on-fse-save',
-			[
-				'label_for' => $id,
-				'id'        => $id,
-				'name'      => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,
-				'checked'   => $this->revalidates_on_fse_save(),
-				'help'      => __('On for a new install, off for a site upgraded from an earlier release. Leave it off until the front-end serves the FSE revalidate endpoint — otherwise every template save asks it for a route it does not have.', 'nextjs-revalidate'),
 			]
 		);
 
@@ -683,31 +623,6 @@ class Settings extends Base implements Hookable {
 	}
 
 	/**
-	 * A single switch, as it is stored: `'on'`, or the empty value.
-	 *
-	 * On exactly when `revalidates_on_fse_save()` would read the value as on.
-	 *
-	 * @param mixed $value What was submitted.
-	 * @return string What is stored.
-	 */
-	public static function sanitize_single_switch( $value ) {
-		return self::reads_as_on( $value ) ? 'on' : '';
-	}
-
-	/**
-	 * Whether a switch's value says on: `on`, `1`, `yes` or `true`, in any case
-	 * and with any whitespace around it.
-	 *
-	 * @param mixed $value
-	 * @return bool
-	 */
-	private static function reads_as_on( $value ) {
-		if ( ! is_scalar($value) ) return false;
-
-		return filter_var( trim( (string) $value ), FILTER_VALIDATE_BOOLEAN );
-	}
-
-	/**
 	 * A scalar value cut at its first `?` or `#`, then trimmed.
 	 *
 	 * A rule rather than ADR 0017's construction on purpose: a typed value has
@@ -734,6 +649,11 @@ class Settings extends Base implements Hookable {
 			delete_option( $setting['name'] );
 		}
 
+		// The two settings v2 removed, on a site whose upgrade has not yet
+		// deleted them.
+		delete_option( self::LEGACY_FSE_ENDPOINT_PATH_NAME );
+		delete_option( self::LEGACY_REVALIDATE_ON_FSE_SAVE );
+
 		// The URL the settings above were split out of, on a site upgraded
 		// before it was ever visited in the admin: the migration that consumes
 		// it may not have run, and it is this site's data either way.
@@ -753,113 +673,26 @@ class Settings extends Base implements Hookable {
 	 * Register every setting of the site currently being served,
 	 * holding its empty value until an operator supplies one.
 	 *
-	 * The FSE gate is the one exception, and the only setting this plugin
-	 * seeds with a value rather than an empty one: a **new** install starts
-	 * invalidating the snapshot, and an existing site does not. The difference
-	 * cannot be a migration gated on a version — every site predating the
-	 * ledger is backfilled to the release that introduces it, so a 1.7.0 gate
-	 * would never fire for anybody (see `backfill_db_version()`) — and it
-	 * cannot be a reading of the empty value either, because a site upgrading
-	 * into 1.7.0 and a site that has just switched the gate off store the same
-	 * empty row.
-	 *
-	 * So it is decided here, once, on evidence about the site: a site holding
-	 * none of this plugin's rows has never run it, and only that site is seeded
-	 * `on`. An existing site — reached by an upgrade, a reactivation, or a
-	 * network sweep — holds rows already and keeps its empty value, which reads
-	 * as off. Its operator switches the gate on when the front-end serves the
-	 * endpoint.
+	 * Until v2 the FSE gate was the one exception, seeded `on` for a new
+	 * install only. It went with the FSE snapshot's own endpoint (ADR 0034),
+	 * and every setting now starts empty.
 	 *
 	 * @return void
 	 */
 	public function define_settings() {
-
-		// Read before the loop below writes any of them.
-		$is_new_install = ! $this->holds_any_data();
-
 		foreach ( self::OPTIONS as $setting ) {
 			add_option( $setting['name'], $setting['empty'] );
 		}
-
-		// `update_option`, not `add_option`: the loop has just created the row.
-		if ( $is_new_install ) update_option( self::SETTINGS_REVALIDATE_ON_FSE_SAVE, 'on' );
 	}
 
 	/**
-	 * Whether this site holds any row this plugin has ever written.
+	 * The **endpoint URL**: the site's domain and its endpoint path, composed at
+	 * the moment a revalidation is sent. Every revalidation goes to it.
 	 *
-	 * Rows rather than values: `define_settings()` creates every setting at
-	 * setup holding its empty value, so a site that was set up and never
-	 * configured still answers true here — which is the point. What this
-	 * separates is "has this plugin ever run on this site", not "has anybody
-	 * configured it".
-	 *
-	 * The legacy URL and the ledger are in the list because a site old enough
-	 * to hold one of them is the very site this exists to recognise, and
-	 * uninstallation removes all three sets — so a reinstall is a new install,
-	 * which is what an operator who deleted the plugin's data would expect.
-	 *
-	 * @return bool
-	 */
-	private function holds_any_data() {
-
-		foreach ( self::OPTIONS as $setting ) {
-			if ( self::option_exists( $setting['name'] ) ) return true;
-		}
-
-		return self::option_exists( self::LEGACY_URL_OPTION_NAME )
-			|| self::option_exists( self::DB_VERSION_OPTION_NAME );
-	}
-
-	/**
-	 * The URL a revalidation is sent to.
-	 *
-	 * @return string Empty on a site holding no domain.
-	 */
-	public function revalidate_endpoint_url() {
-		return $this->endpoint_url( $this->endpoint_path, self::DEFAULT_ENDPOINT_PATH );
-	}
-
-	/**
-	 * The URL an FSE snapshot invalidation is sent to.
-	 *
-	 * @return string Empty on a site holding no domain.
-	 */
-	public function fse_endpoint_url() {
-		return $this->endpoint_url( $this->fse_endpoint_path, self::DEFAULT_FSE_ENDPOINT_PATH );
-	}
-
-	/**
-	 * Whether a template or template part change invalidates the FSE snapshot.
-	 *
-	 * The **empty value** means off, as it does for every other setting in the
-	 * table: only a row saying `on` in as many words invalidates. Which is what
-	 * makes this safe to ship to sites that already exist — their Next.js app
-	 * may not serve the FSE endpoint yet, and a site that has never had an
-	 * opinion about a setting must not start making requests it cannot answer.
-	 *
-	 * A *new* install is the one that starts on, and it says so in the row:
-	 * `define_settings()` seeds an explicit `on` for a site holding none of
-	 * this plugin's data. So "on by default" is a decision taken once, at
-	 * setup, on evidence about the site — not a reading of absence.
-	 *
-	 * @return bool
-	 */
-	public function revalidates_on_fse_save() {
-
-		// `on`, `1`, `yes` and `true` answer true; the empty value, `off` and
-		// anything no version of this plugin ever wrote answer false. An
-		// unchecked switch submits nothing at all, which WordPress stores as an
-		// empty row — so switching this off needs no hidden field to carry it.
-		return self::reads_as_on( $this->revalidate_on_fse_save );
-	}
-
-	/**
-	 * Compose one endpoint from the site's domain and a path.
-	 *
-	 * The two halves are stored separately because the front-end serves several
-	 * endpoints on one app, and deriving the second by string surgery on the
-	 * first breaks the moment a route is named anything but the default.
+	 * The two halves are stored separately so that a route named anything but
+	 * the default is one field to edit rather than something derived from the
+	 * domain by string surgery (ADR 0017). There is one path from v2; v1 kept
+	 * a second for the FSE snapshot.
 	 *
 	 * Exactly one slash joins them, whichever way the operator typed each half.
 	 * A path holding nothing but slashes is a field left empty rather than a
@@ -872,20 +705,17 @@ class Settings extends Base implements Hookable {
 	 *
 	 * Both halves are trimmed first. Both are trimmed on save as well, but a row
 	 * stored before that was not, and a domain pasted in with a trailing space
-	 * composes a URL `wp_remote_get()` rejects — a revalidation that fails for a
+	 * composes a URL the transport rejects — a revalidation that fails for a
 	 * reason nothing on screen names. Trimming here covers those rows.
 	 *
-	 * @param string $path    The path the operator supplied, possibly empty.
-	 * @param string $default The path to use when they supplied none.
-	 *
-	 * @return string
+	 * @return string Empty on a site holding no domain.
 	 */
-	private function endpoint_url( $path, $default ) {
+	public function endpoint_url() {
 		$domain = untrailingslashit( trim( (string) $this->domain ) );
 		if ( empty($domain) ) return '';
 
-		$path = untrailingslashit( trim( (string) $path ) );
-		if ( empty($path) ) $path = $default;
+		$path = untrailingslashit( trim( (string) $this->endpoint_path ) );
+		if ( empty($path) ) $path = self::DEFAULT_ENDPOINT_PATH;
 
 		return $domain . '/' . ltrim( $path, '/' );
 	}
@@ -894,7 +724,7 @@ class Settings extends Base implements Hookable {
 	 * The settings a revalidation cannot be delivered without,
 	 * which the site has no value for.
 	 *
-	 * The paths are deliberately not among them: each falls back to a default,
+	 * The path is deliberately not among them: it falls back to a default,
 	 * so a standard install configures a domain and a secret and nothing else.
 	 *
 	 * A field holding nothing but whitespace is a field nobody filled in. It has
@@ -1192,11 +1022,9 @@ class Settings extends Base implements Hookable {
 		// happens to live on a network: each site reaches `migrate_db()` on its
 		// own `admin_init` exactly as a single install does, and sweeping from
 		// the one site that has it would write this plugin's rows into sites it
-		// has never run on. Those rows are not inert — `holds_any_data()` reads
-		// one as proof the plugin has run here, so a site later activated for
-		// the first time would be taken for an existing one and lose the
-		// settings `define_settings()` seeds only a new install. The same test
-		// guards `setup_new_site()`, for the same reason.
+		// has never run on — a migration ledger among them, stamped for data the
+		// site does not hold. The same test guards `setup_new_site()`, for the
+		// same reason.
 		if ( !NextJsRevalidate::is_network_active() ) return false;
 
 		$swept = get_site_option( self::SWEPT_VERSION_OPTION_NAME );
