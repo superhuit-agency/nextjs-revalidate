@@ -23,6 +23,10 @@
 # There are deliberately no `paths` filters. A check that skips itself on some
 # diffs cannot be a required status check — GitHub waits forever for the run that
 # never started — and every script here is minutes at most.
+#
+# Every action is pinned to a commit SHA, with the release it resolves to in a
+# comment, because a tag can be moved to other code. Dependabot bumps the SHA and
+# the comment together (ADR 0032).
 name: "CI"
 
 on:
@@ -51,10 +55,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           # 24, matching `.nvmrc` and the release workflow. `engines.node` is a
           # floor (>=20.12.0); CI runs the version the project actually develops
@@ -73,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # 7.4 is the whole point: `Requires PHP: 7.4` in the plugin header, and a
       # newer parser accepts PHP 8-only syntax and proves nothing. `lint:php`
@@ -81,7 +85,7 @@ jobs:
       # which is deliberately not set anywhere in this file — that refusal is a
       # feature, and a CI job that silenced it would report a lint it did not do.
       - name: Install PHP 7.4
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: "7.4"
           coverage: none
@@ -99,7 +103,7 @@ jobs:
       # construct fails before this job pays for a Composer install. Cached on
       # `composer.lock` the way the release workflow caches it.
       - name: Cache Composer dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: vendor
           key: ${{ runner.os }}-php74-${{ hashFiles('**/composer.lock') }}
