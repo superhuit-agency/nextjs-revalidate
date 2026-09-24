@@ -6,8 +6,8 @@
 #   weekly pull request.
 # - npm: security updates only. Every npm package is dev tooling, pinned on
 #   purpose, and a weekly bump never reaches a user. `open-pull-requests-limit: 0`
-#   turns version updates off; the entry's groups, ignore and prefix still apply
-#   to security pull requests.
+#   turns version updates off; the entry's groups and prefix still apply to
+#   security pull requests.
 # - Composer: security updates, and weekly version updates. `require` ships in
 #   the release zip, so each version bump to it gets a pull request of its own,
 #   never grouped; the dev tooling comes as one. Security fixes, `require`
@@ -15,7 +15,9 @@
 #
 # A deliberate pin in a manifest gets a matching `ignore`, whose comment gives the
 # reason and when it lifts. Without one, Dependabot proposes exactly the bump the
-# pin exists to prevent (#74).
+# pin exists to prevent (#74). An `ignore` holds back bumps proposed for the
+# package it names, not a bump to it that fixes a vulnerability in something it
+# depends on (#168). Review has to catch those.
 #
 # CI checks every pull request like any other. Only the default branch is
 # watched: `v1.x` keeps what it was cut with, and a security fix there is
@@ -43,12 +45,6 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-    ignore:
-      # Pinned exactly (#76). 11.8.1+ replaces `extract-zip` with
-      # `adm-zip <0.6.0` (GHSA-xcpc-8h2w-3j85, high). Lift this once a wp-env
-      # release ships `adm-zip >= 0.6.0`.
-      - dependency-name: "@wordpress/env"
-        versions: [">11.8.0"]
     commit-message:
       prefix: "chore: ⬆️"
 
