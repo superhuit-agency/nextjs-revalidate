@@ -1,5 +1,8 @@
 # The WordPress floor is the newest core API the plugin calls, declared as `MAJOR.MINOR`
 
+Decided while fixing #122. The gate that holds it is
+[ADR 0028](0028-the-analysis-holds-calls-to-the-wordpress-floor.md).
+
 `Requires at least` said `5.0.0`, in `nextjs-revalidate.php` and `readme.txt`
 both, from before this plugin had most of what it now does. It was not true.
 `wp_after_insert_post` — the hook the headline feature hangs on — arrived in
@@ -59,12 +62,17 @@ editor packages, registered by core since 5.0, below the floor either way.
 Core compares the header with `version_compare( $wp_version, $required, '>=' )`.
 `$wp_version` on a WordPress 5.6 install is the string `5.6`, and
 `version_compare( '5.6', '5.6.0', '>=' )` is **false** — a three-part header
-excludes the very release it names. The old `5.0.0` carried that bug already:
-it locked the plugin out of WordPress 5.0 while claiming to support it, which
-nobody noticed because the floor was wrong by five releases anyway.
+excludes the very release it names. Newer cores trim a trailing `.0` before
+comparing (6.5 does; 6.1 does not), but a 5.6 site is not running one of them,
+and the site at the floor is the one the floor is for.
 
-Both files now say `5.6`, and `tests/wordpress-floor-test.php` holds the shape as
-well as the number.
+The old `5.0.0` had the same shape and did no harm with it: core does not read
+the header at all below 5.2, and every release from 5.2 on satisfies `5.0.0`.
+It would have bitten the day the floor moved to a release core enforces on,
+which is this one.
+
+All four places that state the floor now say `5.6`, and
+`tests/wordpress-floor-test.php` holds the shape as well as the number.
 
 ## Nothing is added for installs below the floor
 
@@ -83,42 +91,24 @@ notice would therefore fire only on a fresh install on a two-release window from
 early 2019 that WordPress.org will also refuse to serve. This ticket is
 distribution metadata; the code stays as it is.
 
-## `Tested up to` is a record, not a header edit
+## `Tested up to` is the WordPress the environments run
 
 The two files disagreed — `6.2` in `nextjs-revalidate.php`, `6.1` in
-`readme.txt` — and `6.2` appears nowhere else in this repository. The readme's
-value is the operative one, since that is the file WordPress.org reads
-`Tested up to` from, so the plugin file came down to meet it rather than the
-other way round. Neither number moved on wp.org: both were already past the
-"not tested with the latest 3 major releases" line.
+`readme.txt` — and neither was a record of anything: `6.2` appears nowhere else
+in this repository, and both were past WordPress.org's "not tested with the
+latest 3 major releases" line.
 
-Raising it is a separate act with a prerequisite. `.wp-env.json` pins no `core`
-version, so every **pass** — manual and PHPUnit alike — runs against whatever
-WordPress was latest that day, and no record of which one survives.
-`johnpbloch/wordpress-core: 6.1` in `composer.json` is not that record either:
-it is there for the debugger's path mapping in `.vscode/launch.json` and nothing
-loads it. Pinning `core` in the wp-env configuration is what would make
-`Tested up to` a number somebody can point at, and it is its own piece of work.
+The maintainer's rule is that `Tested up to` is the WordPress the wp-env
+environments run, since that is where every pass — manual and PHPUnit alike —
+actually happens. `.wp-env.json` pins no `core`, so that is the current release:
+**7.1** today (7.1.2), written without the patch number because WordPress.org
+reads only `MAJOR.MINOR`. Both files say it, and the test fails when they
+disagree.
 
-## Consequences
-
-`tests/wordpress-floor-test.php` runs in the gate, per
-[ADR 0008](0008-two-testing-idioms.md), and holds four things: that the two
-headers agree, that they equal the floor this ADR settled on, that the floor is
-written `MAJOR.MINOR`, and that every row of the table above still names
-something the source actually uses.
-
-What it cannot hold is the direction that matters most — a *newly added* call to
-an API newer than 5.6 is invisible to it, because deciding that offline needs
-core's `@since` annotations and the test deliberately reads nothing outside this
-repository so it can run before `composer install`. So the table is maintained by
-hand: **reaching for a core API, hook or class introduced after the floor means
-adding a row and raising the header, or establishing that its absence is benign
-the way FSE's is above.** That is the discipline
-[ADR 0016](0016-php-compatibility-gate.md) gives PHP and this repository had no
-WordPress counterpart for. A PHPStan rule reading the stubs it already loads
-could automate it; that is a larger build than this ticket and is not blocked by
-anything here.
+The cost of not pinning `core` is that the number is only as true as the last
+time somebody looked: a new major arrives, the environments start running it, and
+the header lags until it is raised by hand. Pinning would make the record exact
+and the environments stale instead; that trade is not this ticket's to make.
 
 ## Considered Options
 
@@ -141,3 +131,20 @@ important hook, differing in exactly the ways that made core add the newer hook
 (`save_post` fires before terms and meta are written), maintained forever for a
 WordPress release line that has had no security support for years. The floor is
 one line and honest.
+
+## Consequences
+
+The floor is stated in four places — the plugin header, `readme.txt`,
+README.md and `wordpressFloor` in `phpstan.neon` — because each has a different
+reader: core, WordPress.org, a person, and the analysis. Moving it is one edit in
+each, and `tests/wordpress-floor-test.php` fails on anything less. The same test
+holds `Tested up to` together across the two files that carry it.
+
+A new call to a core function, method or class newer than the floor fails
+`npm run analyse:php`, naming the API and the release it arrived in — see
+[ADR 0028](0028-the-analysis-holds-calls-to-the-wordpress-floor.md). Hooks are
+the part it cannot see, so the three in the table above that set a floor are
+listed in the test by hand, with the number of arguments the plugin needs from
+`deleted_post`. **Registering a hook introduced after the floor means adding it
+there and raising the floor**, or establishing that its absence is benign the way
+FSE's is above. The other two rows of the table are held by the analysis.

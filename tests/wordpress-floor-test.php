@@ -1,10 +1,10 @@
 <?php
 /**
- * The WordPress floor — what `Requires at least` declares, in every file that
- * declares it.
+ * The WordPress floor — what `Requires at least` declares, in every place that
+ * declares it, and the hooks the analysis cannot hold to it.
  *
  * #122: the header said `5.0.0` while the hook the headline feature hangs on,
- * `wp_after_insert_post`, has existed only since 5.6.0. A site on 5.0–5.5 was
+ * `wp_after_insert_post`, has existed only since 5.6.0. A site on 5.2–5.5 was
  * told the plugin was compatible, installed it, configured a domain and a
  * secret, and got a plugin that activates, renders every admin surface, answers
  * its REST routes, purges all on demand — and revalidates nothing when a post is
@@ -14,33 +14,28 @@
  * The header is not documentation. WordPress.org reads it to decide which sites
  * are offered the plugin, and core reads it to decide whether the plugin may be
  * activated at all (`validate_plugin_requirements()`, since WordPress 5.2.0), so
- * the number being wrong is the whole of the bug. ADR 0027 settled it at 5.6 and
- * recorded the sweep it came from; this holds what that sweep concluded.
+ * the number being wrong is the whole of the bug. ADR 0027 settled it at 5.6.
  *
- * Four things, in order of how quietly they rot:
+ * `npm run analyse:php` holds every core function, method and class the plugin
+ * calls to that floor (ADR 0028). This holds the rest:
  *
- * 1. The three files that state a floor agree with each other. Two of them
- *    already disagreed about `Tested up to` — `6.2` against `6.1` — which is
+ * 1. The four places that state the floor agree: the plugin header, which core
+ *    reads; `readme.txt`, which WordPress.org reads; README.md, which a person
+ *    reads; and `wordpressFloor` in phpstan.neon, which the analysis reads.
+ *    A floor moved in three of them is a gate enforcing the wrong number.
+ * 2. `Tested up to` agrees between the two files that declare it, and is not
+ *    below the floor. They disagreed before — `6.2` against `6.1` — which is
  *    what a header nothing reads back looks like.
- * 2. The floor is the one ADR 0027 settled on, and `Tested up to` is not below
- *    it.
- * 3. It is written `MAJOR.MINOR`. Core compares with
+ * 3. The floor is written `MAJOR.MINOR`. Core compares with
  *    `version_compare( $wp_version, $required, '>=' )`, and `$wp_version` on a
  *    WordPress 5.6 install is the string `5.6` — so a `5.6.0` header excludes
- *    the release it names. The old `5.0.0` carried exactly that, unnoticed
- *    behind a floor that was wrong by five releases anyway. Asserted by running
- *    that comparison against the release the floor names, rather than by
- *    matching the shape, so the failure says why.
- * 4. Every surface in ADR 0027's table is still used. A table describing calls
- *    the plugin has since dropped is one that holds the floor too high and
- *    nobody re-checks.
- *
- * What it cannot hold is the direction that matters most: a *newly added* call
- * to an API newer than the floor is invisible here. Deciding that needs core's
- * own `@since` annotations, which live in a Composer dev dependency, and this
- * runs before `composer install` in the gate and reads nothing outside the
- * repository. So ADR 0027's table is maintained by hand, and reaching for a core
- * API introduced after the floor means adding a row and raising the header.
+ *    the release it names on the cores that site runs. Asserted by running that
+ *    comparison against the release the floor names, so the failure says why.
+ * 4. Every hook that sets a floor of its own is still registered the way that
+ *    needs it, and none is above the floor. Hooks are the half the analysis
+ *    cannot see — the stubs carry no `do_action()` to read a `@since` from — so
+ *    they are listed here by hand. Reaching for a hook newer than the floor
+ *    means adding it below and raising the floor.
  *
  * A standalone script per ADR 0008 — it reads the declaring files and the
  * analysed source, and needs no WordPress, no autoloader and no framework, so it
@@ -52,21 +47,15 @@
 $root     = dirname( __DIR__ );
 $failures = 0;
 
-/** The floor ADR 0027 settled on: the newest core API this plugin calls. */
-const NJR_WORDPRESS_FLOOR = '5.6';
-
 /**
- * The surfaces that set it — ADR 0027's table, as something executable.
- *
- * Each is the newest thing this plugin uses from its WordPress release, and each
- * key is a literal that must still appear somewhere in the analysed source.
+ * The hooks that set a floor, newest first: the release each arrived in, and
+ * the number of arguments the plugin's callback accepts — `deleted_post` only
+ * passes its second, the post, since 5.5.0.
  */
-const NJR_FLOOR_SURFACES = [
-	'wp_after_insert_post' => '5.6', // action
-	'deleted_post'         => '5.5', // action, in its two-argument form
-	'is_taxonomy_viewable' => '5.1',
-	'wp_initialize_site'   => '5.1', // action
-	'is_block_editor'      => '5.0', // WP_Screen::is_block_editor()
+const NJR_FLOOR_HOOKS = [
+	'wp_after_insert_post' => [ 'since' => '5.6', 'args' => 1 ],
+	'deleted_post'         => [ 'since' => '5.5', 'args' => 2 ],
+	'wp_initialize_site'   => [ 'since' => '5.1', 'args' => 1 ],
 ];
 
 /**
@@ -80,59 +69,94 @@ function njr_header( string $contents, string $key ): ?string {
 	return preg_match( $pattern, $contents, $matches ) ? $matches[1] : null;
 }
 
-/** The newest of a set of version strings, by `version_compare` rather than by string order. */
-function njr_newest( array $versions ): string {
-	return array_reduce(
-		$versions,
-		function ( $newest, $version ) {
-			return ( null === $newest || version_compare( $version, $newest, '>' ) ) ? $version : $newest;
+/** `a says x, b says y` — what a disagreement prints. */
+function njr_each_says( array $values ): string {
+	$said = [];
+	foreach ( $values as $file => $value ) $said[] = "$file says $value";
+
+	return implode( ', ', $said );
+}
+
+/**
+ * Every `add_action()` / `add_filter()` in a PHP file, as the hook name and the
+ * number of arguments its callback accepts. Read from tokens, so a hook named
+ * in a comment is not a hook registered.
+ *
+ * @return array<int, array{string, int}>
+ */
+function njr_registered_hooks( string $contents ): array {
+	$tokens = array_values( array_filter( token_get_all( $contents ), function ( $token ) {
+		return ! is_array( $token ) || ! in_array( $token[0], [ T_WHITESPACE, T_COMMENT, T_DOC_COMMENT ], true );
+	} ) );
+	$text  = function ( $token ) { return is_array( $token ) ? $token[1] : $token; };
+	$hooks = [];
+
+	foreach ( $tokens as $i => $token ) {
+		if ( ! in_array( ltrim( $text( $token ), '\\' ), [ 'add_action', 'add_filter' ], true ) ) continue;
+		if ( '(' !== $text( $tokens[ $i + 1 ] ?? '' ) ) continue;
+
+		// The arguments, split on the commas at the call's own depth.
+		$arguments = [ '' ];
+		$depth     = 0;
+		for ( $j = $i + 2; $j < count( $tokens ); $j++ ) {
+			$piece = $text( $tokens[ $j ] );
+
+			if ( in_array( $piece, [ ')', ']', '}' ], true ) ) {
+				if ( 0 === $depth ) break;
+				$depth--;
+			}
+			if ( in_array( $piece, [ '(', '[', '{' ], true ) ) $depth++;
+			if ( ',' === $piece && 0 === $depth ) {
+				$arguments[] = '';
+				continue;
+			}
+
+			$arguments[ count( $arguments ) - 1 ] .= $piece;
 		}
-	);
+
+		if ( ! preg_match( '/^([\'"])([^\'"]+)\1$/', $arguments[0], $name ) ) continue;
+
+		$hooks[] = [ $name[2], isset( $arguments[3] ) ? (int) $arguments[3] : 1 ];
+	}
+
+	return $hooks;
 }
 
 /** Every PHP file the analysis covers — `include/`, at any depth, plus the plugin file. */
-function njr_analysed_source( string $root ): string {
-	$source = (string) @file_get_contents( "$root/nextjs-revalidate.php" );
+function njr_analysed_files( string $root ): array {
+	$files = [ "$root/nextjs-revalidate.php" ];
 
-	if ( ! is_dir( "$root/include" ) ) return $source;
-
-	$files = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( "$root/include" ) );
-
-	foreach ( $files as $file ) {
-		if ( $file->isFile() && 'php' === $file->getExtension() ) {
-			$source .= (string) @file_get_contents( $file->getPathname() );
+	if ( is_dir( "$root/include" ) ) {
+		foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( "$root/include" ) ) as $file ) {
+			if ( $file->isFile() && 'php' === $file->getExtension() ) $files[] = $file->getPathname();
 		}
 	}
 
-	return $source;
+	return $files;
 }
 
 // The subject
 // ====
 
 /**
- * Where the floor is stated, and how to read it out.
- *
- * `readme.txt` is the operative one — it is what WordPress.org parses — and the
- * plugin header is what core parses at activation. README.md states it in prose
- * for a human, which is exactly the copy that drifts without anyone noticing.
+ * Where the floor is stated, and the pattern that reads it out. The plugin
+ * header comes first: it is what core enforces, so it is what the others are
+ * measured against.
  */
-$stating = [
-	'nextjs-revalidate.php' => function ( $contents ) { return njr_header( $contents, 'Requires at least' ); },
-	'readme.txt'            => function ( $contents ) { return njr_header( $contents, 'Requires at least' ); },
-	'README.md'             => function ( $contents ) {
-		return preg_match( '/^-\s+Requires WordPress\s+(\S+?)\+\s*$/m', $contents, $matches ) ? $matches[1] : null;
-	},
+$floor_patterns = [
+	'nextjs-revalidate.php' => '/^[ \t]*\*[ \t]*Requires at least:[ \t]*(\S+)[ \t]*$/m',
+	'readme.txt'            => '/^Requires at least:[ \t]*(\S+)[ \t]*$/m',
+	'README.md'             => '/^-\s+Requires WordPress\s+(\S+?)\+\s*$/m',
+	'phpstan.neon'          => '/^\s*wordpressFloor:\s*\'([^\']+)\'\s*$/m',
 ];
 
 /** The two that also carry a `Tested up to`. */
 $tested_in = [ 'nextjs-revalidate.php', 'readme.txt' ];
 
-$floors   = [];
-$tested   = [];
-$readable = 0;
+$floors = [];
+$tested = [];
 
-foreach ( $stating as $file => $read ) {
+foreach ( $floor_patterns as $file => $pattern ) {
 	$contents = @file_get_contents( "$root/$file" );
 
 	if ( false === $contents ) {
@@ -141,14 +165,11 @@ foreach ( $stating as $file => $read ) {
 		continue;
 	}
 
-	$readable++;
-	$floor = $read( $contents );
-
-	if ( null === $floor ) {
+	if ( preg_match( $pattern, $contents, $matches ) ) {
+		$floors[ $file ] = $matches[1];
+	} else {
 		$failures++;
 		printf( "FAIL — %s states no WordPress floor\n", $file );
-	} else {
-		$floors[ $file ] = $floor;
 	}
 
 	if ( in_array( $file, $tested_in, true ) ) {
@@ -163,130 +184,97 @@ foreach ( $stating as $file => $read ) {
 	}
 }
 
-if ( 0 === $readable ) {
-	printf( "\n%d failure(s)\n", $failures );
+if ( ! isset( $floors['nextjs-revalidate.php'] ) ) {
+	printf( "FAIL — without the plugin header's floor there is nothing to hold the rest to\n\n%d failure(s)\n", $failures + 1 );
 	exit( 1 );
 }
+
+$floor = $floors['nextjs-revalidate.php'];
 
 // The expectations
 // ====
 
-// 1. Every file that states a floor states the same one.
+// 1. Every place that states a floor states the header's.
 if ( count( array_unique( $floors ) ) > 1 ) {
 	$failures++;
-	printf(
-		"FAIL — the stated floors disagree: %s\n",
-		implode( ', ', array_map(
-			function ( $file, $floor ) { return "$file says $floor"; },
-			array_keys( $floors ),
-			$floors
-		) )
-	);
-} elseif ( $floors ) {
-	printf( "ok   — all %d files stating a floor say %s\n", count( $floors ), reset( $floors ) );
+	printf( "FAIL — the stated floors disagree: %s. Moving the floor is one edit in each (ADR 0027).\n", njr_each_says( $floors ) );
+} else {
+	printf( "ok   — all %d places stating a floor say %s\n", count( $floors ), $floor );
 }
 
-// 2. It is the floor ADR 0027 settled on.
-foreach ( $floors as $file => $floor ) {
-	if ( NJR_WORDPRESS_FLOOR !== $floor ) {
-		$failures++;
-		printf(
-			"FAIL — %s states %s; ADR 0027 settled the floor at %s. Moving it is a decision to take in the ADR first.\n",
-			$file,
-			$floor,
-			NJR_WORDPRESS_FLOOR
-		);
-		continue;
-	}
-
-	printf( "ok   — %s states the floor ADR 0027 settled on\n", $file );
-}
-
-// …and `Tested up to` says one number, at or above it.
+// 2. `Tested up to` says one number, at or above the floor.
 if ( count( array_unique( $tested ) ) > 1 ) {
 	$failures++;
-	printf(
-		"FAIL — `Tested up to` disagrees between files: %s\n",
-		implode( ', ', array_map(
-			function ( $file, $value ) { return "$file says $value"; },
-			array_keys( $tested ),
-			$tested
-		) )
-	);
+	printf( "FAIL — `Tested up to` disagrees between files: %s\n", njr_each_says( $tested ) );
 } elseif ( $tested ) {
 	printf( "ok   — both files declaring one are tested up to %s\n", reset( $tested ) );
 }
 
 foreach ( $tested as $file => $value ) {
-	if ( ! isset( $floors[ $file ] ) ) continue;
-
-	if ( version_compare( $value, $floors[ $file ], '<' ) ) {
+	if ( version_compare( $value, $floor, '<' ) ) {
 		$failures++;
-		printf( "FAIL — %s is tested up to %s, below the %s it requires\n", $file, $value, $floors[ $file ] );
+		printf( "FAIL — %s is tested up to %s, below the %s floor\n", $file, $value, $floor );
 		continue;
 	}
 
-	printf( "ok   — %s is tested up to %s, at or above its floor\n", $file, $value );
+	printf( "ok   — %s is tested up to %s, at or above the floor\n", $file, $value );
 }
 
 // 3. `MAJOR.MINOR`, because a third part excludes the release it names.
-foreach ( array_unique( $floors ) as $floor ) {
+foreach ( array_unique( $floors ) as $stated ) {
 	// What `$wp_version` is on the release the floor names: `5.6`, never `5.6.0`.
-	$release = implode( '.', array_slice( explode( '.', $floor ), 0, 2 ) );
+	$release = implode( '.', array_slice( explode( '.', $stated ), 0, 2 ) );
 
-	if ( ! version_compare( $release, $floor, '>=' ) ) {
+	if ( ! version_compare( $release, $stated, '>=' ) ) {
 		$failures++;
 		printf(
 			"FAIL — WordPress %s does not satisfy a floor of %s. Core compares with `version_compare( \$wp_version, \$required, '>=' )` and `\$wp_version` carries no third part, so `%s` locks the plugin out of the very release it claims. Write the floor as MAJOR.MINOR.\n",
 			$release,
-			$floor,
-			$floor
+			$stated,
+			$stated
 		);
 		continue;
 	}
 
-	printf( "ok   — WordPress %s itself satisfies a floor of %s\n", $release, $floor );
+	printf( "ok   — WordPress %s itself satisfies a floor of %s\n", $release, $stated );
 }
 
-// 4. Every surface the floor rests on is still used, and none is above it.
-$source = njr_analysed_source( $root );
+// 4. Every hook that sets a floor is registered the way that needs it, and none is above it.
+$registered = [];
 
-if ( '' === $source ) {
-	$failures++;
-	printf( "FAIL — none of the analysed source could be read; the floor's surfaces are unverifiable\n" );
-}
+foreach ( njr_analysed_files( $root ) as $path ) {
+	$contents = @file_get_contents( $path );
 
-foreach ( NJR_FLOOR_SURFACES as $surface => $since ) {
-	if ( version_compare( $since, NJR_WORDPRESS_FLOOR, '>' ) ) {
+	if ( false === $contents ) {
 		$failures++;
-		printf( "FAIL — %s needs WordPress %s, above the floor of %s\n", $surface, $since, NJR_WORDPRESS_FLOOR );
+		printf( "FAIL — %s cannot be read; the hooks it registers are unverifiable\n", $path );
 		continue;
 	}
 
-	if ( '' !== $source && false === strpos( $source, $surface ) ) {
+	foreach ( njr_registered_hooks( $contents ) as [ $hook, $args ] ) {
+		$registered[ $hook ] = max( $args, $registered[ $hook ] ?? 0 );
+	}
+}
+
+foreach ( NJR_FLOOR_HOOKS as $hook => $needs ) {
+	if ( version_compare( $needs['since'], $floor, '>' ) ) {
+		$failures++;
+		printf( "FAIL — %s needs WordPress %s, above the %s floor. Raise the floor (ADR 0027).\n", $hook, $needs['since'], $floor );
+		continue;
+	}
+
+	if ( ( $registered[ $hook ] ?? 0 ) < $needs['args'] ) {
 		$failures++;
 		printf(
-			"FAIL — %s is in ADR 0027's table as what puts the floor at %s, and nothing uses it any more. Re-run the sweep: the floor may now be lower.\n",
-			$surface,
-			$since
+			"FAIL — %s is listed as needing WordPress %s%s, and nothing registers it that way any more. Re-run ADR 0027's sweep: the floor may now be lower.\n",
+			$hook,
+			$needs['since'],
+			$needs['args'] > 1 ? " with {$needs['args']} arguments" : ''
 		);
 		continue;
 	}
 
-	printf( "ok   — %s (WordPress %s) is still used\n", $surface, $since );
-}
-
-// Nothing above notices a table that no longer reaches the floor it explains.
-if ( ! NJR_FLOOR_SURFACES ) {
-	$failures++;
-	printf( "FAIL — no surface is recorded as setting the floor; this test is checking nothing\n" );
-} elseif ( NJR_WORDPRESS_FLOOR !== njr_newest( array_values( NJR_FLOOR_SURFACES ) ) ) {
-	$failures++;
-	printf(
-		"FAIL — the floor is %s but the newest surface recorded needs %s. The two are the same statement and have to agree.\n",
-		NJR_WORDPRESS_FLOOR,
-		njr_newest( array_values( NJR_FLOOR_SURFACES ) )
-	);
+	printf( "ok   — %s (WordPress %s) is still registered, at or below the floor\n", $hook, $needs['since'] );
 }
 
 printf( "\n%d failure(s)\n", $failures );

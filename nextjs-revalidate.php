@@ -11,7 +11,7 @@
  * Requires PHP:      7.4
  * Text Domain:       nextjs-revalidate
  * Requires at least: 5.6
- * Tested up to:      6.1
+ * Tested up to:      7.1
  *
  * @package NextJsRevalidate
  * @category Core
