@@ -56,9 +56,9 @@ Four phases, over every eligible issue:
 2. **Prepare.** Every work branch is brought to a correct starting point — re-cut
    when it carries nothing, rebased when its commits are local-only, merged
    forward when it is already on origin.
-3. **Implement.** One container per item, three at a time, on Opus 5. The agent
-   commits to the work branch and nothing else — it has no `gh` and no GitHub
-   credential. When it stops, **the harness runs the gate itself**, in the same
+3. **Implement.** One container per item, three at a time, on Opus 5.5 at high
+   effort. The agent commits to the work branch and nothing else — it has no
+   `gh` and no GitHub credential. When it stops, **the harness runs the gate itself**, in the same
    container: `npm run typecheck`, `npm run lint:php`, `npm run test:php` and
    `npm run analyse:php` — the same four `.github/workflows/ci.yml` runs on a
    pull request, run here before there is a pull request. That verdict decides

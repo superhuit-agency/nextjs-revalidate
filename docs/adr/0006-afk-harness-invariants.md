@@ -1,7 +1,7 @@
 # Nothing the AFK harness does can reach `main`, and the invariants that hold are structural rather than written down
 
 The AFK agent harness in `.sandcastle/` runs unattended: it picks up
-`ready-for-agent` issues, implements each one in a container on Opus 5, and opens
+`ready-for-agent` issues, implements each one in a container on Opus 5.5, and opens
 a PR. Nobody is watching while it does that. Everything below is a rule that has
 to hold when nobody is watching, so none of it is enforced by an operator
 remembering it — each one is a function that refuses, or a test that fails.
@@ -123,9 +123,9 @@ webpack failure used to fail an item and no longer does. That was accepted to
 keep the gate to scripts a developer already runs; `tsc` covers the TypeScript
 either way, and #34 files the real PHP compatibility gate.
 
-That weakness is why implementers run on Opus 5 — implementer judgement is the
-only real quality control in this pipeline, and downgrading the model does not
-make the gate any stricter.
+That weakness is why implementers run on Opus 5.5 at high effort — implementer
+judgement is the only real quality control in this pipeline, and downgrading the
+model does not make the gate any stricter.
 
 ## Considered Options
 
