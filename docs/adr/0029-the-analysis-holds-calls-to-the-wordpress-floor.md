@@ -1,7 +1,7 @@
 # The analysis holds every core call to the WordPress floor, and hooks are held by hand
 
 Decided while fixing #122, alongside
-[ADR 0027](0027-the-wordpress-floor-is-the-newest-api-the-plugin-calls.md), which
+[ADR 0028](0028-the-wordpress-floor-is-the-newest-api-the-plugin-calls.md), which
 settled the floor this holds.
 
 [ADR 0016](0016-php-compatibility-gate.md) gave the PHP range a gate: PHPStan,
@@ -27,7 +27,7 @@ than the floor:
 
 ```
 Function wp_is_block_theme() was added in WordPress 5.9.0, above the 5.6 floor
-the plugin declares (`Requires at least`). Raise the floor (ADR 0027), or guard
+the plugin declares (`Requires at least`). Raise the floor (ADR 0028), or guard
 the call with function_exists().
 🪪 nextjsRevalidate.wordpressFloor
 ```
@@ -42,7 +42,7 @@ analysis ADR 0016 set up and in the harness's gate, and it passes on the current
 code with nothing added to the baseline. Lowering `wordpressFloor` to `4.9`
 reports exactly `is_taxonomy_viewable()` (5.1.0) and
 `WP_Screen::is_block_editor()` (5.0.0) — the two function-shaped rows of ADR
-0027's sweep, found without the sweep.
+0028's sweep, found without the sweep.
 
 ## The floor it reads is a copy, held to the others by a test
 
@@ -96,7 +96,7 @@ disagree with CI, which starts cold.
 
 Reaching for a core API newer than the floor is now a red analysis, not a review
 comment. The fix is one of three: guard it, raise the floor in all four places
-(ADR 0027), or use something older.
+(ADR 0028), or use something older.
 
 The rule is only as good as the stubs' docblocks. `php-stubs/wordpress-stubs`
 tracks the current release and copies core's annotations, so an API core

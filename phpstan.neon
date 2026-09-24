@@ -100,8 +100,8 @@ parameters:
 	# on this file, so a floor read from the header would leave every cached
 	# verdict standing when only the header moved. `tests/wordpress-floor-test.php`
 	# fails when any of the four disagree, so moving the floor is one edit in each
-	# and the gate refuses anything less. `MAJOR.MINOR`, for the reason ADR 0027
-	# gives. Hooks are outside what the rule can see — ADR 0028.
+	# and the gate refuses anything less. `MAJOR.MINOR`, for the reason ADR 0028
+	# gives. Hooks are outside what the rule can see — ADR 0029.
 	wordpressFloor: '5.6'
 
 parametersSchema:

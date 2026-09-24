@@ -111,4 +111,4 @@ PHPStan call the caller's live `false === $nb_added` branch dead code — and
 `Traits\BlockEditorScreen` drops a `method_exists()` guard on
 `WP_Screen::is_block_editor()`, which has been there since WordPress 5.0, at or
 below the floor the plugin header declares — 5.0 when this landed, 5.6 since
-[ADR 0027](0027-the-wordpress-floor-is-the-newest-api-the-plugin-calls.md).
+[ADR 0028](0028-the-wordpress-floor-is-the-newest-api-the-plugin-calls.md).

@@ -35,7 +35,7 @@ use PHPStan\Type\TypeUtils;
  * What it cannot see is hooks — `add_action( 'wp_after_insert_post', … )` is a
  * call to a 2.0 function with a string in it, and the stubs carry no `do_action`
  * bodies to read a hook's `@since` from. `tests/wordpress-floor-test.php` holds
- * the hooks that set the floor; ADR 0028 records the limit.
+ * the hooks that set the floor; ADR 0029 records the limit.
  *
  * A call inside a `function_exists()`, `class_exists()` or `method_exists()`
  * check on what it calls is the sanctioned way to use a newer API below its
@@ -84,7 +84,7 @@ final class WordPressFloorRule implements Rule {
 
 		return [
 			RuleErrorBuilder::message( sprintf(
-				'%s was added in WordPress %s, above the %s floor the plugin declares (`Requires at least`). Raise the floor (ADR 0027), or guard the call with %s.',
+				'%s was added in WordPress %s, above the %s floor the plugin declares (`Requires at least`). Raise the floor (ADR 0028), or guard the call with %s.',
 				$what,
 				$since,
 				$this->floor,

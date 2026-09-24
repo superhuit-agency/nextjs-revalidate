@@ -14,10 +14,10 @@
  * The header is not documentation. WordPress.org reads it to decide which sites
  * are offered the plugin, and core reads it to decide whether the plugin may be
  * activated at all (`validate_plugin_requirements()`, since WordPress 5.2.0), so
- * the number being wrong is the whole of the bug. ADR 0027 settled it at 5.6.
+ * the number being wrong is the whole of the bug. ADR 0028 settled it at 5.6.
  *
  * `npm run analyse:php` holds every core function, method and class the plugin
- * calls to that floor (ADR 0028). This holds the rest:
+ * calls to that floor (ADR 0029). This holds the rest:
  *
  * 1. The four places that state the floor agree: the plugin header, which core
  *    reads; `readme.txt`, which WordPress.org reads; README.md, which a person
@@ -197,7 +197,7 @@ $floor = $floors['nextjs-revalidate.php'];
 // 1. Every place that states a floor states the header's.
 if ( count( array_unique( $floors ) ) > 1 ) {
 	$failures++;
-	printf( "FAIL — the stated floors disagree: %s. Moving the floor is one edit in each (ADR 0027).\n", njr_each_says( $floors ) );
+	printf( "FAIL — the stated floors disagree: %s. Moving the floor is one edit in each (ADR 0028).\n", njr_each_says( $floors ) );
 } else {
 	printf( "ok   — all %d places stating a floor say %s\n", count( $floors ), $floor );
 }
@@ -259,14 +259,14 @@ foreach ( njr_analysed_files( $root ) as $path ) {
 foreach ( NJR_FLOOR_HOOKS as $hook => $needs ) {
 	if ( version_compare( $needs['since'], $floor, '>' ) ) {
 		$failures++;
-		printf( "FAIL — %s needs WordPress %s, above the %s floor. Raise the floor (ADR 0027).\n", $hook, $needs['since'], $floor );
+		printf( "FAIL — %s needs WordPress %s, above the %s floor. Raise the floor (ADR 0028).\n", $hook, $needs['since'], $floor );
 		continue;
 	}
 
 	if ( ( $registered[ $hook ] ?? 0 ) < $needs['args'] ) {
 		$failures++;
 		printf(
-			"FAIL — %s is listed as needing WordPress %s%s, and nothing registers it that way any more. Re-run ADR 0027's sweep: the floor may now be lower.\n",
+			"FAIL — %s is listed as needing WordPress %s%s, and nothing registers it that way any more. Re-run ADR 0028's sweep: the floor may now be lower.\n",
 			$hook,
 			$needs['since'],
 			$needs['args'] > 1 ? " with {$needs['args']} arguments" : ''
