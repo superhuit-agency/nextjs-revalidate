@@ -18,6 +18,12 @@
  *  - `true`     — already queued             — `success: true`
  *  - `false`    — the insert failed          — `success: false`
  *
+ * The status those answers produce moved afterwards, in #118: a request in which
+ * nothing was accepted answers 400, 500 or 503 rather than the 207 every failed
+ * request used to get, and 207 is left to the genuinely mixed batch it describes.
+ * That rule is `tests/rest-response-status-test.php`'s subject — the statuses
+ * asserted below are only the ones this file's own cases produce.
+ *
  * Reading an answer needs no queue, no options and no database, so this is a
  * standalone script rather than a PHPUnit test — see
  * `docs/adr/0008-two-testing-idioms.md`. That an insert can really come back
@@ -292,14 +298,14 @@ foreach ( [ 'a failed insert' => false, 'a write that affected nothing' => 0 ] a
 
 	$response = njr_test_single( $answer );
 
-	njr_test_assert( 207 === $response->get_status(), "the single route answers 207 for $description" );
+	njr_test_assert( 500 === $response->get_status(), "the single route answers 500 for $description" );
 	njr_test_assert( false === $response->get_data()['success'], "the single route reports no success for $description" );
 	njr_test_assert( false === njr_test_results( $response )[0]['success'], "the single route reports that item as a failure for $description" );
 	njr_test_assert( ! empty( njr_test_results( $response )[0]['message'] ), "the single route carries a message for $description" );
 
 	$response = njr_test_batch( [ $answer ] );
 
-	njr_test_assert( 207 === $response->get_status(), "the batch route answers 207 for $description" );
+	njr_test_assert( 500 === $response->get_status(), "the batch route answers 500 for $description" );
 	njr_test_assert( false === njr_test_results( $response )[0]['success'], "the batch route reports that item as a failure for $description" );
 	njr_test_assert( ! empty( njr_test_results( $response )[0]['message'] ), "the batch route carries a message for $description" );
 }
@@ -328,7 +334,7 @@ njr_test_assert(
 $refusal  = new WP_Error( 'not_configured', 'Next.js revalidate is not configured for this site.' );
 $response = njr_test_single( $refusal );
 
-njr_test_assert( 207 === $response->get_status(), 'the single route answers 207 for a refusal' );
+njr_test_assert( 503 === $response->get_status(), 'the single route answers 503 for a refusal' );
 njr_test_assert( false === njr_test_results( $response )[0]['success'], 'a refused item is reported as a failure' );
 njr_test_assert( $refusal->get_error_message() === njr_test_results( $response )[0]['message'], 'a refused item carries the queue\'s own message' );
 

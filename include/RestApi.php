@@ -16,6 +16,33 @@ class RestApi extends Base implements Hookable {
 
 	const NAMESPACE = 'nextjs-revalidate/v1';
 
+	/**
+	 * What an item that was not accepted contributes to its request's status.
+	 *
+	 * The kinds have to be kept apart, because they send whoever is holding the
+	 * response to different places. An item this route could not read is the
+	 * caller's to fix; an insert that did not happen is this site's; and a
+	 * **refusal** is neither — nothing is wrong with the request and nothing
+	 * broke, the site simply has no revalidate domain or secret and can deliver
+	 * nothing until an operator supplies them (ADR 0015).
+	 */
+	private const ITEM_BAD_REQUEST = 400;
+	private const ITEM_FAILED      = 500;
+	private const ITEM_REFUSED     = 503;
+
+	/**
+	 * The status a request answers when *none* of its items was accepted, in the
+	 * order the kinds outrank one another.
+	 *
+	 * A refusal comes first because it describes the site rather than the item:
+	 * an unconfigured site refuses everything it is sent, so wherever a refusal
+	 * is among the outcomes it is the truth about the whole request. Both 5xx
+	 * kinds outrank 400, because a caller told its request was bad goes looking
+	 * at the request — and a request that was fine is the one place that answer
+	 * must never send it.
+	 */
+	private const WHOLLY_FAILED_STATUSES = [ self::ITEM_REFUSED, self::ITEM_FAILED, self::ITEM_BAD_REQUEST ];
+
 	public function register_hooks(): void {
 		add_action('rest_api_init', [$this, 'register_routes']);
 	}
@@ -128,20 +155,17 @@ class RestApi extends Base implements Hookable {
 			if (is_object($it)) {
 				$it = (array) $it;
 			}
+			// An entry that is not an object has no `path` to read, so it goes on
+			// as an item with none and is reported like one. Skipping it left the
+			// body a result short, and a batch that lost an item answering 200 as
+			// though everything sent had been queued (#118).
 			if (!is_array($it)) {
-				continue;
+				$it = [];
 			}
 			$items[] = [
 				'path'     => isset($it['path']) ? sanitize_text_field($it['path']) : null,
 				'priority' => isset($it['priority']) ? absint($it['priority']) : RevalidateQueue::DEFAULT_PRIORITY,
 			];
-		}
-
-		if (empty($items)) {
-			return new WP_REST_Response([
-				'success' => false,
-				'message' => 'No valid items found in request.'
-			], 400);
 		}
 
 		return $this->process_items($items);
@@ -153,7 +177,10 @@ class RestApi extends Base implements Hookable {
 	 */
 	private function process_items(array $items) {
 		$results = [];
-		$had_error = false;
+		// The status of each item that was not accepted, in the order they were
+		// sent. A count of failures decided the status until #118, and a count
+		// cannot say what a wholly-failed request should answer with.
+		$failed = [];
 
 		foreach ($items as $it) {
 			if (empty($it['path'])) {
@@ -162,7 +189,7 @@ class RestApi extends Base implements Hookable {
 					'success' => false,
 					'message' => 'Missing path',
 				];
-				$had_error = true;
+				$failed[] = self::ITEM_BAD_REQUEST;
 				continue;
 			}
 
@@ -183,7 +210,14 @@ class RestApi extends Base implements Hookable {
 						'success' => false,
 						'message' => $accepted->get_error_message(),
 					];
-					$had_error = true;
+					// The only `WP_Error` the queue produces is the refusal of
+					// an unconfigured site. Anything else arriving here is this
+					// site failing rather than declining, and is answered as
+					// such rather than as a configuration an operator could go
+					// and fix.
+					$failed[] = 'not_configured' === $accepted->get_error_code()
+						? self::ITEM_REFUSED
+						: self::ITEM_FAILED;
 				} elseif (!$accepted) {
 					$results[] = [
 						'path'    => $it['path'],
@@ -196,7 +230,7 @@ class RestApi extends Base implements Hookable {
 						// a caller to read.
 						'message' => 'Could not be added to the revalidation queue.',
 					];
-					$had_error = true;
+					$failed[] = self::ITEM_FAILED;
 				} else {
 					$results[] = [
 						'path'    => $it['path'],
@@ -215,14 +249,57 @@ class RestApi extends Base implements Hookable {
 					'success' => false,
 					'message' => $e->getMessage(),
 				];
-				$had_error = true;
+				$failed[] = self::ITEM_FAILED;
 			}
 		}
 
-		$status = $had_error ? 207 : 200; // 207 Multi-Status when some items failed
 		return new WP_REST_Response([
-			'success' => !$had_error,
+			'success' => empty($failed),
 			'results' => $results,
-		], $status);
+		], $this->status_of_request($results, $failed));
+	}
+
+	/**
+	 * The status one request answers with.
+	 *
+	 * Three answers, and which one applies is decided by the outcomes rather
+	 * than by the route that produced them:
+	 *
+	 * - **200** — every item was accepted.
+	 * - **207 Multi-Status** — some were and some were not. One code cannot
+	 *   describe that body, which is the whole of what 207 is for
+	 *   (RFC 4918 §13), and the per-item `success` fields are where the caller
+	 *   reads the rest.
+	 * - **4xx or 5xx** — nothing was accepted, and the status names why.
+	 *
+	 * That last case used to answer 207 as well, and 207 is a **success**
+	 * class: `res.ok` is true for it, `WP_REST_Response::is_error()` is false,
+	 * and the raise-on-error helper of most HTTP clients stays quiet. A deploy
+	 * hook or a CI job doing the ordinary thing — issue the request, check the
+	 * status, trust it — was told everything was fine while nothing had been
+	 * queued, and these callers have no other feedback channel to learn
+	 * otherwise: they cannot see the queue, the log or the drain (#118, #93).
+	 *
+	 * The single route sends one item, so it can never reach the 207 branch:
+	 * one outcome is the request's outcome, and there is nothing for a
+	 * multi-status to disambiguate.
+	 *
+	 * @param array $results One entry per item processed.
+	 * @param int[] $failed  The status of each item that was not accepted.
+	 *
+	 * @return int
+	 */
+	private function status_of_request(array $results, array $failed) {
+		if (empty($failed)) return 200;
+
+		if (count($failed) < count($results)) return 207;
+
+		foreach (self::WHOLLY_FAILED_STATUSES as $status) {
+			if (in_array($status, $failed, true)) return $status;
+		}
+
+		// Unreachable: every failed item contributes one of the statuses above.
+		// Kept so this answers an int whatever a later kind of failure forgets.
+		return self::ITEM_FAILED;
 	}
 }

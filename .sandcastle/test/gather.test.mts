@@ -33,4 +33,28 @@ describe('parentFromBody', () => {
 	it('is null when there is no marker', () => {
 		assert.equal(parentFromBody('Blocked by #12'), null);
 	});
+
+	it('reads a marker that opens a line below other text', () => {
+		assert.equal(parentFromBody('> *Generated during triage.*\n\nPart of #29'), 29);
+	});
+
+	it('does not read a parent out of prose — #118 was sent to a closed #93 this way', () => {
+		assert.equal(
+			parentFromBody('ADR 0020 (being written as part of #93) is the natural home for whatever is decided here.'),
+			null
+		);
+	});
+
+	it('does not read the lower-case sub-issue form out of prose either — #28 would have gone to #29', () => {
+		assert.equal(
+			parentFromBody('The settings migration planned in the sub-issue of #29 is exactly that kind of migration.'),
+			null
+		);
+	});
+
+	it('does not read a marker dressed in markdown — the tracker doc asks for it plain', () => {
+		assert.equal(parentFromBody('**Part of #29**'), null);
+		assert.equal(parentFromBody('> Part of #29'), null);
+		assert.equal(parentFromBody('- Part of #29'), null);
+	});
 });
