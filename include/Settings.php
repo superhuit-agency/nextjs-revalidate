@@ -15,10 +15,10 @@ use NextJsRevalidate\Interfaces\Hookable;
  * @property string $domain                  The scheme, host and port of the front-end.
  * @property string $endpoint_path           The revalidate route, or '' for the default.
  * @property string $fse_endpoint_path       The FSE revalidate route, or '' for the default.
- * @property string $secret                  The shared secret every request carries.
+ * @property string $secret                  The shared secret every request carries, read trimmed.
  * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
- * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — '', 'on' or 'off'.
+ * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — 'on' or '' (a row saved before 1.7.0 may hold 'off').
  * @property array  $debug                   Debug switches, keyed by name.
  *
  * The plugin's own objects are reached through the same `__get()`, off the
@@ -49,20 +49,24 @@ class Settings extends Base implements Hookable {
 	 * Keyed by the name the rest of the plugin reads, each entry pairs the
 	 * option the setting is stored under with the empty value a read yields on
 	 * a site holding no row for it — of the setting's own type, never false, so
-	 * a read is always safe to iterate or compare.
+	 * a read is always safe to iterate or compare — and with the callback every
+	 * value is sanitised through before it is stored. A setting whose stored
+	 * form has tightened since rows were first written also names the callback
+	 * a read passes its value through, so an older row is used in the form a
+	 * save would give it now.
 	 *
 	 * Authoritative for reads, registration, seeding and teardown alike, so a
 	 * setting cannot be added to one of them and forgotten in another.
 	 */
 	private const OPTIONS = [
-		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,                   'empty' => ''  ],
-		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,            'empty' => ''  ],
-		'fse_endpoint_path'       => [ 'name' => self::SETTINGS_FSE_ENDPOINT_PATH_NAME,        'empty' => ''  ],
-		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,                   'empty' => ''  ],
-		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,     'empty' => []  ],
-		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,       'empty' => []  ],
-		'revalidate_on_fse_save'  => [ 'name' => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,        'empty' => ''  ],
-		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                         'empty' => []  ],
+		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_domain'        ] ],
+		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,        'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
+		'fse_endpoint_path'       => [ 'name' => self::SETTINGS_FSE_ENDPOINT_PATH_NAME,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
+		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_secret'        ], 'read' => [ self::class, 'sanitize_secret' ] ],
+		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
+		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
+		'revalidate_on_fse_save'  => [ 'name' => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_single_switch' ] ],
+		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
 	];
 
 	/**
@@ -148,7 +152,16 @@ class Settings extends Base implements Hookable {
 		// what an absent one means.
 		if ( is_array($empty) ) return is_array($value) ? $value : $empty;
 
-		return $value === false ? $empty : $value;
+		if ( $value === false ) return $empty;
+
+		// Read the way it is now saved, so a row stored before saving tightened
+		// it is used in its current form too — the secret, trimmed. Here rather
+		// than at each use: the outbound URL of each endpoint, the inbound REST
+		// check and the transport's redaction all read it, and all of them must
+		// agree.
+		if ( isset(self::OPTIONS[$name]['read']) ) return call_user_func( self::OPTIONS[$name]['read'], $value );
+
+		return $value;
 	}
 
 	/**
@@ -278,10 +291,7 @@ class Settings extends Base implements Hookable {
 	 * Register and add settings
 	 */
 	public function register_fields() {
-		foreach ( self::OPTIONS as $setting ) {
-			register_setting( self::SETTINGS_GROUP, $setting['name'] );
-		}
-
+		$this->register_settings();
 
 		// API section settings
 
@@ -544,6 +554,177 @@ class Settings extends Base implements Hookable {
 	}
 
 	/**
+	 * Register every setting, with the callback it is sanitised through.
+	 *
+	 * WordPress attaches that callback to `sanitize_option_{$name}`, which
+	 * `add_option()` and `update_option()` apply to every write and not only to
+	 * a save of the settings screen. So it holds for the plugin's own writes as
+	 * well — the seeding in `define_settings()` and the migrations in
+	 * `migrate_db()`, which this runs before on `admin_init` — and each callback
+	 * stores whatever those writes stored before it existed.
+	 *
+	 * Each callback also answers its own output unchanged, because WordPress can
+	 * run one twice on a single save: `update_option()` on a site holding no row
+	 * falls through to `add_option()`, which sanitises again (core #21989).
+	 *
+	 * @return void
+	 */
+	public function register_settings() {
+		foreach ( self::OPTIONS as $setting ) {
+			register_setting( self::SETTINGS_GROUP, $setting['name'], [ 'sanitize_callback' => $setting['sanitize'] ] );
+		}
+	}
+
+	/**
+	 * The revalidate domain, as it is stored.
+	 *
+	 * Trimmed, with any query or fragment dropped, and otherwise as typed: a
+	 * port, a subdirectory and basic-auth credentials all belong to the domain
+	 * (ADR 0017). A value that is not an `http` or `https` URL with a host is
+	 * refused rather than stored, with an error on the settings screen, and the
+	 * domain the site held before is kept — so a first bad entry leaves the site
+	 * unconfigured, and the notice saying so, rather than configured with a
+	 * domain every revalidation would fail against. `esc_url_raw()` is not the
+	 * rule on purpose: it strips what it cannot use, and a domain stripped to
+	 * `''` would unconfigure a site with nothing on screen to say why.
+	 *
+	 * @param mixed $value What was submitted.
+	 * @return mixed What is stored.
+	 */
+	public static function sanitize_domain( $value ) {
+		$domain = self::normalise_domain( $value );
+		if ( $domain !== null ) return $domain;
+
+		// One error however many times WordPress runs this on the save.
+		if ( empty( get_settings_errors( self::SETTINGS_DOMAIN_NAME ) ) ) {
+			add_settings_error(
+				self::SETTINGS_DOMAIN_NAME,
+				'invalid_domain',
+				__( 'The revalidate domain was not saved: it must be a web address starting with http:// or https://, such as https://example.com.', 'nextjs-revalidate' )
+			);
+		}
+
+		// The domain held before, unchanged — which is also what makes
+		// `update_option()` skip the write.
+		return (string) get_option( self::SETTINGS_DOMAIN_NAME, '' );
+	}
+
+	/**
+	 * A revalidate domain in the form it is stored, or null when it is not one.
+	 *
+	 * The rule `sanitize_domain()` applies to a save, and `split_legacy_url()`
+	 * to what it splits out of the legacy URL, so the migration can never write
+	 * a domain the rule would refuse.
+	 *
+	 * @param mixed $value
+	 * @return string|null `''` for a value holding nothing but whitespace.
+	 */
+	private static function normalise_domain( $value ) {
+
+		// Something was submitted, and it is not a domain. `null` is not among
+		// them: it is what `options.php` saves for a field the form left out.
+		if ( is_array($value) || is_object($value) ) return null;
+
+		$domain = self::strip_query_and_fragment( $value );
+		if ( $domain === '' ) return '';
+
+		$parts = wp_parse_url( $domain );
+		if ( ! is_array($parts) || empty($parts['host']) ) return null;
+
+		$scheme = strtolower( $parts['scheme'] ?? '' );
+		if ( $scheme !== 'http' && $scheme !== 'https' ) return null;
+
+		return $domain;
+	}
+
+	/**
+	 * An endpoint path, as it is stored.
+	 *
+	 * Trimmed, with any query or fragment dropped — the shape ADR 0017's
+	 * migration gives the path it splits off — and otherwise as typed. Slashes
+	 * are left alone: composition already joins the halves with exactly one.
+	 *
+	 * @param mixed $value What was submitted.
+	 * @return string What is stored.
+	 */
+	public static function sanitize_path( $value ) {
+		return self::strip_query_and_fragment( $value );
+	}
+
+	/**
+	 * The secret, as it is stored: trimmed, and nothing else.
+	 *
+	 * An opaque string whose character set the operator does not control, so
+	 * nothing inside it is removed — `sanitize_text_field()` would strip tags,
+	 * octets and line breaks out of a value that is only ever compared.
+	 *
+	 * @param mixed $value What was submitted.
+	 * @return string What is stored.
+	 */
+	public static function sanitize_secret( $value ) {
+		return is_scalar($value) ? trim( (string) $value ) : '';
+	}
+
+	/**
+	 * A set of switches, as it is stored: a map from key to `'on'`.
+	 *
+	 * An entry holding anything but `'on'` is dropped, and so is anything that
+	 * is not a map at all. The keys are not checked against the post types
+	 * registered now, because a post type that registers later or only on some
+	 * requests would lose its switch on every save made without it.
+	 *
+	 * @param mixed $value What was submitted.
+	 * @return array What is stored.
+	 */
+	public static function sanitize_switch_set( $value ) {
+		if ( ! is_array($value) ) return [];
+
+		return array_filter( $value, function ( $state ) { return $state === 'on'; } );
+	}
+
+	/**
+	 * A single switch, as it is stored: `'on'`, or the empty value.
+	 *
+	 * On exactly when `revalidates_on_fse_save()` would read the value as on.
+	 *
+	 * @param mixed $value What was submitted.
+	 * @return string What is stored.
+	 */
+	public static function sanitize_single_switch( $value ) {
+		return self::reads_as_on( $value ) ? 'on' : '';
+	}
+
+	/**
+	 * Whether a switch's value says on: `on`, `1`, `yes` or `true`, in any case
+	 * and with any whitespace around it.
+	 *
+	 * @param mixed $value
+	 * @return bool
+	 */
+	private static function reads_as_on( $value ) {
+		if ( ! is_scalar($value) ) return false;
+
+		return filter_var( trim( (string) $value ), FILTER_VALIDATE_BOOLEAN );
+	}
+
+	/**
+	 * A scalar value cut at its first `?` or `#`, then trimmed.
+	 *
+	 * A rule rather than ADR 0017's construction on purpose: a typed value has
+	 * no parts to rebuild it from until it is known to be a URL, and a path
+	 * never is one. Both characters end a URL's path, so nothing either can
+	 * begin belongs to a domain or a path.
+	 *
+	 * @param mixed $value
+	 * @return string `''` for anything that is not a scalar.
+	 */
+	private static function strip_query_and_fragment( $value ) {
+		if ( ! is_scalar($value) ) return '';
+
+		return trim( (string) preg_replace( '/[?#].*$/s', '', (string) $value ) );
+	}
+
+	/**
 	 * Delete every setting of the site currently being served.
 	 *
 	 * @return void
@@ -665,13 +846,12 @@ class Settings extends Base implements Hookable {
 	 * @return bool
 	 */
 	public function revalidates_on_fse_save() {
-		$value = trim( (string) $this->revalidate_on_fse_save );
 
 		// `on`, `1`, `yes` and `true` answer true; the empty value, `off` and
 		// anything no version of this plugin ever wrote answer false. An
 		// unchecked switch submits nothing at all, which WordPress stores as an
 		// empty row — so switching this off needs no hidden field to carry it.
-		return filter_var( $value, FILTER_VALIDATE_BOOLEAN );
+		return self::reads_as_on( $this->revalidate_on_fse_save );
 	}
 
 	/**
@@ -690,10 +870,10 @@ class Settings extends Base implements Hookable {
 	 * first, and this is what keeps a mistake there from becoming a request to
 	 * a relative URL.
 	 *
-	 * Both halves are trimmed first. Neither field is sanitised on save, and a
-	 * domain pasted in with a trailing space composes a URL `wp_remote_get()`
-	 * rejects — a revalidation that fails for a reason nothing on screen names.
-	 * Trimming here rather than on save also covers the rows already stored.
+	 * Both halves are trimmed first. Both are trimmed on save as well, but a row
+	 * stored before that was not, and a domain pasted in with a trailing space
+	 * composes a URL `wp_remote_get()` rejects — a revalidation that fails for a
+	 * reason nothing on screen names. Trimming here covers those rows.
 	 *
 	 * @param string $path    The path the operator supplied, possibly empty.
 	 * @param string $default The path to use when they supplied none.
@@ -1075,6 +1255,14 @@ class Settings extends Base implements Hookable {
 
 		$domain .= $parts['host'];
 		if ( ! empty($parts['port']) ) $domain .= ':' . $parts['port'];
+
+		// Held to the rule a saved domain is held to, before anything is
+		// written. The write goes through `sanitize_domain()`, and a domain it
+		// refused would be dropped while the legacy URL was still deleted below,
+		// leaving the site with neither. So a legacy URL whose scheme is not
+		// `http` or `https` is left where it is, as an unparseable one is.
+		$domain = self::normalise_domain( $domain );
+		if ( empty($domain) ) return;
 
 		// A trailing slash belongs to neither half — the composition puts
 		// exactly one slash between them.

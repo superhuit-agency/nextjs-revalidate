@@ -88,3 +88,25 @@ reason to imitate, so the trap is closed at the source and pinned by a test in
 rather than a bare path. Nothing composes an endpoint without an
 `is_configured()` guard first; this is what keeps a mistake there from becoming a
 request to a relative URL.
+
+## The domain is held to a rule on save, and the split to the same one
+
+From #99 a domain is sanitised on every write: trimmed, cut at its first `?` or
+`#`, and refused — with a settings error, the domain held before kept — unless it
+is an `http` or `https` URL with a host. Two things above change shape with it.
+
+**A typed value is stripped by a rule, not rebuilt by construction.** Rebuilding
+from `wp_parse_url()`'s parts is only possible once a value is known to be a URL,
+and an endpoint path never is one. Cutting at `?` or `#` misses nothing either
+character can begin, since both end a URL's path; the split above still rebuilds
+its domain from parts, as it always did.
+
+**The split leaves one more kind of legacy URL where it is.** The write it makes
+now goes through the domain's callback, so a domain the rule refuses would be
+dropped while the legacy URL was still deleted — the site left with neither.
+`split_legacy_url()` therefore holds the domain it builds to the same rule
+(`Settings::normalise_domain()`) before writing anything, and a legacy URL whose
+scheme is not `http` or `https` is left in place, like one with no host. The
+guard is unchanged, so such a URL is parsed again on every `admin_init`; it writes
+nothing and raises nothing, and the site stays unconfigured — loudly, per
+ADR-0015 — until the operator types a domain.

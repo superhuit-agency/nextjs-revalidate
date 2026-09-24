@@ -206,3 +206,13 @@ so returning `true` there revalidates nothing.
   it was holding; a site that never managed to create one gets it there too. A
   table that cannot be created or migrated is now reported in the log. Two
   permalinks differing only in case are now queued as the two paths they are.
+* Fixed: the settings are now cleaned up when they are saved. They used to be
+  stored exactly as typed, so a domain pasted in with a trailing space, or a
+  secret copied out of a `.env` file with its line break, left a site that looked
+  configured and failed every revalidation with nothing on screen saying why.
+  The domain, the paths and the secret are trimmed, and a pasted `?query` or
+  `#fragment` is dropped from the domain and the paths. A domain that is not an
+  `http://` or `https://` address is not saved: the settings screen says so,
+  and the domain saved before is kept. The secret is read trimmed wherever it is
+  used — sent to both endpoints, and checked on the REST routes — so a secret
+  saved with whitespace before this release works without being saved again.

@@ -232,8 +232,10 @@ path.
 **Setting**:
 One named piece of operator-supplied configuration, stored as a single WordPress
 option on the site. Declared once in `Settings`' option table, which pairs the
-name the rest of the plugin reads with the option name it is stored under and the
-value a read yields when the site has no row for it.
+name the rest of the plugin reads with the option name it is stored under, the
+value a read yields when the site has no row for it, and the callback every value
+is sanitised through before it is stored — on a save of the settings screen and
+on any other write to the option alike.
 _Avoid_: Option — reserve that for the WordPress storage primitive a setting
 happens to be kept in.
 
@@ -262,7 +264,10 @@ would sensibly keep.
 **Revalidate domain**:
 The scheme, host and port of the Next.js app this site talks to — everything an
 endpoint URL has in common, stored once. One of the two settings a site cannot
-revalidate without.
+revalidate without. Empty on an unconfigured site; otherwise saved only as an
+`http` or `https` URL with a host — a value that is not one is refused on save,
+and the domain held before is kept. A row stored before 1.7.0 was never held to
+that rule.
 _Avoid_: Revalidate URL, front-end URL — the URL is composed, and naming the
 stored half after the composed whole is what made a second endpoint unaddressable.
 

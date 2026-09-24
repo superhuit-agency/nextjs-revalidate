@@ -58,15 +58,67 @@ function get_option( $name, $default = false ) {
 		: $default;
 }
 
+/**
+ * The sanitize callback `register_setting()` attached to each option.
+ *
+ * `Settings::register_fields()` runs before `migrate_db()` on `admin_init`, so
+ * every write a migration makes to a setting goes through that setting's
+ * callback (#99). The writes below apply them as core's do.
+ *
+ * @var callable[]
+ */
+$GLOBALS['njr_test_sanitizers'] = [];
+
+/**
+ * Every settings error a callback added, as [ setting, code ].
+ * @var array[]
+ */
+$GLOBALS['njr_test_settings_errors'] = [];
+
+function register_setting( $group, $name, $args = [] ) {
+	if ( isset( $args['sanitize_callback'] ) ) $GLOBALS['njr_test_sanitizers'][ $name ] = $args['sanitize_callback'];
+}
+
+function sanitize_option( $name, $value ) {
+	$callback = $GLOBALS['njr_test_sanitizers'][ $name ] ?? null;
+
+	return $callback ? call_user_func( $callback, $value ) : $value;
+}
+
+function add_settings_error( $setting, $code, $message, $type = 'error' ) {
+	$GLOBALS['njr_test_settings_errors'][] = [ $setting, $code ];
+}
+
+function get_settings_errors( $setting = '', $sanitize = false ) {
+	return $GLOBALS['njr_test_settings_errors'];
+}
+
+function __( $text, $domain = null ) { return $text; }
+
 function update_option( $name, $value ) {
+	$value     = sanitize_option( $name, $value );
+	$old_value = get_option( $name );
+
+	// Core writes nothing for a value it already holds — which is how a
+	// refused domain, answered with the one held before, is not stored.
+	if ( $value === $old_value ) return false;
+
+	// …and hands a missing row to `add_option()`, which sanitises again.
+	if ( false === $old_value ) return add_option( $name, $value );
+
 	$GLOBALS['njr_test_writes'][]          = "update:$name";
 	$GLOBALS['njr_test_options'][ $name ] = $value;
 	return true;
 }
 
 function add_option( $name, $value = '' ) {
+	$value = sanitize_option( $name, $value );
+
 	if ( array_key_exists( $name, $GLOBALS['njr_test_options'] ) ) return false;
-	return update_option( $name, $value );
+
+	$GLOBALS['njr_test_writes'][]          = "update:$name";
+	$GLOBALS['njr_test_options'][ $name ] = $value;
+	return true;
 }
 
 function untrailingslashit( $string ) {
@@ -186,8 +238,11 @@ function migrate( array $options ) {
 	$GLOBALS['njr_test_options']          = $options;
 	$GLOBALS['njr_test_writes']           = [];
 	$GLOBALS['njr_test_table_migrations'] = 0;
+	$GLOBALS['njr_test_settings_errors']  = [];
 
+	// In the order `admin_init` runs them.
 	$settings = new Settings();
+	$settings->register_settings();
 	$settings->migrate_db();
 
 	return $settings;
@@ -243,14 +298,16 @@ check_same(
 );
 
 // A 1.4.x site: both migrations run, in order, on the one request. The option
-// the 1.5.0 body carries over is the one the 1.6.0 body then drops.
+// the 1.5.0 body carries over is the one the 1.6.0 body then drops. A switch
+// holds `on`, which is what 1.4's checkbox posted and what the setting's
+// sanitize callback, which the carried-over write goes through, keeps (#99).
 migrate( [
-	'nextjs_revalidate-allow_purge_all' => [ 'post' => '1' ],
+	'nextjs_revalidate-allow_purge_all' => [ 'post' => 'on' ],
 	'nextjs-revalidate-purge_all'       => [ 'post_type' => 'page' ],
 	'nextjs-revalidate-queue'           => [ 'https://front-end.test/' ],
 ] );
 check_same(
-	[ ALLOW_REVALIDATE_ALL => [ 'post' => '1' ], LEDGER => NJR_VERSION ],
+	[ ALLOW_REVALIDATE_ALL => [ 'post' => 'on' ], LEDGER => NJR_VERSION ],
 	options(),
 	'1.4.x → 1.7.0 carries the renamed option over and drops the queue options'
 );
@@ -270,11 +327,11 @@ check( ! array_key_exists( ALLOW_REVALIDATE_ALL, options() ), '1.5.x → 1.7.0 d
 migrate( [
 	DOMAIN               => 'https://front-end.test',
 	SECRET               => 's3cret',
-	ALLOW_REVALIDATE_ALL => [ 'post' => '1' ],
+	ALLOW_REVALIDATE_ALL => [ 'post' => 'on' ],
 ] );
 check_same(
 	[
-		ALLOW_REVALIDATE_ALL => [ 'post' => '1' ],
+		ALLOW_REVALIDATE_ALL => [ 'post' => 'on' ],
 		LEDGER               => NJR_VERSION,
 		DOMAIN               => 'https://front-end.test',
 		SECRET               => 's3cret',
@@ -369,6 +426,31 @@ migrate( [ LEGACY_URL => 'not a url' ] );
 check_same( [ 'update:' . LEDGER ], writes(), 'an unparseable legacy URL is neither split nor deleted' );
 check_same( 'not a url', options()[ LEGACY_URL ], 'an unparseable legacy URL is left for the operator to see' );
 
+// #99 — the split writes the domain through the callback a save does, so the
+// two have to agree on what a domain is. Every URL the cases above split was
+// accepted by it, and none of them told an operator otherwise.
+foreach ( [
+	'https://front-end.test/api/revalidate',
+	'http://host.docker.internal:8083/revalidate',
+	'https://user:pass@front-end.test/api/revalidate',
+	'https://front-end.test/api/revalidate?path=/hello/&secret=s3cret',
+] as $legacy ) {
+	migrate( [ LEGACY_URL => $legacy ] );
+	check( array_key_exists( DOMAIN, options() ) && ! array_key_exists( LEGACY_URL, options() ), "the split of $legacy is stored and consumes the legacy URL" );
+	check_same( [], $GLOBALS['njr_test_settings_errors'], "the split of $legacy adds no settings error" );
+}
+
+// A URL the rule would refuse is not split at all. Split anyway, its domain
+// would be refused, and the site left with neither a domain nor the legacy URL
+// it came from. Left instead, it re-runs on every admin request and writes
+// nothing, which is what an unparseable one does.
+$settings = migrate( [ LEGACY_URL => 'ftp://front-end.test/api/revalidate' ] );
+check_same( [ 'update:' . LEDGER ], writes(), 'a legacy URL whose scheme is not http or https is neither split nor deleted' );
+check_same( [], $GLOBALS['njr_test_settings_errors'], 'and it adds no settings error' );
+$GLOBALS['njr_test_writes'] = [];
+$settings->migrate_db();
+check_same( [], writes(), 'and a second admin request writes nothing either' );
+
 // A legacy option holding an empty value is still evidence of the release that
 // wrote it, and `get_option()` cannot tell that row from an absent one — so the
 // backfill must not ask by value.
@@ -379,25 +461,25 @@ check_same( [ LEDGER => NJR_VERSION ], options(), 'an empty legacy option still 
 // otherwise claim: the ledger has the last word, not the data.
 migrate( [
 	LEDGER                              => NJR_VERSION,
-	'nextjs_revalidate-allow_purge_all' => [ 'post' => '1' ],
-	ALLOW_REVALIDATE_ALL                => [ 'page' => '1' ],
+	'nextjs_revalidate-allow_purge_all' => [ 'post' => 'on' ],
+	ALLOW_REVALIDATE_ALL                => [ 'page' => 'on' ],
 ] );
 check_same( [], writes(), 'a site stamped at the running version is not written to at all' );
-check_same( [ 'page' => '1' ], options()[ ALLOW_REVALIDATE_ALL ], 'a stamped site keeps an operator edit' );
+check_same( [ 'page' => 'on' ], options()[ ALLOW_REVALIDATE_ALL ], 'a stamped site keeps an operator edit' );
 
 // The same, one release behind: the ledger moves forward, no body runs.
-migrate( [ LEDGER => '1.6.9', ALLOW_REVALIDATE_ALL => [ 'page' => '1' ] ] );
+migrate( [ LEDGER => '1.6.9', ALLOW_REVALIDATE_ALL => [ 'page' => 'on' ] ] );
 check_same( [ 'update:' . LEDGER ], writes(), 'a site stamped 1.6.9 only re-stamps' );
 check_same( NJR_VERSION, options()[ LEDGER ], 'the ledger moves to the running version' );
 
 // Migrating twice is indistinguishable from migrating once, whatever the site
 // does with its data in between. This is what the version comparison could not
 // give, and what a migration that is not naturally idempotent will depend on.
-$settings = migrate( [ 'nextjs_revalidate-allow_purge_all' => [ 'post' => '1' ] ] );
-update_option( ALLOW_REVALIDATE_ALL, [ 'edited-by-hand' => '1' ] );
-update_option( 'nextjs_revalidate-allow_purge_all', [ 'post' => '1' ] );
+$settings = migrate( [ 'nextjs_revalidate-allow_purge_all' => [ 'post' => 'on' ] ] );
+update_option( ALLOW_REVALIDATE_ALL, [ 'edited-by-hand' => 'on' ] );
+update_option( 'nextjs_revalidate-allow_purge_all', [ 'post' => 'on' ] );
 $settings->migrate_db();
-check_same( [ 'edited-by-hand' => '1' ], options()[ ALLOW_REVALIDATE_ALL ], 'a second migration does not clobber an operator edit' );
+check_same( [ 'edited-by-hand' => 'on' ], options()[ ALLOW_REVALIDATE_ALL ], 'a second migration does not clobber an operator edit' );
 check( array_key_exists( 'nextjs_revalidate-allow_purge_all', options() ), 'a second migration does not re-consume a legacy option' );
 
 // Older code over newer data — a downgrade — must not walk the ledger back,
