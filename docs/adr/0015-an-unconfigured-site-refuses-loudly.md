@@ -108,3 +108,20 @@ only one.
 
 Nothing else here changes. The notice, the log line, `add_item()`'s return type
 and the options rejected above all stand.
+
+## A lever for the site that is unconfigured on purpose
+
+The notice's cost fell on a deliberately-unconfigured site, and that site had no
+way out (#79). It now has one: the `nextjs_revalidate_show_unconfigured_notice`
+filter, which defaults to `true`. `Settings::shows_unconfigured_notice()` asks it
+last, after the configured and capability checks, so a configured site and a
+user outside the audience never reach it.
+
+It is a filter, not a setting. A stored, operator-togglable "hide this" is the
+dismissible notice rejected above, under another name. A filter is code: it
+lives in a theme or an mu-plugin, it is visible in review, and it does not
+survive a site being handed to someone else unnoticed.
+
+It silences the notice and nothing else. The refusal, its log line and the REST
+status (ADR 0027) never consult it. The default is unchanged: a site that adds
+no filter is exactly as loud as this ADR decided.

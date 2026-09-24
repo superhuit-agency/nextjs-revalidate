@@ -132,3 +132,14 @@ This depends on #49 twice over: for the definition of failure, and now for the
 `WP_Error` codes the notice names. A failure arriving without a code must still
 count toward the window — the condition is about failure, not about diagnosis,
 and an unnamed cause is not a reason to stay silent.
+
+## The stand-in is silenced with the notice it stands in for
+
+On a block editor screen, an unconfigured site's degraded notice is the
+unconfigured notice in another voice. When a site silences the unconfigured
+notice with `nextjs_revalidate_show_unconfigured_notice` (ADR 0015, #79), the
+stand-in falls silent with it. Otherwise the site would still be told what it
+asked not to be told. Both notices consult one decision,
+`Settings::shows_unconfigured_notice()`, so they cannot disagree. A configured
+site's degraded notice never consults it: that condition is this ADR's, and a
+site cannot filter it away.

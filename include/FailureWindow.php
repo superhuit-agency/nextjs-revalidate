@@ -241,6 +241,10 @@ class FailureWindow extends Base implements Hookable {
 	 */
 	public function get_degraded_notice() {
 
+		// First, so a window that is not degraded never asks the unconfigured
+		// notice's filter below about a notice nobody would see.
+		if ( !self::is_degraded() ) return null;
+
 		// Yields to the unconfigured notice, on the screens that actually
 		// render it. The two are nearly exclusive already, since an
 		// unconfigured site refuses at enqueue and never attempts anything; the
@@ -254,9 +258,14 @@ class FailureWindow extends Base implements Hookable {
 		// class's own failure mode, on the one screen the operator is most
 		// likely to be reading — so on that screen this speaks instead, and its
 		// link leads to the settings page where the missing setting is.
-		if ( !$this->settings->is_configured() && !$this->is_block_editor_screen() ) return null;
-
-		if ( !self::is_degraded() ) return null;
+		//
+		// Speaking instead, it is silenced with the notice it stands in for: a
+		// site that filtered the unconfigured notice off asked not to be told
+		// it is unconfigured, and hearing it from this one would ignore that.
+		if ( !$this->settings->is_configured() ) {
+			if ( !$this->is_block_editor_screen() ) return null;
+			if ( !$this->settings->shows_unconfigured_notice() ) return null;
+		}
 
 		$can_configure = current_user_can( 'manage_options' );
 

@@ -91,6 +91,13 @@ function current_user_can( $capability ) {
 	return ! empty( $GLOBALS['njr_test_caps'][ $capability ] );
 }
 
+// No filter is ever added here: every notice renders as it does by default.
+// What the unconfigured notice's filter changes is
+// `tests/unconfigured-notice-test.php`'s.
+function apply_filters( $hook_name, $value, ...$args ) {
+	return $value;
+}
+
 function admin_url( $path = '' ) {
 	return 'https://example.test/wp-admin/' . ltrim( (string) $path, '/' );
 }
