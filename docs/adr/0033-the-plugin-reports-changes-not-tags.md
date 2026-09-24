@@ -127,3 +127,43 @@ per-post-type **revalidate on menu save** setting, which existed only to bound
 the cost of a revalidate-all per menu save, has nothing left to bound. The FSE
 snapshot's own endpoint path and its on/off switch go with the separate endpoint
 (ADR 0034).
+
+## Amended when the front-end dropped its timer
+
+**v2.0 reports two changes v1 never had** — a block menu's `menu` change (#170)
+and a new `settings` subject (#171) — so "a port, not an expansion" no longer
+holds as written. It holds with one exception: **v2.0 also reports what the
+front-end's move off its timer would otherwise regress.**
+
+The front-end this contract was designed for (superstack#141) ships in lockstep
+with 2.0 and replaces its hourly route-level revalidation with entries cached
+indefinitely and expired only by a change. v1 never reported a block menu save
+— `wp_navigation` is not viewable, so the post gate declines it — or a site
+option, and nobody noticed, because the timer caught both within the hour. On
+the day 2.0 ships, the timer is gone: a menu edited in the Site Editor, or a
+site title changed, would reach the site only through a manual revalidate all.
+A release that makes an editor's routine edit stop appearing is a regression,
+whatever the plugin did before.
+
+The subjects table becomes seven:
+
+| Subject | Shape | Produced by |
+| --- | --- | --- |
+| `menu` | `{ id, locations }` | a classic menu save, and a block menu (`wp_navigation`) saved, trashed, restored or deleted |
+| `settings` | `{}` | a save of a **site setting** — what counts as one is ADR 0037's |
+
+A block menu's `id` is its post ID and its `locations` is empty: block menus
+have none. A classic menu's `id` stays its term ID. The two ID spaces can
+collide, and the only cost is a front-end expiring one extra `menu:{id}` entry;
+a discriminating field can be added later under rule 1 if a front-end ever
+reads both kinds by ID.
+
+The block menu's producer is its own, and is not a widening of the post gate
+(ADR 0005): `wp_navigation` stays a type the post gate declines, and no other
+non-viewable type gains a change.
+
+**Considered: `settings` in 2.1**, as #171 first planned. Rule 1 allows it, and
+the front-end handles `settings` from its first release either way. Rejected
+because the gap between 2.0 and 2.1 is the same regression as the block menu's:
+settings edits that the timer used to carry would need a manual revalidate all
+for the whole of it.
