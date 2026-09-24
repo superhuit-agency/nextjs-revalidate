@@ -264,8 +264,10 @@ would sensibly keep.
 **Revalidate domain**:
 The scheme, host and port of the Next.js app this site talks to — everything an
 endpoint URL has in common, stored once. One of the two settings a site cannot
-revalidate without. Always an `http` or `https` URL with a host: a value that is
-not one is refused on save, and the domain held before is kept.
+revalidate without. Empty on an unconfigured site; otherwise saved only as an
+`http` or `https` URL with a host — a value that is not one is refused on save,
+and the domain held before is kept. A row stored before 1.7.0 was never held to
+that rule.
 _Avoid_: Revalidate URL, front-end URL — the URL is composed, and naming the
 stored half after the composed whole is what made a second endpoint unaddressable.
 

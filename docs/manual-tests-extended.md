@@ -50,8 +50,9 @@ page.
       field is `type="url"`, so the browser itself stops a value with no scheme
       at all; `ftp://` gets past it.) Expect a single error notice on the
       settings screen, "The revalidate domain was not saved: it must be a web
-      address starting with http:// or https://", no "Settings saved." notice,
-      and the domain field still showing the domain held before the save.
+      address starting with http:// or https://, such as https://example.com.",
+      no "Settings saved." notice, and the domain field still showing the domain
+      held before the save.
 - [ ] **Restore the path to `/revalidate` and the domain to its seeded value.**
 
 ## B. The probe

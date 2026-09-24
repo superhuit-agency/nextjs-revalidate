@@ -18,7 +18,7 @@ use NextJsRevalidate\Interfaces\Hookable;
  * @property string $secret                  The shared secret every request carries, read trimmed.
  * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
  * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
- * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — '', 'on' or 'off'.
+ * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — 'on' or '' (a row saved before 1.7.0 may hold 'off').
  * @property array  $debug                   Debug switches, keyed by name.
  *
  * The plugin's own objects are reached through the same `__get()`, off the
@@ -50,20 +50,23 @@ class Settings extends Base implements Hookable {
 	 * option the setting is stored under with the empty value a read yields on
 	 * a site holding no row for it — of the setting's own type, never false, so
 	 * a read is always safe to iterate or compare — and with the callback every
-	 * value is sanitised through before it is stored.
+	 * value is sanitised through before it is stored. A setting whose stored
+	 * form has tightened since rows were first written also names the callback
+	 * a read passes its value through, so an older row is used in the form a
+	 * save would give it now.
 	 *
 	 * Authoritative for reads, registration, seeding and teardown alike, so a
 	 * setting cannot be added to one of them and forgotten in another.
 	 */
 	private const OPTIONS = [
-		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_domain' ]   ],
-		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,        'empty' => '', 'sanitize' => [ self::class, 'sanitize_path' ]     ],
-		'fse_endpoint_path'       => [ 'name' => self::SETTINGS_FSE_ENDPOINT_PATH_NAME,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_path' ]     ],
-		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_secret' ]   ],
-		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => [], 'sanitize' => [ self::class, 'sanitize_switches' ] ],
-		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => [], 'sanitize' => [ self::class, 'sanitize_switches' ] ],
-		'revalidate_on_fse_save'  => [ 'name' => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_switch' ]   ],
-		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => [], 'sanitize' => [ self::class, 'sanitize_switches' ] ],
+		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_domain'        ] ],
+		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,        'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
+		'fse_endpoint_path'       => [ 'name' => self::SETTINGS_FSE_ENDPOINT_PATH_NAME,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
+		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_secret'        ], 'read' => [ self::class, 'sanitize_secret' ] ],
+		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
+		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
+		'revalidate_on_fse_save'  => [ 'name' => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_single_switch' ] ],
+		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
 	];
 
 	/**
@@ -151,11 +154,12 @@ class Settings extends Base implements Hookable {
 
 		if ( $value === false ) return $empty;
 
-		// The secret is read the way it is now saved, so a row stored before
-		// saving trimmed it is used trimmed too. Here rather than at each use:
-		// the outbound URL of each endpoint, the inbound REST check and the
-		// transport's redaction all read it, and all of them must agree.
-		if ( $name === 'secret' ) return self::sanitize_secret( $value );
+		// Read the way it is now saved, so a row stored before saving tightened
+		// it is used in its current form too — the secret, trimmed. Here rather
+		// than at each use: the outbound URL of each endpoint, the inbound REST
+		// check and the transport's redaction all read it, and all of them must
+		// agree.
+		if ( isset(self::OPTIONS[$name]['read']) ) return call_user_func( self::OPTIONS[$name]['read'], $value );
 
 		return $value;
 	}
@@ -602,8 +606,7 @@ class Settings extends Base implements Hookable {
 
 		// The domain held before, unchanged — which is also what makes
 		// `update_option()` skip the write.
-		$previous = get_option( self::SETTINGS_DOMAIN_NAME, '' );
-		return $previous === false ? '' : $previous;
+		return (string) get_option( self::SETTINGS_DOMAIN_NAME, '' );
 	}
 
 	/**
@@ -622,7 +625,7 @@ class Settings extends Base implements Hookable {
 		// them: it is what `options.php` saves for a field the form left out.
 		if ( is_array($value) || is_object($value) ) return null;
 
-		$domain = self::strip_query( $value );
+		$domain = self::strip_query_and_fragment( $value );
 		if ( $domain === '' ) return '';
 
 		$parts = wp_parse_url( $domain );
@@ -645,7 +648,7 @@ class Settings extends Base implements Hookable {
 	 * @return string What is stored.
 	 */
 	public static function sanitize_path( $value ) {
-		return self::strip_query( $value );
+		return self::strip_query_and_fragment( $value );
 	}
 
 	/**
@@ -673,7 +676,7 @@ class Settings extends Base implements Hookable {
 	 * @param mixed $value What was submitted.
 	 * @return array What is stored.
 	 */
-	public static function sanitize_switches( $value ) {
+	public static function sanitize_switch_set( $value ) {
 		if ( ! is_array($value) ) return [];
 
 		return array_filter( $value, function ( $state ) { return $state === 'on'; } );
@@ -687,7 +690,7 @@ class Settings extends Base implements Hookable {
 	 * @param mixed $value What was submitted.
 	 * @return string What is stored.
 	 */
-	public static function sanitize_switch( $value ) {
+	public static function sanitize_single_switch( $value ) {
 		return self::reads_as_on( $value ) ? 'on' : '';
 	}
 
@@ -707,10 +710,15 @@ class Settings extends Base implements Hookable {
 	/**
 	 * A scalar value cut at its first `?` or `#`, then trimmed.
 	 *
+	 * A rule rather than ADR 0017's construction on purpose: a typed value has
+	 * no parts to rebuild it from until it is known to be a URL, and a path
+	 * never is one. Both characters end a URL's path, so nothing either can
+	 * begin belongs to a domain or a path.
+	 *
 	 * @param mixed $value
 	 * @return string `''` for anything that is not a scalar.
 	 */
-	private static function strip_query( $value ) {
+	private static function strip_query_and_fragment( $value ) {
 		if ( ! is_scalar($value) ) return '';
 
 		return trim( (string) preg_replace( '/[?#].*$/s', '', (string) $value ) );

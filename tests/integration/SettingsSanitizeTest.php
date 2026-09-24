@@ -27,7 +27,20 @@ class SettingsSanitizeTest extends \WP_UnitTestCase {
 	}
 
 	public function tear_down() {
-		foreach ( [ Settings::SETTINGS_DOMAIN_NAME, Settings::SETTINGS_SECRET_NAME ] as $name ) {
+
+		// All eight, as `set_up()` registered them: the rollback restores the
+		// options table, not `$wp_registered_settings`, and a callback left
+		// behind would sanitise the next test's writes.
+		foreach ( [
+			Settings::SETTINGS_DOMAIN_NAME,
+			Settings::SETTINGS_ENDPOINT_PATH_NAME,
+			Settings::SETTINGS_FSE_ENDPOINT_PATH_NAME,
+			Settings::SETTINGS_SECRET_NAME,
+			Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,
+			Settings::SETTINGS_REVALIDATE_ON_MENU_SAVE,
+			Settings::SETTINGS_REVALIDATE_ON_FSE_SAVE,
+			Settings::SETTINGS_DEBUG,
+		] as $name ) {
 			unregister_setting( Settings::SETTINGS_GROUP, $name );
 		}
 		$GLOBALS['wp_settings_errors'] = [];

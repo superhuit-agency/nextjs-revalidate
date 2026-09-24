@@ -377,11 +377,11 @@ foreach ( [ [ 'on', 'on' ], [ '1', 'on' ], [ 'true', 'on' ], [ true, 'on' ], [ '
 // output would store something different depending on whether the row existed.
 
 foreach ( [
-	[ 'sanitize_domain',   [ ' https://u:p@example.com:8080/sub?x=1#y ', 'https://example.com', '   ' ] ],
-	[ 'sanitize_path',     [ ' /api/revalidate?secret=x ', '/a#b?c', '' ] ],
-	[ 'sanitize_secret',   [ "  my secret/+%\n", '' ] ],
-	[ 'sanitize_switches', [ [ 'post' => 'on', 'page' => 'yes', 3 => 'on' ], 'on', [] ] ],
-	[ 'sanitize_switch',   [ 'true', 'off', '' ] ],
+	[ 'sanitize_domain',        [ ' https://u:p@example.com:8080/sub?x=1#y ', 'https://example.com', '   ' ] ],
+	[ 'sanitize_path',          [ ' /api/revalidate?secret=x ', '/a#b?c', '' ] ],
+	[ 'sanitize_secret',        [ "  my secret/+%\n", '' ] ],
+	[ 'sanitize_switch_set',    [ [ 'post' => 'on', 'page' => 'yes', 3 => 'on' ], 'on', [] ] ],
+	[ 'sanitize_single_switch', [ 'true', 'off', '' ] ],
 ] as [ $callback, $inputs ] ) {
 	foreach ( $inputs as $input ) {
 		site( [] );
