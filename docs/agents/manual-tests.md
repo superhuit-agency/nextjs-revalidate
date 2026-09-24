@@ -7,7 +7,7 @@ while changing code.
 
 ## Two files, and no step in both
 
-- **[`../manual-tests.md`](../manual-tests.md)** — the **core pass**. Thirty-five
+- **[`../manual-tests.md`](../manual-tests.md)** — the **core pass**. Thirty-six
   steps, single site, run before every release.
 - **[`../manual-tests-extended.md`](../manual-tests-extended.md)** — the
   **extended pass**. Everything else, including the network and upgraded stacks.

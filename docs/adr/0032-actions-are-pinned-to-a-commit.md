@@ -43,9 +43,9 @@ A pin that nobody bumps just freezes the action, security fixes included.
 `.github/dependabot.yml` watches the `github-actions` ecosystem weekly and groups
 all actions into one pull request, which CI checks like any other.
 
-The same file now also watches npm and Composer, and records why each pin
-Dependabot must leave alone is pinned
-([ADR 0036](0036-dependabot-fixes-every-vulnerability-and-bumps-only-what-ships.md)).
+> Widened since. The same file now also watches npm and Composer, and records
+> why each pin Dependabot must leave alone is pinned
+> ([ADR 0036](0036-dependabot-fixes-every-vulnerability-and-bumps-only-what-ships.md)).
 
 ## Consequences
 
