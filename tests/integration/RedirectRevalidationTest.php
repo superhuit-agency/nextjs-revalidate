@@ -17,7 +17,6 @@
 
 namespace NextJsRevalidate\Tests;
 
-use NextJsRevalidate\Logger;
 use NextJsRevalidate\Settings;
 use Red_Group;
 use Red_Item;
@@ -636,50 +635,5 @@ class RedirectRevalidationTest extends QueueTestCase {
 		if ( ! class_exists( Red_Item::class ) ) return;
 
 		$wpdb->query( "TRUNCATE TABLE `{$wpdb->prefix}redirection_items`" );
-	}
-
-	// The log
-	// ====
-
-	/**
-	 * Switch the plugin's logging on, which is the only way a skipped redirect
-	 * leaves any record at all.
-	 *
-	 * @return void
-	 */
-	private function enable_logs() {
-		update_option( Settings::SETTINGS_DEBUG, [ 'enable-logs' => 'on' ] );
-	}
-
-	/**
-	 * Everything the plugin has logged on this site.
-	 *
-	 * @return string
-	 */
-	private function log() {
-		$log_file = $this->log_file();
-
-		return file_exists( $log_file ) ? (string) file_get_contents( $log_file ) : '';
-	}
-
-	/**
-	 * The log file is on disk rather than in the database, so no rollback
-	 * reaches it: it is removed on both sides of a test by hand.
-	 *
-	 * @return void
-	 */
-	private function reset_log() {
-		$log_file = $this->log_file();
-
-		if ( file_exists( $log_file ) ) unlink( $log_file );
-
-		delete_option( Settings::SETTINGS_DEBUG );
-	}
-
-	/**
-	 * @return string
-	 */
-	private function log_file() {
-		return Logger::path();
 	}
 }

@@ -15,7 +15,7 @@
  * The rule this holds is therefore the general one, over every key the table
  * declares rather than over the one that was wrong: **no key names a
  * `BLOB`/`TEXT` column without a prefix length**. Beneath it sits the decision
- * of ADR 0027 — the dedup the queue depends on is keyed on a fixed-width hash of
+ * of ADR 0029 — the dedup the queue depends on is keyed on a fixed-width hash of
  * the permalink rather than on a *prefix* of it, because a prefix key refuses
  * two distinct permalinks that happen to share their first n characters.
  *
@@ -200,7 +200,7 @@ foreach ( $keys as $key ) {
 	}
 }
 
-// ADR 0027, and the reason the answer is not `permalink(191)`: the permalink is
+// ADR 0029, and the reason the answer is not `permalink(191)`: the permalink is
 // stored whole, and what is keyed is a hash of it rather than a prefix of it. A
 // prefix key is portable and would pass the rule above, and it refuses two
 // distinct permalinks sharing their first n characters — a page that then never

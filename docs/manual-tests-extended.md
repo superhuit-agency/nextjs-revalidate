@@ -538,8 +538,10 @@ what the backfill exists to avoid needing.
       ```sh
       npx wp-env run cli wp db query "INSERT INTO wp_revalidate_queue (permalink, priority) VALUES ('http://localhost:8080/left-waiting/', 7)"
       ```
-      A row inserted this way schedules no drain, so it sits until something
-      else does. Do it last in this section, and stop the site next.
+      Expect `wp db query "SELECT permalink, priority FROM wp_revalidate_queue"`
+      to list it at priority 7. A row inserted this way schedules no drain, so it
+      sits until something else does. Do it last in this section, and stop the
+      site next.
 
 ## Y. The upgrade
 
@@ -569,7 +571,7 @@ what the backfill exists to avoid needing.
       `Sub_part`, and **no** key named `permalink`. The key this replaces was
       declared over a `TEXT` column, which only MariaDB accepts — on standard
       MySQL the `CREATE TABLE` was refused outright and the site has no queue
-      table at all (#121, ADR 0027). wp-env's database is MariaDB, so this
+      table at all (ADR 0029). wp-env's database is MariaDB, so this
       stack can show the upgrade and never the refusal.
 - [ ] **Expect the entry left waiting in X carried, and hashed**:
       ```sh
@@ -578,9 +580,9 @@ what the backfill exists to avoid needing.
       Expect the row still there at priority 7, with a 64-character
       `permalink_hash` beside it. Check this before the next step: updating a
       post schedules a drain, which takes the row with it.
-- [ ] **Update the post published in U.** Expect a revalidation of its path, and
-      a queue table that now exists, created by the upgrade rather than by a
-      fresh activation.
+- [ ] **Update the post published in U.** Expect a revalidation of its path in
+      the dev server console: the table carried through the upgrade takes a new
+      entry under its new key.
 - [ ] **Reload wp-admin several times.** Expect the ledger to stay put and
       nothing to be re-migrated: a migration decides by the ledger, never by the
       plugin version.

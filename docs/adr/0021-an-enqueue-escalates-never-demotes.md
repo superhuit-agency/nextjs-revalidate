@@ -86,7 +86,7 @@ Revisit this only if #121 concludes the key is dependable everywhere.
 
 > Revisited. #121 made the key dependable — it is now on a fixed-width hash of
 > the permalink, which every engine can carry
-> ([ADR 0027](0027-the-queue-dedups-on-a-hash-of-the-permalink.md)) — and the
+> ([ADR 0029](0029-the-queue-dedups-on-a-hash-of-the-permalink.md)) — and the
 > answer is still no, on the *other* ground above: the statement answers with an
 > affected-row count, `0` when the new value equals the old, and #93 reads a
 > falsy `add_item()` as failure. The read-then-branch also has somewhere to put
@@ -145,7 +145,7 @@ both insert. That predates this decision and belongs to #121.
 > Closed there. The unique key refuses the second insert, and the loser re-reads
 > the winner's row and promotes through the branch this ADR added — so the race
 > now ends in the state the caller asked for rather than in a duplicate entry.
-> See [ADR 0027](0027-the-queue-dedups-on-a-hash-of-the-permalink.md).
+> See [ADR 0029](0029-the-queue-dedups-on-a-hash-of-the-permalink.md).
 
 **These tests need a real `$wpdb` and a real table**, so they live in the wp-env
 integration suite ([ADR 0008](0008-two-testing-idioms.md)) and do not run in the

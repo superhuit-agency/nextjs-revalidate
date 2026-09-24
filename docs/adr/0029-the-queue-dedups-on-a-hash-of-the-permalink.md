@@ -21,7 +21,8 @@ database, `SHOW INDEX` reports the key as `Index_type: HASH` with
 `Sub_part: NULL`, which is that feature and nothing else. Standard MySQL has no
 equivalent: a `BLOB`/`TEXT` column in a key requires an explicit prefix length,
 and without one the statement is error 1170, *"used in key specification without
-a key length"*.
+a key length"*. Run against MySQL 5.7.44 and 8.0.46, the statement above is
+refused with exactly that error, and the one below is accepted.
 
 `dbDelta()` inspects nothing it runs, and `create_table()` inspects nothing
 `dbDelta()` did. So on MySQL the consequence is not a missing index, it is **no
@@ -46,10 +47,18 @@ CREATE TABLE `{$table_name}` (
 ```
 
 `permalink_hash` is the column MariaDB was maintaining invisibly, made explicit
-and portable. The constraint is the same constraint — one entry per distinct
-permalink — expressed in a way every engine WordPress supports can keep, and it
-is now the *same* constraint on every install rather than one guarantee on the
-database the tests run against and another on the database a site runs.
+and portable: one entry per distinct permalink, expressed in a way every engine
+WordPress supports can keep, and now the *same* constraint on every install
+rather than one guarantee on the database the tests run against and another on
+the database a site runs.
+
+It is not quite the constraint MariaDB kept, and the difference is deliberate.
+The old key and the old `WHERE permalink = %s` compared permalinks under the
+column's collation — `utf8mb4_unicode_520_ci` on most sites, so `/Foo/` and
+`/foo/` were one entry. A digest compares bytes, so they are now two. They are
+two paths to the front-end, which routes case-sensitively, so two entries is the
+honest answer; and a migration only ever splits what the old key merged, so it
+cannot manufacture a duplicate the new key would refuse.
 
 **The hash is the queue's identity of an entry, everywhere.** The lookup that
 decides whether a permalink is already queued, the `UPDATE` that promotes it, and
@@ -74,14 +83,22 @@ always for.** ADR 0021 left it open and named it as belonging here: two enqueues
 of a permalink the queue does not hold can both read nothing and both insert. One
 of them is now refused by the unique key, and that one re-reads the row the other
 wrote and treats the answer as what it is — the permalink is queued, and the
-priority it asked for is still owed, so it promotes. The re-read is
-`SELECT … FOR UPDATE`, and the lock is beside the point: `add_item()` runs in a
-transaction, so a plain read after the first one answers from the snapshot the
-first one opened, under which the winner's row does not exist. A locking read is
-how the loser sees the latest committed version. The *first* read stays plain,
-because a locking read over a row that is not there locks the gap the permalink
-would sort into, which would serialise enqueues that have nothing to do with each
-other.
+priority it asked for is still owed, so it promotes.
+
+The re-read comes *after* the loser's `COMMIT`, and it is a plain read. Inside
+the transaction a plain read answers from the snapshot the first read opened,
+under which the winner's row does not exist. `SELECT … FOR UPDATE` would see past
+the snapshot, and it deadlocks. A refused insert
+holds a shared lock on the row it collided with until its transaction ends, so
+with three enqueues racing, the two losers each hold a shared lock and each ask
+for an exclusive one, and InnoDB rolls one of them back — answering `false` for a
+permalink that is queued. Ended, the transaction holds nothing, and the next read
+is fresh. The promotion needs no lock of its own: its `UPDATE` repeats the
+comparison in its `WHERE`, so it can only ever move the entry earlier.
+
+No read here locks. A locking read over a row that is not there locks the gap the
+permalink would sort into, which would serialise enqueues that have nothing to do
+with each other.
 
 **Existing tables migrate, guarded on their own shape.** `migrate_table()` runs
 from `Settings::migrate_db()`, alongside the settings split and the log move and
@@ -91,6 +108,17 @@ had already been stamped past it and would never fire for anybody
 (`backfill_db_version()` has the argument in full). It has two populations to
 serve, and the second is the louder one — a site whose `CREATE TABLE` was refused
 has no table, and gets one here.
+
+**An enqueue migrates too, when its write fails on a table not yet in this
+shape.** The admin request is the trigger the other data migrations wait for,
+and it is the wrong one to wait for here. Until it arrives, an upgraded MariaDB
+table has no `permalink_hash` column, and the lookup and the insert both name it
+— so every enqueue from cron, a REST client or a scheduled post going live would
+fail, on a site that was revalidating fine before the upgrade, for as long as
+nobody opened wp-admin. On a network too large for the migration sweep, that is
+indefinitely for most of its sites. `add_item()` therefore asks, once a write has
+failed and only then, whether the table carries its key; if not, it migrates and
+writes once more. A site in its current shape never pays for the question.
 
 The guard reads for the *key* rather than for the column, because the column
 arrives first and the key last: a request that died between them leaves a table a
@@ -177,6 +205,13 @@ MySQL built without SSL support answers `NULL`, into a `NOT NULL` column. The
 cost is bounded by the *pending* queue, which a running site drains continuously;
 a site caught mid-revalidate-all pays for the rows it is holding, once.
 
+**A table that cannot be created or migrated says so.** `dbDelta()` reports
+nothing it runs, which is how #121 went unnoticed. `create_table()` now checks
+that the table exists afterwards, and `migrate_table()` that the key does, and
+each writes the server's own error to the plugin's log when it does not. That is
+also the runtime report: an enqueue that fails on an unmigrated table runs the
+migration, and the migration is what logs.
+
 **The migration reads two pieces of table metadata on every admin request.** A
 `SHOW TABLES` and a `SHOW INDEX`, for as long as the plugin is installed. That is
 the price of a data guard — the ledger cannot gate a migration introduced by the
@@ -201,3 +236,12 @@ runs in the gate (ADR 0006) because it needs no database — which is also its
 limit: it cannot run the statement, on MySQL or anywhere else. `QueueSchemaTest`
 in the integration suite reads the key back off a real table, and runs where
 there is one.
+
+Those tests do real DDL, which the test library does not expect. It rewrites
+every `CREATE TABLE` and `DROP TABLE` a test issues into the `TEMPORARY` form, so
+a test that "dropped" the queue table left the real one in place and passed
+without ever reaching the code it named. `QueueSchemaTest` switches that rewrite
+off for itself, asserts the precondition it set up before acting on it, and
+rebuilds the real table after every test. wp-env's database is MariaDB, so the
+MySQL branch of those tests — the legacy table refused, the test skipped — runs
+only when the suite is pointed at a MySQL server.

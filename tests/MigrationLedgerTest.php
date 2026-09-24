@@ -120,7 +120,7 @@ $GLOBALS['njr_test_table_migrations'] = 0;
  * The revalidation queue, as much of it as a migration reaches.
  *
  * `Settings::migrate_db()` asks the queue to bring its table to the shape the
- * running code expects (ADR 0027): a site's table is its data exactly as its
+ * running code expects (ADR 0029): a site's table is its data exactly as its
  * options are, and the same request has to carry both. There is no database
  * here, so this records that it was asked rather than doing anything.
  */
