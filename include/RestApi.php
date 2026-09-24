@@ -155,20 +155,17 @@ class RestApi extends Base implements Hookable {
 			if (is_object($it)) {
 				$it = (array) $it;
 			}
+			// An entry that is not an object has no `path` to read, so it goes on
+			// as an item with none and is reported like one. Skipping it left the
+			// body a result short, and a batch that lost an item answering 200 as
+			// though everything sent had been queued (#118).
 			if (!is_array($it)) {
-				continue;
+				$it = [];
 			}
 			$items[] = [
 				'path'     => isset($it['path']) ? sanitize_text_field($it['path']) : null,
 				'priority' => isset($it['priority']) ? absint($it['priority']) : RevalidateQueue::DEFAULT_PRIORITY,
 			];
-		}
-
-		if (empty($items)) {
-			return new WP_REST_Response([
-				'success' => false,
-				'message' => 'No valid items found in request.'
-			], 400);
 		}
 
 		return $this->process_items($items);

@@ -180,4 +180,6 @@ so returning `true` there revalidates nothing.
   items were unreadable, 503 when the site is unconfigured and 500 when a queue
   write failed; 207 is left to a batch in which some items were accepted and some
   were not, and a request whose items were all accepted still answers 200. The
-  routes are documented in the README for the first time.
+  routes are documented in the README for the first time. An entry of a batch's
+  `items` that is not an object is now reported as an item with no path rather
+  than skipped, so it can no longer vanish from a batch that answered 200.

@@ -61,10 +61,17 @@ next to the unreadable one would have been refused too. Both 5xx kinds outrank
 400 because a caller told its request was bad goes looking at the request — and a
 request that was fine is the one place that answer must never send it.
 
-The two handlers' own 400s are unchanged: a single call with no `path`, a batch
-with no `items` array, and a batch holding nothing that could be an item never
-reach `process_items()` at all, and were already 400. They agree with the table
-above rather than being exceptions to it.
+The two handlers' own 400s are unchanged: a single call with no `path` and a
+batch with no `items` array never reach `process_items()` at all, and were
+already 400. They agree with the table above rather than being exceptions to it.
+
+**An entry of `items` that is not an object is an item with no `path`.** The
+batch handler used to skip such an entry, so the body came back a result short
+and a batch that lost an item beside an accepted one answered 200 — the same
+lie as the 207, told about an item instead of a request. It now reaches
+`process_items()` and is reported like any unreadable item. A batch holding
+nothing *but* such entries still answers 400, now with a result per entry rather
+than the handler's own "No valid items" message.
 
 ## Considered Options
 

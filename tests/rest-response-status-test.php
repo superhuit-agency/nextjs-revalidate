@@ -379,9 +379,9 @@ njr_test_assert(
 // The request the route could not read at all
 // ====
 
-// Neither reaches `process_items()`: there are no items to report on, so these
-// are the handlers' own answers and they were 400 before #118 too. Pinned
-// because the rule above must not have moved them.
+// This never reaches `process_items()`: there are no items to report on, so it
+// is the handler's own answer and it was 400 before #118 too. Pinned because
+// the rule above must not have moved it.
 $request = new WP_REST_Request( [ 'secret' => 'fixture-secret' ] );
 
 njr_test_assert(
@@ -389,12 +389,20 @@ njr_test_assert(
 	'a batch with no `items` array answers 400'
 );
 
-$request = new WP_REST_Request( [ 'secret' => 'fixture-secret', 'items' => [ 'not-an-item' ] ] );
+// An entry that is not an object is an item with no path, and is reported like
+// one. It used to be skipped, which left the body a result short and let a
+// batch that lost an item answer 200 as if everything sent had been queued.
+$response = njr_test_batch( [], [ 'not-an-item' ] );
 
-njr_test_assert(
-	400 === ( new RestApi() )->handle_revalidate_batch( $request )->get_status(),
-	'a batch holding nothing that could be an item answers 400'
-);
+njr_test_assert( 400 === $response->get_status(), 'a batch holding nothing that could be an item answers 400' );
+njr_test_assert( 1 === count( $response->get_data()['results'] ), 'an entry that is not an object still has a result of its own' );
+njr_test_assert( false === $response->get_data()['results'][0]['success'], 'an entry that is not an object is reported as a failure' );
+
+$response = njr_test_batch( [ 1 ], [ '/not-an-object/', [ 'path' => 'https://site.test/accepted/' ] ] );
+
+njr_test_assert( 207 === $response->get_status(), 'an entry that is not an object beside an accepted item is a mixed result, not a 200' );
+njr_test_assert( 2 === count( $response->get_data()['results'] ), 'one result per entry sent, the unreadable one included' );
+njr_test_assert( false === $response->get_data()['results'][0]['success'], 'the results keep the order the entries were sent in' );
 
 printf( "\n%d failure(s)\n", $failures );
 exit( $failures === 0 ? 0 : 1 );

@@ -152,7 +152,7 @@ call added nothing to it. It is also `false` if the write failed.
 
 Two routes, for a deploy hook, a CI job or an external CMS asking this site to
 revalidate. Both accept `POST`, `PUT` or `PATCH`, and both take the site's
-**revalidate secret** — the same value the plugin sends to the front-end — as a
+revalidate secret — the same value the plugin sends to the front-end — as a
 parameter rather than as a header.
 
 | Route | Enqueues |
@@ -177,7 +177,7 @@ curl -X POST https://example.com/wp-json/nextjs-revalidate/v1/revalidate/batch \
 | items | array | The batch route only, required. Objects with a `path` and an optional `priority`. |
 | priority | int | Optional. Lower numbers are revalidated earlier; equal priorities keep insertion order. Default `10`. |
 
-What a route answers with is an **acceptance**, never a delivery: the path is in
+What a route answers with is an acceptance, never a delivery: the path is in
 the **revalidation queue**, which cron drains afterwards. Nothing in the response
 says the front-end has rebuilt anything, and nothing can — see the note above
 `nextjs_revalidate_purge_url`.
@@ -197,7 +197,9 @@ they were sent:
 
 A result carries `data` — the queue's own answer — only when the item was
 accepted, and a `message` only when it was not. Match results to items by
-`path`, which is echoed back either way.
+position; `path` is echoed back too, and is `null` for an entry that carried
+none. An entry of `items` that is not an object is reported as an item with no
+`path`, never skipped.
 
 ### Statuses
 
@@ -208,7 +210,7 @@ rather than by which route produced them:
 | --- | --- |
 | `200` | Every item was accepted into the queue. |
 | `207` | Some items were accepted and some were not — read `results[].success` for which. Only the batch route can answer this. |
-| `400` | No item was accepted, and the items are why: one carried no `path`. Also the answer when the request itself could not be read — no `path` on the single route, no `items` array on the batch route, or an `items` array holding nothing usable. |
+| `400` | No item was accepted, and the items are why: one carried no `path`. Also the answer when the request itself could not be read — no `path` on the single route, or no `items` array on the batch route. |
 | `503` | No item was accepted because this site is unconfigured: the revalidate domain or the secret is missing, so nothing can be revalidated until an operator supplies them. |
 | `500` | No item was accepted because a queue write did not happen here. Also what a site holding **no secret at all** answers, from the permission check, with the code `missing_secret`. |
 | `401`/`403` | The secret did not match. Nothing was enqueued. |

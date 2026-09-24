@@ -563,6 +563,42 @@ class RestApiTest extends QueueTestCase {
 	}
 
 	/**
+	 * An entry of `items` that is not an object is reported as an item with no
+	 * path, never skipped.
+	 *
+	 * Skipping it left the body a result short, and a batch that lost an item
+	 * beside an accepted one answered 200 — telling a caller checking the status
+	 * that everything it sent had been queued.
+	 */
+	public function test_an_entry_that_is_not_an_object_is_reported_rather_than_dropped() {
+		$this->configure_site();
+
+		$permalink = $this->permalink_of( '/accepted/' );
+
+		$response = $this->call_route(
+			'/revalidate/batch',
+			[
+				'secret' => self::FIXTURE_SECRET,
+				'items'  => [
+					'/not-an-object/',
+					[ 'path' => $permalink ],
+				],
+			]
+		);
+
+		$this->assertSame( 207, $response->get_status(), 'One entry could not be read and one was accepted, so the batch is a mixed result — not a 200.' );
+
+		$data = $response->get_data();
+
+		$this->assertCount( 2, $data['results'], 'Every entry sent has a result, the unreadable one included.' );
+		$this->assertNull( $data['results'][0]['path'] );
+		$this->assertFalse( $data['results'][0]['success'] );
+		$this->assertTrue( $data['results'][1]['success'] );
+
+		$this->assertQueueRevalidates( [ '/accepted/' ] );
+	}
+
+	/**
 	 * A wholly-failed batch whose items failed for different reasons answers the
 	 * refusal, not the unreadable item beside it.
 	 *
