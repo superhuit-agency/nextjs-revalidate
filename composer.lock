@@ -8,20 +8,23 @@
     "packages": [
         {
             "name": "kuuak/wordpress-setting-fields",
-            "version": "1.1.2",
+            "version": "1.2.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kuuak/wordpress-setting-fields.git",
-                "reference": "cbaf556e84420b2e7cefae03bf6e5909897820db"
+                "reference": "45935dd763f4d3fb4abed4520c46f74c1e6a4c31"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kuuak/wordpress-setting-fields/zipball/cbaf556e84420b2e7cefae03bf6e5909897820db",
-                "reference": "cbaf556e84420b2e7cefae03bf6e5909897820db",
+                "url": "https://api.github.com/repos/kuuak/wordpress-setting-fields/zipball/45935dd763f4d3fb4abed4520c46f74c1e6a4c31",
+                "reference": "45935dd763f4d3fb4abed4520c46f74c1e6a4c31",
                 "shasum": ""
             },
             "require": {
                 "php": ">=7.2.0"
+            },
+            "require-dev": {
+                "johnpbloch/wordpress": "^6.0"
             },
             "type": "library",
             "autoload": {
@@ -41,9 +44,9 @@
             "description": "WordPress setting field functions to output different type of fields",
             "support": {
                 "issues": "https://github.com/kuuak/wordpress-setting-fields/issues",
-                "source": "https://github.com/kuuak/wordpress-setting-fields/tree/v1.1.2"
+                "source": "https://github.com/kuuak/wordpress-setting-fields/tree/v1.2.2"
             },
-            "time": "2023-07-14T08:55:40+00:00"
+            "time": "2025-11-11T10:20:50+00:00"
         }
     ],
     "packages-dev": [
@@ -2120,13 +2123,13 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {},
     "prefer-stable": false,
     "prefer-lowest": false,
-    "platform": [],
-    "platform-dev": [],
+    "platform": {},
+    "platform-dev": {},
     "platform-overrides": {
         "php": "7.4"
     },
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }
