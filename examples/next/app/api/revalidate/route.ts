@@ -14,7 +14,7 @@
  * | `type:{type}`     | listings and archives of one post type, or of one taxonomy's terms |
  * | `nodes`           | every single-node entry, whatever its ID                          |
  * | `uris`            | the resolution of a URI to what is there — routing and redirects  |
- * | `menu:{location}` | the menu rendered at one theme location                           |
+ * | `menu:{id}`       | one menu's items, keyed by its WordPress ID                       |
  * | `options`         | site-wide data: settings, and the FSE template snapshot           |
  * | `content`         | every entry built from WordPress content, all of the above        |
  *
@@ -66,7 +66,11 @@ export interface PathChange {
 	uri: Uri;
 }
 
-/** A menu, and the theme locations it is assigned to — possibly none. */
+/**
+ * A menu, and the theme locations it is assigned to — possibly none. `id` is
+ * the term ID of a classic menu and the post ID of a block menu (`wp_navigation`),
+ * which has no locations. The two ID spaces can collide.
+ */
 export interface MenuChange {
 	subject: "menu";
 	id: number;
@@ -185,10 +189,12 @@ export function tagsFor(change: Change): string[] {
 		case "path":
 			return ["uris"];
 
-		// A menu assigned to no location is rendered by nothing this scheme
-		// tags. An app rendering menus by ID would add `menu:id:${change.id}`.
+		// A menu is tagged by its ID, whatever renders it — a theme location, a
+		// Navigation block, a widget — so its locations are not read. A classic
+		// menu and a block menu sharing an ID expire each other's entry: one
+		// extra rebuild, and nothing served stale.
 		case "menu":
-			return change.locations.map((location) => `menu:${location}`);
+			return [`menu:${change.id}`];
 
 		case "templates":
 			return ["options"];

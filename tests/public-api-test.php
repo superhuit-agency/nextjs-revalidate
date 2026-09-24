@@ -165,6 +165,7 @@ require_once __DIR__ . '/../include/Probe.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
+require_once __DIR__ . '/../include/BlockMenus.php';
 require_once __DIR__ . '/../include/RestApi.php';
 require_once __DIR__ . '/../include/Integrations/Redirection.php';
 

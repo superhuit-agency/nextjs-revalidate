@@ -33,6 +33,7 @@ along with Next.js Revalidate. If not, see {URI to Plugin License}.
 */
 
 use NextJsRevalidate\Assets;
+use NextJsRevalidate\BlockMenus;
 use NextJsRevalidate\Change;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
@@ -102,6 +103,7 @@ require_once __DIR__ . '/vendor/autoload.php';
  * @property-read ScheduledPurges $cronScheduledPurges
  * @property-read RevalidateAll   $revalidateAll
  * @property-read FseSnapshot     $fseSnapshot
+ * @property-read BlockMenus      $blockMenus
  * @property-read RestApi         $restApi
  * @property-read Redirection     $redirection
  */
@@ -116,6 +118,7 @@ class NextJsRevalidate {
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
 	private FseSnapshot $fseSnapshot;
+	private BlockMenus $blockMenus;
 	private RestApi $restApi;
 	private Redirection $redirection;
 	private static NextJsRevalidate $instance;
@@ -161,6 +164,7 @@ class NextJsRevalidate {
 		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
 		$this->fseSnapshot         = $this->hookable( new FseSnapshot() );
+		$this->blockMenus          = $this->hookable( new BlockMenus() );
 		$this->restApi             = $this->hookable( new RestApi() );
 
 		foreach ( $this->hookables as $hookable ) $hookable->register_hooks();

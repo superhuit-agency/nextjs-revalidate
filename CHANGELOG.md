@@ -126,6 +126,12 @@ its single revalidate URL split into a domain and a path in the same request.
 ### Also in 2.0.0
 
 - **Added:** the `nextjs_revalidate_change` filter, above.
+- **Added:** a block menu — the `wp_navigation` post the Site Editor saves —
+  saved, trashed, restored or permanently deleted reports a `menu` change with
+  its post ID and no locations. 1.x reported nothing for one: `wp_navigation` is
+  not viewable, and the post gate still declines it. A classic menu's change is
+  unchanged. The README's reference route now tags a menu `menu:{id}` rather
+  than `menu:{location}`, so one mapping covers both kinds.
 - **Changed:** the admin says **Revalidate** where it said **Purge** — the row
   action, the bulk action, the admin bar menu and its entries, and their
   notices, which now say that a revalidation was sent rather than counting pages

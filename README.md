@@ -71,7 +71,7 @@ Every change has a `subject`, and that subject's fields. v2.0 sends six:
 | `post` | `id`, `type`, `before`, `after` | a post saved, published, unpublished, trashed or deleted; the **Revalidate** row action, bulk action and admin bar entry |
 | `redirect` | `uri` | a redirect created, edited, deleted, enabled or disabled in Redirection — one change per affected source path |
 | `path` | `uri` | `nextjs_revalidate_path()`, the inbound REST routes, a due scheduled purge, the probe |
-| `menu` | `id`, `locations` | a menu saved |
+| `menu` | `id`, `locations` | a classic menu saved; a block menu (`wp_navigation`) saved, trashed, restored or deleted |
 | `templates` | none | an FSE template or template part saved or deleted, a theme switched |
 | `all` | none, or `type` and `taxonomies` | revalidate all, of the whole site or of one post type |
 
@@ -100,8 +100,8 @@ Every field, and when it is `null`:
 | `post` | `after` | `{ uri }` or `null` | Where the front-end shows it after. `null` when it is no longer there — unpublished, trashed or deleted alike, since the page is gone either way. |
 | `redirect` | `uri` | string | A source path whose redirect changed. |
 | `path` | `uri` | string | A path somebody reported as changed, without saying what is there. |
-| `menu` | `id` | integer | The menu's term ID. |
-| `menu` | `locations` | string[] | The theme locations the menu is assigned to. Empty for a menu assigned to none, which a block, a widget or the front-end may still render by its ID. |
+| `menu` | `id` | integer | The term ID of a classic menu, or the post ID of a block menu. The two can collide: nothing tells them apart, and a front-end tagging menus by ID expires one extra entry at worst. |
+| `menu` | `locations` | string[] | The theme locations the menu is assigned to. Empty for a classic menu assigned to none, which a block, a widget or the front-end may still render by its ID — and always empty for a block menu, which has no locations. |
 | `all` | `type` | string | The post type revalidated. Absent — with `taxonomies` — for the whole site. |
 | `all` | `taxonomies` | string[] | The **revalidatable taxonomies** registered for `type`, whose term archives the front-end may hold. Possibly empty. Present exactly when `type` is. |
 
@@ -159,7 +159,7 @@ onto an example tag scheme and expires each tag with `revalidateTag( tag, 'max' 
 | --- | --- |
 | `post` | `node:{id}` and `type:{type}`; and `uris` when `before.uri` and `after.uri` differ — a publish, an unpublish, a trash, a delete or a slug change |
 | `redirect`, `path` | `uris` |
-| `menu` | `menu:{location}` for each of its locations |
+| `menu` | `menu:{id}`, whatever its locations |
 | `templates` | `options` |
 | `all` of the whole site | `content` |
 | `all` of one post type | `type:{type}`, `type:{taxonomy}` for each of its taxonomies, and `nodes` |
@@ -424,10 +424,19 @@ page drops the stored row.
 
 ## Menus
 
-Saving a menu reports one `menu` change, carrying the menu's ID and the theme
-locations it is assigned to — none, for a menu assigned to no location. Which
-pages that affects is the front-end's to decide; nothing is revalidated page by
-page, and there is no setting for it.
+Saving a classic menu (Appearance → Menus) reports one `menu` change, carrying
+the menu's term ID and the theme locations it is assigned to — none, for a menu
+assigned to no location.
+
+A block menu — the `wp_navigation` post the Site Editor and the Navigation block
+save — reports the same `menu` change, carrying its post ID and no locations,
+when it is saved, trashed, restored from the trash or permanently deleted. An
+auto-draft or a revision of one reports nothing. Block menus have a producer of
+their own: `wp_navigation` is not viewable, and the post gate goes on declining
+it, as it declines every other type that is not viewable.
+
+Which pages a menu change affects is the front-end's to decide; nothing is
+revalidated page by page, and there is no setting for it.
 
 ## Which terms are revalidated
 

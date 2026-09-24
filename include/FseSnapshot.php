@@ -40,7 +40,8 @@ class FseSnapshot extends Base implements Hookable {
 	 *
 	 * `wp_navigation` is deliberately absent: menu items are fetched at request
 	 * time by the front-end and are not in the snapshot at all, so reporting
-	 * the templates as changed on a menu change would be pure waste.
+	 * the templates as changed on a menu change would be pure waste. A block
+	 * menu reports a `menu` change of its own, from `BlockMenus`.
 	 */
 	const POST_TYPES = [ 'wp_template', 'wp_template_part' ];
 

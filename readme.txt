@@ -185,6 +185,8 @@ route. The full notes are in CHANGELOG.md on GitHub.
   site's queue table is dropped and its cron unscheduled; paths still waiting in
   it are dropped rather than sent, and their number is written to the log. A
   deploy starts the front-end's cache afresh, so none of them is stale there.
+* Added: a block menu saved, trashed, restored or deleted in the Site Editor
+  reports a menu change, carrying its post ID. 1.x reported nothing for one.
 * Changed: the admin says "Revalidate" where it said "Purge", in English and in
   French, and the plugin is named Next.js Revalidate.
 = 1.7.0 =
