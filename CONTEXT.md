@@ -15,9 +15,10 @@ content changed, so the front-end can revalidate whatever it cached from it.
 
 **Change**:
 Something that happened to one WordPress subject — a post, a term, a redirect's
-path, the templates — that may leave cache entries on the front-end stale.
-Described as WordPress sees it, never as the front-end caches it: the plugin
-reports changes, and the front-end decides which cache entries each one expires.
+path, the templates, the **site settings** — that may leave cache entries on the
+front-end stale. Described as WordPress sees it, never as the front-end caches
+it: the plugin reports changes, and the front-end decides which cache entries
+each one expires.
 _Avoid_: Event — WordPress's hooks, and a field on the wire; fact; payload; tag —
 the front-end's side of the line.
 
@@ -33,6 +34,16 @@ An operator's request that the front-end revalidate everything it cached from
 the site, or from one post type and the **revalidatable taxonomies** registered
 for it. Reported as a single change, never as the pages it covers.
 _Avoid_: Purge all
+
+**Site setting**:
+A value held once for the whole site, by WordPress or by an **integration**, that
+the front-end renders as it is on any page: the site title, the tagline, the date
+and time formats, SEO defaults, the language list. A save of any of them is
+reported as one change for all of them. Not a value that moves which content
+lives at which path — the permalink structure, the front page, the posts per
+page — which leaves different things stale.
+_Avoid_: Setting — the plugin's own configuration; option — a storage primitive,
+and a language is not one.
 
 **Pending changes**:
 The changes one request has produced and not yet delivered. Two changes to the
