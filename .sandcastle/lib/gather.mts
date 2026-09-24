@@ -175,8 +175,14 @@ export function fetchRelations(
 	return { parent: null, parentSource: null, children };
 }
 
+/**
+ * The marker must open a line, as `docs/agents/issue-tracker.md` places it. A
+ * match anywhere would read prose — "ADR 0020 (being written as part of #93)"
+ * — as a parent, and send a standalone issue's work onto an epic branch that
+ * no PR will ever carry to `main`.
+ */
 export function parentFromBody(body: string): number | null {
-	const match = body.match(/(?:Sub-issue of|Part of)\s+#(\d+)/i);
+	const match = body.match(/^\s*(?:Sub-issue of|Part of)\s+#(\d+)/im);
 	const raw = match?.[1];
 	return raw ? Number(raw) : null;
 }
