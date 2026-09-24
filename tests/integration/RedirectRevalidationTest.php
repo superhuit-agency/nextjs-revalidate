@@ -478,12 +478,32 @@ class RedirectRevalidationTest extends PendingChangesTestCase {
 			$redirects[] = $this->arrange_redirect( [ 'url' => "/offer-$i" ] );
 		}
 
+		// More distinct paths than the pending changes' own cap, so the first
+		// `PendingChanges::CAP` of them are sent mid-request: caught here, and
+		// answered, rather than asked of a front-end that is not there.
+		$sent = [];
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args ) use ( &$sent ) {
+				$body = json_decode( $args['body'] ?? '', true );
+				$sent = array_merge( $sent, $body['changes'] ?? [] );
+
+				return [ 'headers' => [], 'body' => '', 'response' => [ 'code' => 204, 'message' => 'No Content' ], 'cookies' => [] ];
+			},
+			10,
+			2
+		);
+
 		$this->configure_site();
 		foreach ( $redirects as $redirect ) {
 			$redirect->delete();
 		}
 
-		$this->assertReportsRedirects( $paths, 'A bulk delete reports one change per distinct source path, uncapped.' );
+		$this->assertSame(
+			array_map( [ Change::class, 'redirect' ], $paths ),
+			array_merge( $sent, $this->pending_changes()->pending() ),
+			'A bulk delete reports one change per distinct source path, uncapped.'
+		);
 	}
 
 	// The site has the last word
