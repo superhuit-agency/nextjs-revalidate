@@ -1,10 +1,25 @@
-# The workflows pin every action to a commit SHA (ADR 0032). A pin nobody bumps
-# only freezes the action, so Dependabot proposes the bumps and rewrites the
-# `# vX.Y.Z` comment next to each SHA. All actions come in one weekly pull
-# request, which CI checks like any other.
+# Dependabot fixes every vulnerability, and bumps only what ships (ADR 0036).
 #
-# It watches the default branch only. `v1.x` keeps the pins it was cut with,
-# unless a security fix there needs a bump.
+# - GitHub Actions: the workflows pin every action to a commit SHA (ADR 0032). A
+#   pin nobody bumps only freezes the action, so Dependabot proposes the bumps
+#   and rewrites the `# vX.Y.Z` comment next to each SHA, all actions in one
+#   weekly pull request.
+# - npm: security updates only. Every npm package is dev tooling, pinned on
+#   purpose, and a weekly bump never reaches a user. `open-pull-requests-limit: 0`
+#   turns version updates off; the entry's groups, ignore and prefix still apply
+#   to security pull requests.
+# - Composer: security updates, and weekly version updates. `require` ships in
+#   the release zip, so each version bump to it gets a pull request of its own,
+#   never grouped; the dev tooling comes as one. Security fixes, `require`
+#   included, come as one pull request.
+#
+# A deliberate pin in a manifest gets a matching `ignore`, whose comment gives the
+# reason and when it lifts. Without one, Dependabot proposes exactly the bump the
+# pin exists to prevent (#74).
+#
+# CI checks every pull request like any other. Only the default branch is
+# watched: `v1.x` keeps what it was cut with, and a security fix there is
+# backported by hand (ADR 0032, ADR 0036).
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -17,3 +32,42 @@ updates:
           - "*"
     commit-message:
       prefix: "ci: 👷"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    ignore:
+      # Pinned exactly (#76). 11.8.1+ replaces `extract-zip` with
+      # `adm-zip <0.6.0` (GHSA-xcpc-8h2w-3j85, high). Lift this once a wp-env
+      # release ships `adm-zip >= 0.6.0`.
+      - dependency-name: "@wordpress/env"
+        versions: [">11.8.0"]
+    commit-message:
+      prefix: "chore: ⬆️"
+
+  - package-ecosystem: "composer"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      composer-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      composer-dev:
+        applies-to: version-updates
+        dependency-type: "development"
+    ignore:
+      # Follows the tested release: the WordPress both wp-env environments run
+      # and `Tested up to` declares, and the source the Xdebug path mappings
+      # point at. It moves only with them, by hand, in one change (ADR 0036).
+      - dependency-name: "johnpbloch/wordpress-core"
+    commit-message:
+      prefix: "chore: ⬆️"

@@ -357,6 +357,15 @@ plugin is not degraded but refused: core, from 5.2 on, declines the activation.
 _Avoid_: Minimum version, WP requirement — both leave open whether it is a
 recommendation; supported versions, which is a support promise and not this.
 
+**Tested release**:
+The WordPress release the plugin declares it was tested against — `Tested up
+to` — and the one the development environment runs, so what the plugin claims is
+what its tests ran on. Written `MAJOR.MINOR`. Moving it is one change: the
+declaration and the release the development environment runs move together,
+never one without the other.
+_Avoid_: Latest WordPress — it floats, and the tested release does not; maximum
+version — the plugin still runs above it, and WordPress.org only warns.
+
 **DB version**:
 The version of the plugin whose data shape a given site's stored options match.
 Distinct from the plugin version: a site can be running new code over old data,

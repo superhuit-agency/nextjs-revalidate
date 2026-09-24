@@ -110,6 +110,10 @@ time somebody looked: a new major arrives, the environments start running it, an
 the header lags until it is raised by hand. Pinning would make the record exact
 and the environments stale instead; that trade is not this ticket's to make.
 
+> Made since. The environments now pin `core` to the **tested release**, so
+> `Tested up to` is exact, and moving to a new major is a deliberate change
+> ([ADR 0036](0036-dependabot-fixes-every-vulnerability-and-bumps-only-what-ships.md)).
+
 ## Considered Options
 
 **Leaving the floor at 5.0 and documenting the gap.** Prose does not reach

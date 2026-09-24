@@ -1,6 +1,6 @@
 # Manual tests — the core pass
 
-Thirty-five checks on a single site. This is the pass to run before a release,
+Thirty-six checks on a single site. This is the pass to run before a release,
 and after any change worth the ten minutes.
 
 It is not everything. The network stack, the upgrade-from-1.6.9 stack, and the
@@ -55,6 +55,10 @@ Precondition: nothing running.
 - [ ] **`npm start`.** Expect wp-env to finish, then
       `Revalidate dev server is running on port 8083` in the same terminal.
       Leave it running — it is the oracle for most of what follows.
+- [ ] **`npx wp-env run cli wp core version`.** Expect the **tested release**,
+      the tag `core` names in `.wp-env.json`. Anything else means a stale
+      environment, and this pass would vouch for a WordPress `Tested up to` does
+      not claim.
 
 ## 2. Spine — activate, configure, publish
 
