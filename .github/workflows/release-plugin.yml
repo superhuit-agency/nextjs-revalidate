@@ -76,14 +76,19 @@ jobs:
       # (ADR 0032).
       - name: Archive Release
         shell: bash
-        run: zip -qq -r "nextjs-revalidate-${{ github.ref_name }}.zip" nextjs-revalidate
+        env:
+          TAG: ${{ github.ref_name }}
+        run: zip -qq -r "nextjs-revalidate-$TAG.zip" nextjs-revalidate
 
       # Created as a draft, and published by the next step. The action cannot say
       # whether a release is "Latest", and GitHub makes every newly published
       # release Latest by default, so a v1.7.1 tagged after v2.0.0 would take it
       # (ADR 0031). A draft is never Latest. The changelog stays the action's: it
       # picks the previous tag by semver, so a v1.x release lists v1.x commits.
-      - uses: marvinpinto/action-automatic-releases@919008cf3f741b179569b7a6fb4d8860689ab7f0 # v1.2.1
+      #
+      # Pinned to what its `latest` tag resolves to, three rebuilds of `dist/` past
+      # v1.2.1. The repository is archived, so Dependabot will never bump this pin.
+      - uses: marvinpinto/action-automatic-releases@d68defdd11f9dcc7f52f35c1b7c236ee7513bcc1 # latest
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false

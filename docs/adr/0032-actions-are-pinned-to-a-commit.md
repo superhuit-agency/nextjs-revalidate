@@ -18,6 +18,11 @@ Each action is referenced by its full 40-character commit SHA, followed by a
 be moved. The comment is there for people and for Dependabot, which rewrites it
 when it bumps the SHA.
 
+The one exception is `marvinpinto/action-automatic-releases`, whose comment says
+`# latest`. That was the tag the workflow ran, and it resolves to three rebuilds
+of the action's `dist/` past v1.2.1, so a `v1.2.1` pin would have run older code
+than before.
+
 `release-plugin.yml` moved from v3 to v4 of `actions/checkout`, `actions/cache`
 and `actions/setup-node` at the same time, matching `ci.yml`. The v3 releases
 target deprecated Node runtimes.
@@ -48,6 +53,11 @@ diff shows the SHA change.
 `target-branch` is set. The maintenance line keeps the pins it was cut with,
 which suits a branch that only takes security fixes. When an action's own
 security fix matters there, backport the bump by hand.
+
+**An archived action's pin never moves.** `marvinpinto/action-automatic-releases`
+is archived, so Dependabot has nothing to propose, security fixes included. It
+receives the job's `GITHUB_TOKEN`. Replacing it with `gh release create` would
+remove the last action nobody maintains.
 
 **A pinned action can still fetch code at run time.** `shivammathur/setup-php`
 downloads PHP and its tools, and `ssh-deploy` runs `rsync` from the runner. The
