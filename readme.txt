@@ -163,6 +163,12 @@ so returning `true` there revalidates nothing.
   required: with it absent the plugin is unchanged.
 * Added: the `nextjs_revalidate_should_revalidate_redirect` filter, for a site
   whose front-end resolves redirects some other way.
+* Added: the `nextjs_revalidate_show_unconfigured_notice` filter, for a site
+  that is unconfigured on purpose, such as a network's staging subsite. Returning
+  `false` hides the unconfigured notice on every admin screen, and hides the
+  degraded notice in the block editor, where it stands in for the unconfigured
+  one. The site still refuses and logs every revalidation, and a configured
+  site's notices are unchanged.
 * Changed: the plugin now requires WordPress 5.6, not 5.0. `wp_after_insert_post`
   — the hook a save revalidates from — has only existed since 5.6, so on 5.0
   through 5.5 the plugin activated and showed every admin screen, and saving a

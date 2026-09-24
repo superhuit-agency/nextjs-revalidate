@@ -254,7 +254,14 @@ class FailureWindow extends Base implements Hookable {
 		// class's own failure mode, on the one screen the operator is most
 		// likely to be reading — so on that screen this speaks instead, and its
 		// link leads to the settings page where the missing setting is.
-		if ( !$this->settings->is_configured() && !$this->is_block_editor_screen() ) return null;
+		//
+		// Speaking instead, it is silenced with the notice it stands in for: a
+		// site that filtered the unconfigured notice off asked not to be told
+		// it is unconfigured, and hearing it from this one would ignore that.
+		if ( !$this->settings->is_configured() ) {
+			if ( !$this->is_block_editor_screen() ) return null;
+			if ( !$this->settings->shows_unconfigured_notice() ) return null;
+		}
 
 		if ( !self::is_degraded() ) return null;
 
