@@ -10,36 +10,40 @@ License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
 === Description ===
 
-Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area.
-It also automatically purges & re-builds when a page/post/... is save or updated.
+Tells a Next.js front-end which WordPress content changed — posts, menus,
+templates, redirects — so it can revalidate whatever it cached from it. Changes
+are reported as they happen, on save, and on demand from the admin.
 
-The revalidation request is sent to an endpoint composed from the settings — the
-revalidate domain joined to the revalidate path — with two query arguments.
+The plugin reports changes as WordPress sees them and never names the
+front-end's cache tags: which cache entries a change expires is the front-end's
+decision, made in one route handler.
 
-1. The relative `path` to revalidate
-2. The `secret` to protect the revalidation endpoint.
+Each request that changes something ends with one request to the front-end:
+
+```
+POST {revalidate domain}{revalidate path}
+Authorization: Bearer <secret>
+Content-Type: application/json
+
+{ "version": 2, "changes": [ { "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/" }, "after": { "uri": "/hello-world/" } } ] }
+```
+
+The subjects are `post`, `redirect`, `path`, `menu`, `templates` and `all`. Any
+2xx answer is a success. The full contract — every field, when it is `null`, the
+two rules that let it grow, and a reference Next.js route in TypeScript — is in
+the plugin's README on GitHub:
+https://github.com/superhuit-agency/nextjs-revalidate#the-front-end-contract
 
 The domain and the secret are required. The revalidate path (default
-`/api/revalidate`) and the FSE revalidate path (default `/api/revalidate-fse`)
-are optional, for apps that route those endpoints elsewhere.
-
-Saving an FSE template or template part, resetting one to its theme default, or
-switching themes sends one request to the FSE endpoint instead — the front-end
-holds the whole template structure as a single cached value, so there is no page
-to name. "Revalidate on FSE update" starts on for a new install and off for a
-site upgrading from an earlier release, whose front-end may not serve that
-endpoint yet; switch it on once it does.
+`/api/revalidate`) is optional, for an app that routes its endpoint elsewhere.
 
 Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
 split into a domain and a path automatically on the first admin request after
 the upgrade, custom paths and all.
 
-== Example ==
-```
-https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-string
-```
-
-> Base on the Next.js [On-demand revalidation](https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration#on-demand-revalidation) documentation
+**Upgrading from 1.x changes the request the front-end receives.** Deploy 2.0
+together with the matching change to the Next.js route; see the 2.0.0 changelog
+below.
 
 == Integrations ==
 
@@ -54,8 +58,8 @@ A headless front-end resolves a redirect inside the cached page of the path it
 redirects *from*, so a redirect change leaves that path answering as it did
 before until its cache entry expires. With the
 [Redirection](https://wordpress.org/plugins/redirection/) plugin active, this
-plugin enqueues a revalidation of the redirect's source path whenever a redirect
-changes. The changes that trigger one:
+plugin reports a `redirect` change for the redirect's source path whenever a
+redirect changes. The changes that trigger one:
 
 1. A redirect is created.
 2. A redirect is edited.
@@ -83,13 +87,13 @@ about yet.
 
 **A redirect whose source is a regular expression is skipped entirely.** It
 matches an unbounded set of paths, so there is no single path to rebuild and
-nothing is enqueued for it: the front-end keeps serving the page it already
+nothing is reported for it: the front-end keeps serving the page it already
 holds, with nothing on screen to say why. The skip is recorded in the plugin's
 log file and nowhere else, and only while **Enable logs** is switched on under
 the **Debug** tab of *Settings → Next.js revalidate* — the file's path is shown
 beneath that switch.
 
-Other reasons a redirect change enqueues nothing, each recorded in that same log
+Other reasons a redirect change reports nothing, each recorded in that same log
 file and nowhere else:
 
 1. The redirect is disabled. Creating, editing, deleting or enabling one that is
@@ -98,9 +102,9 @@ file and nowhere else:
 2. Its source names no path to rebuild — it is empty, it is not a URL a path can
    be read out of, or it is the bare site root.
 3. A filter declined that path. See below.
-4. The site is unconfigured, so the queue refuses the revalidation: the
-   revalidate domain or the secret is missing, nothing is queued, and nothing
-   will be until both are filled in.
+4. The site is unconfigured, so the change is refused: the revalidate domain
+   or the secret is missing, nothing is sent, and nothing will be until both
+   are filled in.
 
 Each of them is one line of the same shape, so the whole set is one grep away:
 
@@ -108,20 +112,16 @@ Each of them is one line of the same shape, so the whole set is one grep away:
 [2026-04-28 11:04:07]	[INFO]	[Redirection.php] ↪️ Redirect #12 not revalidated (source: ^/blog/(.*)) — its source is a regular expression, which names no single path
 ```
 
-A redirect that *is* revalidated writes no line at that point. Its source path
-waits under the **Queue** tab of *Settings → Next.js revalidate* until cron
-drains it, and the log line — revalidated, or failed — comes from the drain.
+A redirect that *is* revalidated writes no line at that point. Its change is
+sent when the request that saved it ends, and the log line — revalidated, or
+failed — comes from that delivery.
 
 A bulk operation — deleting, enabling or disabling many redirects at once, or an
-import creating them — reaches this plugin once per redirect, and enqueues one
-revalidation per **distinct** source path: redirects sharing a source cost a
-single queue entry. Nothing is capped. The queue is drained by cron rather than
-in the request that filled it, so a large import reaches the front-end over the
-following cron runs rather than immediately. A drain is scheduled as soon as
-something is enqueued, works through the queue until PHP's max execution time is
-nearly up, then schedules the next one while anything is left. WordPress fires
-its cron on site traffic unless a real system cron is wired up, so a quiet site
-drains when somebody visits it.
+import creating them — reaches this plugin once per redirect, and reports one
+change per **distinct** source path: redirects sharing a source cost a single
+change. Nothing is capped. The changes are sent when the request that made them
+ends — in one request to the front-end, or in several of up to 100 changes each
+when a long request, such as an import, produces more.
 
 == Filters ==
 
@@ -152,6 +152,41 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
+= 2.0.0 =
+
+2.0 changes the request the plugin sends to the front-end, and nothing else a
+site's PHP relies on. Deploy it together with the matching change to the Next.js
+route. The full notes are in CHANGELOG.md on GitHub.
+
+* Changed (breaking): the request to the front-end. 1.x sent
+  `GET {url}?path=…&secret=…` once per path; 2.0 sends one `POST` per request
+  that changed something, with the secret in an `Authorization: Bearer` header
+  and a JSON body `{ "version": 2, "changes": [ … ] }` describing what changed —
+  a post (before and after), a redirect, a path, a menu, the templates, or a
+  revalidate all. Which cache tags a change expires is the front-end's decision.
+  Any 2xx is a success, and the timeout is five seconds. See the README's
+  front-end contract and its reference route.
+* Removed: the FSE revalidate path and "Revalidate on FSE update" settings — the
+  templates are reported on the one route like every other change — and the "On
+  menu update" post-type switches — a menu save reports one menu change. Their
+  stored values are deleted on upgrade.
+* Retired: the `nextjs_revalidate_purge_action_permalink` filter. A post change
+  carries no permalink to rewrite, so it is no longer applied, and a site still
+  hooking it is told so under `WP_DEBUG`. Move the callback to the new
+  `nextjs_revalidate_change` filter, which can alter or drop any change.
+* Deprecated until 3.0: `nextjs_revalidate_purge_url()` for
+  `nextjs_revalidate_path()`, `nextjs_revalidate_schedule_purge_url()` for
+  `nextjs_revalidate_schedule_path()`, and the
+  `nextjs_revalidate_purge_should_revalidate_post_on_save` filter for
+  `nextjs_revalidate_should_revalidate_post`. The old names still work, and warn
+  under `WP_DEBUG`. `$priority` is accepted and ignored.
+* Removed: the revalidation queue, its table, its cron and its Queue tab.
+  Changes are sent when the request that produced them ends. On upgrade, each
+  site's queue table is dropped and its cron unscheduled; paths still waiting in
+  it are dropped rather than sent, and their number is written to the log. A
+  deploy starts the front-end's cache afresh, so none of them is stale there.
+* Changed: the admin says "Revalidate" where it said "Purge", in English and in
+  French, and the plugin is named Next.js Revalidate.
 = 1.7.0 =
 
 * Added: the Redirection integration. Creating, editing, deleting, enabling or

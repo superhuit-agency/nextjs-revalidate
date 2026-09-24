@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name:       Next.js revalidate
+ * Plugin Name:       Next.js Revalidate
  * Plugin URI:        https://github.com/superhuit-agency/nextjs-revalidate.git
- * Description:       Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area. It also automatically purges & re-builds when a page/post/... is save or updated.
+ * Description:       Tells a Next.js front-end which WordPress content changed — posts, menus, templates, redirects — so it can revalidate whatever it cached from it, on save and from the admin.
  * Author:            superhuit
  * Author URI:        https://www.superhuit.ch
  * Version:           1.7.0
@@ -18,18 +18,18 @@
  * @author Superhuit, Kuuak
  */
 /*
-Next.js revalidate is free software: you can redistribute it and/or modify
+Next.js Revalidate is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 any later version.
 
-Next.js revalidate is distributed in the hope that it will be useful,
+Next.js Revalidate is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with Next.js revalidate. If not, see {URI to Plugin License}.
+along with Next.js Revalidate. If not, see {URI to Plugin License}.
 */
 
 use NextJsRevalidate\Assets;
@@ -46,7 +46,6 @@ use NextJsRevalidate\Settings;
 use NextJsRevalidate\Cron\ScheduledPurges;
 use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\RestApi;
-use NextJsRevalidate\RevalidateQueue;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -85,7 +84,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 /**
  * Every object the composition root constructs is private, and `__get()` below
  * hands any of them back to a reader outside this class — which is how
- * `Abstracts\Base` reaches the six it shares, how `Assets` and `Logger` reach
+ * `Abstracts\Base` reaches the five it shares, how `Assets` and `Logger` reach
  * the one each of them needs, and how the two API functions at the foot of this
  * file reach theirs.
  *
@@ -103,7 +102,6 @@ require_once __DIR__ . '/vendor/autoload.php';
  * @property-read ScheduledPurges $cronScheduledPurges
  * @property-read RevalidateAll   $revalidateAll
  * @property-read FseSnapshot     $fseSnapshot
- * @property-read RevalidateQueue $queue
  * @property-read RestApi         $restApi
  * @property-read Redirection     $redirection
  */
@@ -118,7 +116,6 @@ class NextJsRevalidate {
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
 	private FseSnapshot $fseSnapshot;
-	private RevalidateQueue $queue;
 	private RestApi $restApi;
 	private Redirection $redirection;
 	private static NextJsRevalidate $instance;
@@ -146,7 +143,7 @@ class NextJsRevalidate {
 	 * Constructing a Hookable touches no global state, so the two are separate
 	 * acts here: everything is built first, then every one of them is asked to
 	 * register, in construction order. That order is load-bearing — WordPress
-	 * runs same-hook, same-priority callbacks in registration order, and nine
+	 * runs same-hook, same-priority callbacks in registration order, and eight
 	 * of this plugin's callbacks sit on `admin_init` at priority 10.
 	 *
 	 * See `docs/adr/0003-explicit-hook-registration.md`.
@@ -164,7 +161,6 @@ class NextJsRevalidate {
 		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
 		$this->fseSnapshot         = $this->hookable( new FseSnapshot() );
-		$this->queue               = $this->hookable( new RevalidateQueue() );
 		$this->restApi             = $this->hookable( new RestApi() );
 
 		foreach ( $this->hookables as $hookable ) $hookable->register_hooks();
@@ -274,8 +270,8 @@ class NextJsRevalidate {
 	}
 
 	/**
-	 * Prepare one site to revalidate: its queue table, its registered
-	 * settings and its scheduled cron.
+	 * Prepare one site to revalidate: its registered settings and its
+	 * scheduled cron.
 	 *
 	 * Applied identically whether the site is the only one of a single
 	 * install, an existing site reached by a sweep, or a site created later.
@@ -283,14 +279,11 @@ class NextJsRevalidate {
 	public function setup_site() {
 		$this->cronScheduledPurges->schedule_cron();
 		$this->settings->define_settings();
-
-		$this->queue->create_table();
 	}
 
 	/**
 	 * Tear one site down as far as a deactivation goes: its crons stop, its
-	 * failure window is forgotten, its queue table and its settings stay where
-	 * they are.
+	 * failure window is forgotten, its settings stay where they are.
 	 *
 	 * The failure window is the one exception to the two teardown depths, and
 	 * the reason is semantic rather than tidiness: while deactivated, content
@@ -302,21 +295,18 @@ class NextJsRevalidate {
 	 */
 	public function teardown_site() {
 		ScheduledPurges::unschedule_cron();
-		$this->queue->unschedule_cron();
 
 		FailureWindow::clear();
 	}
 
 	/**
-	 * Tear one site down as far as an uninstall goes: its settings, its
-	 * scheduled purges and its queue table are dropped.
+	 * Tear one site down as far as an uninstall goes: its settings and its
+	 * scheduled purges are dropped.
 	 */
 	public function uninstall_site() {
 		Settings::delete_settings();
 		ScheduledPurges::delete_scheduled_purges();
 		FailureWindow::clear();
-
-		$this->queue->delete_table();
 	}
 
 	/**
@@ -376,7 +366,7 @@ class NextJsRevalidate {
 		wp_die(
 			sprintf(
 				/* translators: %s: number of sites on the network. */
-				__( 'Next.js revalidate cannot set up the %s sites of this network in a single request, and it does not set up some of them and leave the rest without a queue table. Activate the plugin on each site individually instead.', 'nextjs-revalidate' ),
+				__( 'Next.js revalidate cannot set up the %s sites of this network in a single request, and it does not set up some of them and leave the rest unable to revalidate. Activate the plugin on each site individually instead.', 'nextjs-revalidate' ),
 				number_format_i18n( get_blog_count() )
 			),
 			__( 'Plugin could not be activated', 'nextjs-revalidate' ),

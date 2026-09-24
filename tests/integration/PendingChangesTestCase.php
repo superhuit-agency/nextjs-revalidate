@@ -22,8 +22,7 @@ use WP_UnitTestCase;
  * them by hand on both sides of every test — after, too, so a test's leftovers
  * are not delivered to the fixture domain at `shutdown` when the run ends.
  *
- * Unlike the queue (see `QueueTestCase`), nothing here writes to the database
- * outside the test's transaction, so the posts a test creates and the settings
+ * Nothing here writes to the database outside the test's transaction, so the posts a test creates and the settings
  * its fixture writes are rolled back as usual.
  *
  * See `docs/adr/0008-two-testing-idioms.md`, and

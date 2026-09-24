@@ -115,7 +115,6 @@ require_once __DIR__ . '/../include/Probe.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
-require_once __DIR__ . '/../include/RevalidateQueue.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\Assets;
@@ -129,7 +128,6 @@ use NextJsRevalidate\Probe;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\RevalidateAll;
-use NextJsRevalidate\RevalidateQueue;
 use NextJsRevalidate\Settings;
 
 // The expectations
@@ -149,7 +147,6 @@ $expected_per_class = [
 
 	Assets::class => [
 		[ 'init',                  'register_assets',          10, 1 ],
-		[ 'admin_enqueue_scripts', 'enqueue_admin_assets',     10, 1 ],
 		[ 'admin_enqueue_scripts', 'enqueue_editor_assets',    10, 1 ],
 		[ 'admin_enqueue_scripts', 'enqueue_settings_assets',  10, 1 ],
 	],
@@ -207,13 +204,6 @@ $expected_per_class = [
 		[ 'save_post_wp_template_part', 'on_template_save', 10, 1 ],
 		[ 'deleted_post',               'on_post_delete',   10, 2 ],
 		[ 'switch_theme',               'on_theme_switch',  10, 1 ],
-	],
-
-	RevalidateQueue::class => [
-		[ 'admin_init',                     'action_reset_queue',  10, 1 ],
-		[ 'admin_init',                     'ajax_queue_progress', 10, 1 ],
-		[ 'admin_notices',                  'admin_queue_notice',  10, 1 ],
-		[ RevalidateQueue::CRON_HOOK_NAME,  'run_cron',            10, 1 ],
 	],
 
 	RestApi::class => [

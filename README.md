@@ -1,14 +1,20 @@
+# Next.js Revalidate
 
-# Next.js revalidate
+Tells a Next.js front-end which WordPress content changed — posts, menus,
+templates, redirects — so it can revalidate whatever it cached from it. Changes
+are reported as they happen, on save, and on demand from the admin.
 
-Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area.
-It also automatically purges & re-builds when a page/post/... is saved or updated.
+The plugin reports **changes**, described as WordPress sees them, and never
+names the front-end's cache tags: which entries a change expires is the
+front-end's decision
+([ADR 0033](docs/adr/0033-the-plugin-reports-changes-not-tags.md)). The
+front-end writes that mapping once, in a route handler — see
+[the front-end contract](#the-front-end-contract) and the
+[reference route](examples/next/app/api/revalidate/route.ts).
 
-The revalidation request is sent to an endpoint composed from the settings — the
-**revalidate domain** joined to the **revalidate path** — with two query arguments.
-
-1. The relative `path` to revalidate
-2. The `secret` to protect the revalidation endpoint.
+Upgrading from 1.x? 2.0 changes the request the front-end receives, and a
+site's Next.js route has to change with it, in the same deploy. Read the
+[2.0.0 release notes](CHANGELOG.md#200) first.
 
 ### Settings
 
@@ -16,45 +22,164 @@ The revalidation request is sent to an endpoint composed from the settings — t
 | --- | --- | --- |
 | Revalidate domain | yes | — (e.g. `https://example.com`) |
 | Revalidate path | no | `/api/revalidate` |
-| FSE revalidate path | no | `/api/revalidate-fse` |
 | Revalidate secret | yes | — |
-| Revalidate on FSE update | no | on for a new install, off for an upgrade |
 
-A standard install fills in the domain and the secret. The paths exist for apps
-that route these endpoints somewhere else; each falls back to the default shown
-in its placeholder when left empty.
+A standard install fills in the domain and the secret. The path exists for an
+app that routes its endpoint somewhere else, and falls back to the default shown
+in its placeholder when left empty. Every change goes to that one route.
+
+Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
+split into a domain and a path automatically on the first admin request after the
+upgrade, custom paths and all — nothing to do by hand.
+
+## The front-end contract
+
+What the plugin sends, and what it takes for an answer. This is contract version
+**2**; the plugin's own version is not part of it.
+
+### The request
+
+```http
+POST {revalidate domain}{revalidate path}
+Authorization: Bearer <secret>
+Content-Type: application/json
+
+{ "version": 2, "changes": [ … ] }
+```
+
+- **`Authorization`** carries the site's revalidate secret, after `Bearer `. It
+  is never sent in the URL or the body.
+- **`version`** is the contract version, `2`. See the rules below.
+- **`changes`** is a non-empty array of changes, one object per subject that
+  changed.
+
+The changes are the **pending changes** of the WordPress request that produced
+them, delivered when that request ends — after the editor has had their answer,
+where the server allows it. Two changes to the same subject in one request are
+sent as one: a post saved three times is one post change, from its state before
+the first save to its state after the last. A long request, such as an import,
+sends its changes in several requests of up to 100 changes each, rather than one
+unbounded body. On a network, each site's changes go to that site's own domain,
+with its own secret.
+
+### The subjects
+
+Every change has a `subject`, and that subject's fields. v2.0 sends six:
+
+| Subject | Fields | Sent for |
+| --- | --- | --- |
+| `post` | `id`, `type`, `before`, `after` | a post saved, published, unpublished, trashed or deleted; the **Revalidate** row action, bulk action and admin bar entry |
+| `redirect` | `uri` | a redirect created, edited, deleted, enabled or disabled in Redirection — one change per affected source path |
+| `path` | `uri` | `nextjs_revalidate_path()`, the inbound REST routes, a due scheduled purge, the probe |
+| `menu` | `id`, `locations` | a menu saved |
+| `templates` | none | an FSE template or template part saved or deleted, a theme switched |
+| `all` | none, or `type` and `taxonomies` | revalidate all, of the whole site or of one post type |
+
+```json
+{
+  "version": 2,
+  "changes": [
+    { "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/" }, "after": { "uri": "/hello-world/" } },
+    { "subject": "redirect", "uri": "/old-path/" },
+    { "subject": "path", "uri": "/feeds/events/" },
+    { "subject": "menu", "id": 7, "locations": [ "primary" ] },
+    { "subject": "templates" },
+    { "subject": "all", "type": "post", "taxonomies": [ "category", "post_tag" ] }
+  ]
+}
+```
+
+Every field, and when it is `null`:
+
+| Subject | Field | Type | Meaning |
+| --- | --- | --- | --- |
+| any | `subject` | string | Which subject changed. |
+| `post` | `id` | integer | The post's ID. |
+| `post` | `type` | string | Its post type, as registered: `post`, `page`, `event`… |
+| `post` | `before` | `{ uri }` or `null` | Where the front-end showed the post before the change. `null` when it was not on the front-end — a publish. |
+| `post` | `after` | `{ uri }` or `null` | Where the front-end shows it after. `null` when it is no longer there — unpublished, trashed or deleted alike, since the page is gone either way. |
+| `redirect` | `uri` | string | A source path whose redirect changed. |
+| `path` | `uri` | string | A path somebody reported as changed, without saying what is there. |
+| `menu` | `id` | integer | The menu's term ID. |
+| `menu` | `locations` | string[] | The theme locations the menu is assigned to. Empty for a menu assigned to none, which a block, a widget or the front-end may still render by its ID. |
+| `all` | `type` | string | The post type revalidated. Absent — with `taxonomies` — for the whole site. |
+| `all` | `taxonomies` | string[] | The **revalidatable taxonomies** registered for `type`, whose term archives the front-end may hold. Possibly empty. Present exactly when `type` is. |
+
+- **A `uri`** is always the path from the domain root, with a leading slash —
+  what 1.x sent as `path`, and what WPGraphQL calls `uri`. It keeps the trailing
+  slash, or its lack of one, that WordPress's permalink or the caller gave it.
+- **A post's `before` and `after`** describe it *as the front-end sees it*: a
+  post is on the front-end while its status is `publish` or `private`. Only
+  one side is ever `null` — a change with both `null`, a draft saved as a draft,
+  is never sent. Compare the two sides rather than looking for an event name: an
+  edit has two equal URIs, a slug change two different ones, a publish no
+  `before`, and anything that takes the page away no `after`. The row action,
+  bulk action and admin bar entry report a post as it stands, with both sides its
+  current URI.
+- **`templates`** never names which template changed: the front-end holds the
+  whole template structure as one value, the **FSE snapshot**.
+- **`all`** is one change, never the pages it covers.
+
+### Two rules
+
+The contract grows without breaking a front-end written against it:
+
+1. **Ignore what you do not recognise** — a subject, or a field on a subject you
+   know. A new subject or field is therefore not a breaking change, and ships in
+   a minor release of the plugin.
+2. **`version` is raised only for a breaking change** — a field removed, renamed,
+   or its meaning changed. Answer a `version` you do not know with an error (a
+   4xx): the plugin records it as a failure, and its "not keeping this site up
+   to date" notice reaches an operator, instead of the wrong entries expiring in
+   silence.
+
+### The answer
+
+**Any 2xx is a success** — 200, 202 and 204 alike; the body is not read.
+Everything else is a **failure**, and so is a request the front-end did not
+answer within **five seconds**. Redirects are not followed: a 3xx is a failure.
+A front-end should mark entries stale and answer; it should not rebuild pages
+before answering.
+
+One request has one outcome: there are no per-change results, and a failure
+fails every change the request carried. Delivery is **at most once** — a failure
+is written to the log file and dropped, never retried
+([ADR 0004](docs/adr/0004-at-most-once-revalidation.md)), and it counts towards
+the degraded-revalidation notice an operator sees when three of the last ten
+requests failed ([ADR 0007](docs/adr/0007-degraded-revalidation-is-a-condition.md)).
+
+### A reference route
+
+[`examples/next/app/api/revalidate/route.ts`](examples/next/app/api/revalidate/route.ts)
+is a complete Next.js route handler, in TypeScript with the payload types above.
+It checks the secret, answers an unknown `version` with a 400, maps every subject
+onto an example tag scheme and expires each tag with `revalidateTag( tag, 'max' )`:
+
+| Change | Tags expired |
+| --- | --- |
+| `post` | `node:{id}` and `type:{type}`; and `uris` when `before.uri` and `after.uri` differ — a publish, an unpublish, a trash, a delete or a slug change |
+| `redirect`, `path` | `uris` |
+| `menu` | `menu:{location}` for each of its locations |
+| `templates` | `options` |
+| `all` of the whole site | `content` |
+| `all` of one post type | `type:{type}`, `type:{taxonomy}` for each of its taxonomies, and `nodes` |
+
+The scheme is an example: which tag an entry carries is your app's decision, and
+the route is the place to say it. Copy the file into your app and change
+`tagsFor()`. It type-checks in this repository with `npm run typecheck`, against
+a declaration of `next/cache`'s `revalidateTag()` as Next.js 16 gives it.
 
 ### FSE templates
 
 Next.js renders its pages inside WordPress FSE templates, and holds the whole
 template structure as one cached value. Saving a template or a template part in
 the site editor, resetting one to its theme default, or switching themes
-therefore changes every page at once — so the plugin sends **one** request to the
-FSE endpoint, with the secret and no path, and the front-end's pages rebuild
-lazily from there. Nothing is enqueued and nothing is rebuilt page by page.
+therefore reports **one** `templates` change, to the same route as every other
+change, and the front-end decides what that expires. Nothing is rebuilt page by
+page.
 
-```
-https://example.com/api/revalidate-fse?secret=my-super-secret-string
-```
-
-Menu changes do **not** trigger this: menu items are fetched at request time by
-the front-end and are not part of the template snapshot.
-
-**Revalidate on FSE update** starts on for a new install and **off for a site
-upgrading from an earlier release** — an existing front-end may not serve that
-endpoint yet, and every template save would otherwise ask it for a route it does
-not have. Switch it on once the front-end is serving it.
-
-Sites upgrading from 1.6.x had a single, fully-qualified revalidate URL. It is
-split into a domain and a path automatically on the first admin request after the
-upgrade, custom paths and all — nothing to do by hand.
-
-### Example
-```
-https://example.com/api/revalidate?path=/hello-world/&secret=my-super-secret-string
-```
-
-> Based on the Next.js [On-demand revalidation](https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration#on-demand-revalidation) documentation
+Menu changes do **not** report a `templates` change: a menu save reports a
+`menu` change of its own.
 
 ### Probing the front-end
 
@@ -260,7 +385,7 @@ the front-end sees it before and after:
 the front-end on that side — its status is not `publish` or `private` — so a
 publish has no `before`, and a post that has left the front-end, or has been
 deleted, has no `after`. An edit has two equal sides, a slug change two
-different URIs, and the **Purge cache** row action, bulk action and admin bar
+different URIs, and the **Revalidate** row action, bulk action and admin bar
 entry report the post as it stands, with both sides its current URI. A post
 saved several times in one request is reported once, from the first `before` to
 the last `after`. A revision stands for the post it belongs to, and an
@@ -280,8 +405,8 @@ reports nothing either; the post it belongs to still has its page.
 ## Which post types the admin offers
 
 The same viewability decides what this plugin *offers* for a post type: the
-**Purge caches** bulk action on its list screen, its allow purge all switch on
-the settings page, and its purge-all entry in the admin bar. Attachments are
+**Revalidate** bulk action on its list screen, its allow revalidate all switch
+on the settings page, and its revalidate all entry in the admin bar. Attachments are
 never offered: an uploaded file is not a Next.js route.
 
 Those are offers and not gates — what is revalidated is the section above, and
@@ -294,7 +419,7 @@ filter — this plugin asks that function, so the offer and the gate move
 together.
 
 A switch already stored for a post type that is no longer offered is left as it
-is, and does nothing: no purge-all entry is offered for it. Saving the settings
+is, and does nothing: no revalidate all entry is offered for it. Saving the settings
 page drops the stored row.
 
 ## Menus
@@ -572,7 +697,7 @@ add_filter( 'nextjs_revalidate_change', function( $change ) {
 
 ### nextjs_revalidate_purge_action_permalink
 
-**Retired in 2.0.0, and no longer applied.** It filtered the permalink the
+**Retired in 2.0.0, and no longer applied.** It filtered the permalink 1.x's
 "Purge cache" row action, bulk action and admin bar entry put in the queue. A
 post is now reported as a change keyed by its ID, which carries no permalink to
 rewrite. A callback still on this filter is never called; when one of those
@@ -647,8 +772,8 @@ first.** A failing script's own exit code is the command's.
 
 PHPUnit tests under `tests/integration/` that boot WordPress with this plugin
 active and assert on what an event produces: given some WordPress state and an
-event, which changes are **pending** — a post's save or delete — or which paths
-does the **revalidation queue** revalidate, in what order, at what priority?
+event, which changes are **pending** — a post's save or delete, a redirect
+edited, a path reported through the public API?
 
 From a fresh checkout:
 
@@ -690,37 +815,15 @@ made for the development site — the multisite one of the extended pass — doe
 not change what the suite runs against. Nor does `npm run stop` stop it: the test
 site stays up after a run until `npx wp-env stop --config=.wp-env.tests.json`.
 
-Write a test by extending `NextJsRevalidate\Tests\QueueTestCase`, which
-configures the site, enqueues paths and reads the queue back:
+Write a test by extending `NextJsRevalidate\Tests\PendingChangesTestCase`, which
+configures the site and reads what the request holds before anything is
+delivered:
 
 ```php
-$this->configure_site();                       // a configured site — an
-                                               // unconfigured one refuses
-$this->enqueue( '/hello-world/', 5 );          // enqueue a path at a priority
-$this->assertQueueRevalidates( [ '/hello-world/' ] );  // paths, in drain order
-$this->assertQueueRevalidatesAtPriorities( [ '/hello-world/' => 5 ] );
-$this->assertQueueHolds( [ home_url( '/hello-world/' ) ] ); // the permalinks
-```
-
-The queue **holds permalinks**, and those permalinks **revalidate paths** — the
-two are kept apart because on a network they can disagree. `assertQueueHolds()`
-takes permalinks; `assertQueueRevalidates()` takes paths and normalises against
-the site's home url, so a test survives a change of the test site's port.
-
-The queue table is created once in the bootstrap and emptied around every test.
-It has to be: `RevalidateQueue::add_item()` runs its own transaction, whose
-`COMMIT` also commits the one `WP_UnitTestCase` uses to roll a test back.
-
-What reports a **change** rather than enqueueing a path — the public API, the
-REST routes, a due scheduled purge, the Redirection integration — is tested by
-extending `NextJsRevalidate\Tests\PendingChangesTestCase` instead, which reads
-what the request holds before anything is delivered:
-
-```php
-$this->configure_site();
+$this->configure_site();                             // an unconfigured site refuses
 nextjs_revalidate_path( home_url( '/hello-world/' ) );
-$this->assertReports( [ Change::path( '/hello-world/' ) ] ); // changes, in order
-$this->assertReportsNothing();                               // or none at all
+$this->assertPendingChanges( [ Change::path( '/hello-world/' ) ] ); // in order
+$this->assertNoPendingChanges();                     // or none at all
 ```
 
 The pending changes are emptied around every test, which is also what keeps the

@@ -31,7 +31,6 @@ trait SendbackUrl {
 				'nextjs-revalidate-bulk-purged',
 				'nextjs-revalidate-type',
 				'nextjs-revalidate-revalidate-all',
-				'nextjs-revalidate-queue-resetted',
 			],
 			$sendback
 		);

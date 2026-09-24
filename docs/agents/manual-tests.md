@@ -7,7 +7,7 @@ while changing code.
 
 ## Two files, and no step in both
 
-- **[`../manual-tests.md`](../manual-tests.md)** — the **core pass**. Thirty-five
+- **[`../manual-tests.md`](../manual-tests.md)** — the **core pass**. Thirty-one
   steps, single site, run before every release.
 - **[`../manual-tests-extended.md`](../manual-tests-extended.md)** — the
   **extended pass**. Everything else, including the network and upgraded stacks.
@@ -19,7 +19,7 @@ prevent.
 
 **A new step goes in the extended pass by default.** It belongs in the core pass
 only if its failure would mean the plugin does not work at all for an ordinary
-single site. If adding to the core pass takes it much past thirty-five steps, ask
+single site. If adding to the core pass takes it much past thirty-one steps, ask
 whether something else there has stopped earning its place.
 
 ## The runbook is a template
@@ -59,8 +59,9 @@ The runbook only stays runnable if it can shrink. Two rules do that work:
 
 **Automated coverage retires a step — but only when it covers the same reach.**
 Reach is the criterion for a step belonging and for it leaving, symmetrically.
-A PHPUnit test that proves the queue receives the right permalink does *not*
-retire the manual step that saves a redirect through Redirection's own UI: the
+A PHPUnit test that proves the pending changes receive the right redirect
+change does *not* retire the manual step that saves a redirect through
+Redirection's own UI: the
 test never touches that screen. Delete the step only when the new test observes
 what the step observes, and cite the test in the commit message.
 
@@ -79,7 +80,7 @@ One action, one oracle:
 ```
 
 Bold the action. Name what you expect **and where it appears** — the revalidate
-server console, the log file, the queue tab, the screen itself. A step without a
+server console, the log file, the screen itself. A step without a
 stated oracle is one two people will disagree about, and one you cannot tell has
 been invalidated by your change.
 

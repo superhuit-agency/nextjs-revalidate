@@ -6,10 +6,8 @@ use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\BlockEditorScreen;
-use NextJsRevalidate\Traits\FrontEndRequest;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
-use WP_Error;
 use WP_Post;
 use WP_Taxonomy;
 
@@ -26,11 +24,11 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * had or has no page. See `docs/adr/0033-the-plugin-reports-changes-not-tags.md`.
  *
  * @property PendingChanges $pendingChanges The pending changes, from the composition root.
+ * @property Settings       $settings       The settings, from the composition root.
  */
 class Revalidate extends Base implements Hookable {
 	use AdminBarMenu;
 	use BlockEditorScreen;
-	use FrontEndRequest;
 	use SendbackUrl;
 
 	/**
@@ -212,7 +210,7 @@ class Revalidate extends Base implements Hookable {
 	 * An offer, and not a gate. Nothing here decides whether a change is
 	 * reported — `should_revalidate()` is asked about every post by every entry
 	 * point, and it alone answers that. This decides only what an operator is
-	 * shown: the "Purge caches" bulk action, the allow purge all toggles, and
+	 * shown: the "Revalidate" bulk action, the allow revalidate all toggles, and
 	 * the admin bar's revalidate all entries.
 	 *
 	 * The axis is the one the gate's own type axis uses,
@@ -421,56 +419,6 @@ class Revalidate extends Base implements Hookable {
 		return ( '' === $uri ) ? null : $uri;
 	}
 
-	/**
-	 * Ask the front-end to rebuild the page held for the given permalink.
-	 *
-	 * The v1 request, still sent by the revalidation queue's drain and the
-	 * probe. No post reaches it: a post is reported as a change.
-	 *
-	 * Delivery is at most once: the drain deletes the queue entry before it gets
-	 * here, so what this returns is the only trace a revalidation which did not
-	 * succeed will ever leave. It therefore names *which* failure happened
-	 * rather than collapsing every one of them into a bare false — `unreachable`
-	 * and `http_401` send an operator to completely different places.
-	 * See `docs/adr/0004-at-most-once-revalidation.md`.
-	 *
-	 * @param string $permalink The permalink to revalidate.
-	 *
-	 * @return true|WP_Error True when the front-end rebuilt the page. Otherwise
-	 *                       a WP_Error whose code names the outcome:
-	 *                       `not_configured` when the site could not deliver at
-	 *                       all, `unreachable` when the front-end was not
-	 *                       reached, `no_response` when it answered without a
-	 *                       status, `http_{status}` when it answered with one
-	 *                       other than 200, and `exception` when the attempt
-	 *                       threw.
-	 */
-	function purge( $permalink ) {
-
-		// A refusal rather than a failure: the front-end is asked nothing at
-		// all. `add_item()` refuses at enqueue time, so the drain reaches this
-		// only for items enqueued while the site was still configured and
-		// drained after its settings were cleared — the same refusal, given
-		// later. It is also the guard for any other caller.
-		if ( !$this->settings->is_configured() ) return $this->settings->not_configured_error();
-
-		// The transport, and the naming of what comes back, are shared with
-		// the delivery of the pending changes — see `Traits\FrontEndRequest`.
-		// A minute is what a rebuild is given: this runs from the queue's
-		// cron, never from the request an editor is waiting on.
-		return $this->send_front_end_request( $this->build_revalidate_uri( $permalink ), 60 );
-	}
-
-	function build_revalidate_uri( $permalink ) {
-		return add_query_arg(
-			[
-				'path'   => wp_make_link_relative( $permalink ),
-				'secret' => $this->settings->secret
-			],
-			$this->settings->endpoint_url()
-		);
-	}
-
 	function add_revalidate_row_action( $actions, $post ) {
 		if ( $post instanceof WP_Post || is_array( $actions ) ) {
 			if ( $this->settings->is_configured() ) {
@@ -486,8 +434,8 @@ class Revalidate extends Base implements Hookable {
 						),
 						"nextjs-revalidate-purge_{$post->ID}"
 					),
-					esc_attr( sprintf( __('Purge cache of post “%s”', 'nextjs-revalidate'), get_the_title($post)) ),
-					__('Purge cache', 'nextjs-revalidate'),
+					esc_attr( sprintf( __('Revalidate post “%s”', 'nextjs-revalidate'), get_the_title($post)) ),
+					__('Revalidate', 'nextjs-revalidate'),
 				);
 
 			}
@@ -546,7 +494,7 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * Purge the cache of the given post, then send the user back with the
+	 * Report the given post as it stands, then send the user back with the
 	 * outcome in the `nextjs-revalidate-purged` query arg — the post ID when
 	 * its change joined the pending changes, `0` when it did not.
 	 *
@@ -558,7 +506,7 @@ class Revalidate extends Base implements Hookable {
 	 */
 	private function purge_post_and_redirect( $post_id, $sendback ) {
 		if ( ! current_user_can( 'edit_post', $post_id ) ) {
-			wp_die( __( 'Sorry, you are not allowed to purge the cache of this post.', 'nextjs-revalidate' ) );
+			wp_die( __( 'Sorry, you are not allowed to revalidate this post.', 'nextjs-revalidate' ) );
 		}
 
 		$is_added = $this->report_post( $post_id );
@@ -571,8 +519,8 @@ class Revalidate extends Base implements Hookable {
 
 	/**
 	 * Admin
-	 * Display the "Purge this page" entry in the admin top bar
-	 * when editing a post whose cache we could purge.
+	 * Display the "Revalidate this page" entry in the admin top bar
+	 * when editing a post the front-end could hold a page for.
 	 */
 	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
 		$post_id = $this->get_edited_post_id();
@@ -586,7 +534,7 @@ class Revalidate extends Base implements Hookable {
 		$admin_bar->add_node( [
 			'id'     => 'nextjs-revalidate-current-post',
 			'parent' => 'nextjs-revalidate',
-			'title'  => _x( 'Purge this page', 'Admin top bar menu', 'nextjs-revalidate' ),
+			'title'  => _x( 'Revalidate this page', 'Admin top bar menu', 'nextjs-revalidate' ),
 			'href'   => esc_url(
 				wp_nonce_url(
 					add_query_arg( [ 'nextjs-revalidate-purge-post' => $post_id ], $edit_link ),
@@ -594,19 +542,19 @@ class Revalidate extends Base implements Hookable {
 				)
 			),
 			'meta'   => [
-				'title' => _x( 'Purge the cache of the page currently being edited.', 'Admin top bar menu', 'nextjs-revalidate' ),
+				'title' => _x( 'Tell the front-end to revalidate the page currently being edited.', 'Admin top bar menu', 'nextjs-revalidate' ),
 			]
 		] );
 	}
 
 	/**
 	 * Get the id of the post currently being edited,
-	 * if its cache can be purged by the current user.
+	 * if the current user can revalidate it.
 	 *
-	 * The purge is offered on the edit screen of an existing post only:
-	 * a post being created has no permalink to purge yet.
+	 * The revalidation is offered on the edit screen of an existing post only:
+	 * a post being created has no page on the front-end yet.
 	 *
-	 * @return int|null The post ID. Null if there is nothing to purge here.
+	 * @return int|null The post ID. Null if there is nothing to revalidate here.
 	 */
 	private function get_edited_post_id() {
 		if ( ! is_admin() || ! function_exists('get_current_screen') ) return null;
@@ -627,7 +575,7 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * Purge the cache of the post being edited,
+	 * Revalidate the post being edited,
 	 * triggered by the admin top bar entry.
 	 *
 	 * The action travels in its own query arg: the link is followed from the
@@ -647,11 +595,11 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * Register the "Purge caches" bulk action, on the list screen of every post
+	 * Register the "Revalidate" bulk action, on the list screen of every post
 	 * type this plugin offers its actions for.
 	 *
 	 * A type it does not offer used to get the action anyway — and the action
-	 * then purged nothing, because the gate declines every one of its posts.
+	 * then revalidated nothing, because the gate declines every one of its posts.
 	 * See `offered_post_types()`.
 	 */
 	function register_bulk_actions() {
@@ -664,7 +612,7 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	function add_revalidate_bulk_action( $bulk_actions ) {
-		$bulk_actions['nextjs_revalidate-bulk_purge'] = __( 'Purge caches', 'nextjs-revalidate' );
+		$bulk_actions['nextjs_revalidate-bulk_purge'] = __( 'Revalidate', 'nextjs-revalidate' );
 		return $bulk_actions;
 	}
 
@@ -699,18 +647,18 @@ class Revalidate extends Base implements Hookable {
 		return [
 			'status'  => $success ? 'success' : 'error',
 			'message' => ($success
-				? sprintf( __( '“%s” cache will be purged shortly.', 'nextjs-revalidate' ), get_the_title($post_id) )
-				: __( 'Unable to purge cache. Please try again or contact an administrator.', 'nextjs-revalidate' )
+				? sprintf( __( '“%s”: the revalidation was sent to the front-end.', 'nextjs-revalidate' ), get_the_title($post_id) )
+				: __( 'Unable to revalidate. Please try again or contact an administrator.', 'nextjs-revalidate' )
 			),
 		];
 	}
 
 	/**
-	 * The purge notice to hand over to the block editor, if this screen is one.
+	 * The revalidation notice to hand over to the block editor, if this screen is one.
 	 *
 	 * Core hides every `admin_notices` output on a block editor screen — see
 	 * `body.js.block-editor-page #wpbody-content > div:not(.block-editor)` in
-	 * core's editor stylesheet — so the "Purge this page" entry, which lives
+	 * core's editor stylesheet — so the "Revalidate this page" entry, which lives
 	 * inside the editor, would otherwise report nothing at all. There the
 	 * notice is dispatched to `core/notices` from the editor script instead.
 	 *
@@ -739,8 +687,8 @@ class Revalidate extends Base implements Hookable {
 				'<div class="notice notice-%s"><p>%s</p></div>',
 				$success ? 'success' : 'error',
 				($success
-					? sprintf( _n( '%d cache will be purged shortly.', '%d caches will be purged shortly.', $nb_purged, 'nextjs-revalidate' ), $nb_purged )
-					: __( 'Unable to purge cache. Please try again or contact an administrator.', 'nextjs-revalidate' )
+					? sprintf( _n( '%d post: the revalidation was sent to the front-end.', '%d posts: the revalidation was sent to the front-end.', $nb_purged, 'nextjs-revalidate' ), $nb_purged )
+					: __( 'Unable to revalidate. Please try again or contact an administrator.', 'nextjs-revalidate' )
 				)
 			);
 		}

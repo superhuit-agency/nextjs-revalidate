@@ -7,8 +7,9 @@ const secret = 'my-super-secret';
 const startGreen = '\x1b[1;32m';
 const endGreen = '\x1b[0m';
 
-// v1's request: one path, the secret in a query arg. The revalidation queue
-// still sends it until the rest of v2 lands.
+// v1's request: one path, the secret in a query arg. Nothing in 2.x sends it;
+// it stays for a 1.x site, which the upgraded stack of the extended pass raises
+// and upgrades.
 app.get('/revalidate', (req, res) => {
 	const path = req.query.path;
 

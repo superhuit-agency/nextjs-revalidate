@@ -170,8 +170,8 @@ table does not:
 | The site is unconfigured — a **refusal** (ADR 0015) | `503` |
 | Something threw, or the site's own `nextjs_revalidate_change` filter dropped the change | `500` |
 
-**The queue write that did not happen is gone**, with the queue: nothing an item
-does can fail to be written any more.
+**The queue write that did not happen is gone**, with the queue, which #160
+removed: nothing an item does can fail to be written any more.
 
 **A change the filter dropped is a 500.** It is the one outcome v2 adds, and it
 was not accepted — nothing will be sent for it — so a 2xx would be the lie this

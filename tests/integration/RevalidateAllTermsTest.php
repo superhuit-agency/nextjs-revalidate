@@ -23,7 +23,7 @@
 
 namespace NextJsRevalidate\Tests;
 
-class RevalidateAllTermsTest extends QueueTestCase {
+class RevalidateAllTermsTest extends PendingChangesTestCase {
 
 	/**
 	 * The taxonomies this test registered, to be unregistered after it.

@@ -204,10 +204,10 @@ foreach ( $cases as [ $description, $options, $expected ] ) {
 // The refusal itself
 // ====
 //
-// Raised from two guards — `RevalidateQueue::add_item()` at enqueue time and
-// `Revalidate::purge()` at delivery time — and declared here so they cannot
-// drift apart. The *code* is the contract: `RestApi::process_items` reports it
-// per item, and the queue drain branches on it to write ⛔ rather than ❌.
+// Raised by the pending changes when a change is reported and again at
+// delivery, and by the probe — and declared here so they cannot drift apart.
+// The *code* is the contract: `RestApi::process_items` reports it per item, and
+// the probe branches on it to answer a refusal rather than a failure.
 
 $refusal = $settings->not_configured_error();
 

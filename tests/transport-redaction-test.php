@@ -3,13 +3,13 @@
  * The secret, kept out of every message the transport hands back —
  * `Traits\FrontEndRequest`.
  *
- * Every request this plugin makes carries the secret — v1's `GET` as a query
- * arg, v2's `POST` in an `Authorization` header — and two of the outcomes the trait answers carry a string of *arbitrary origin* back with
- * them: `unreachable` carries whatever the HTTP transport said, and `exception`
+ * Every request this plugin makes carries the secret, in the `POST`'s
+ * `Authorization` header, and two of the outcomes the trait answers carry a
+ * string of *arbitrary origin* back with them: `unreachable` carries whatever the HTTP transport said, and `exception`
  * carries whatever anything in the request path threw. Those strings reach an
  * admin notice, a REST response and a log file in `wp-content/uploads` that
  * most hosts serve directly over HTTP — so a transport that quoted the request
- * URL back would publish the one value this plugin exists to hold.
+ * back would publish the one value this plugin exists to hold.
  * See `docs/adr/0023-the-transport-redacts-the-secret.md`.
  *
  * Two halves, because the decision has two halves:
@@ -35,7 +35,7 @@ if ( 'cli' !== PHP_SAPI ) die( 'This file must be run from the command line.' );
 define( 'ABSPATH', __DIR__ . '/' );
 
 /**
- * What the next `wp_remote_get()` answers: an array, a WP_Error, or a callable
+ * What the next `wp_remote_post()` answers: an array, a WP_Error, or a callable
  * to run in its place.
  * @var mixed
  */
@@ -59,12 +59,6 @@ function wp_remote_post( $url, $args = [] ) {
 }
 
 function wp_json_encode( $data ) { return json_encode( $data ); }
-
-function wp_remote_get( $url, $args = [] ) {
-	$response = $GLOBALS['njr_test_response'];
-
-	return is_callable( $response ) ? $response() : $response;
-}
 
 function wp_remote_retrieve_response_code( $response ) {
 	return $response['response']['code'] ?? '';
@@ -99,8 +93,8 @@ require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
  * Driven directly rather than through `Revalidate` or `PendingChanges` because the
  * seam under test is the trait — the whole point of ADR 0020 is that a caller
  * cannot opt out of this, so a test that went through one caller would prove
- * the weaker thing. `purge-outcome-test.php` covers the trip through
- * `Revalidate::purge()`, settings and all.
+ * the weaker thing. `pending-changes-test.php` covers the trip through
+ * `PendingChanges`, settings and all.
  */
 class NextJsRevalidate_Test_Transport {
 	use NextJsRevalidate\Traits\FrontEndRequest;
@@ -117,7 +111,7 @@ class NextJsRevalidate_Test_Transport {
 	}
 
 	public function send( $url ) {
-		return $this->send_front_end_request( $url, 60 );
+		return $this->send_front_end_changes( $url, [ 'version' => 2, 'changes' => [ [ 'subject' => 'path', 'uri' => '/' ] ] ], 5 );
 	}
 
 	public function send_changes( $url ) {
@@ -147,7 +141,7 @@ function njr_test_assert( $condition, $description ) {
  * with.
  *
  * @param string $secret   What the site holds.
- * @param mixed  $response What `wp_remote_get()` answers.
+ * @param mixed  $response What `wp_remote_post()` answers.
  * @return string
  */
 function njr_test_message( $secret, $response ) {
@@ -277,8 +271,8 @@ njr_test_assert(
 	'`http_{status}` keeps the literal this plugin wrote, redaction and all'
 );
 
-// Nothing is thrown out of the trait, including out of the redaction: the queue
-// drain runs this in a loop holding a running-cron count.
+// Nothing is thrown out of the trait, including out of the redaction: the
+// pending changes are delivered from `shutdown`, or mid-save at the cap.
 $thrown = false;
 try {
 	njr_test_message( $secret, njr_test_throw( 'a filter blew up' ) );
@@ -290,7 +284,7 @@ njr_test_assert( ! $thrown, 'a throw inside the request is still caught rather t
 // The v2 `POST` carries the secret in a header rather than a URL, so the by-shape
 // pass has nothing to find in a message quoting it — and a transport is as free
 // to quote a header back as a URL. The by-value pass is what covers it, through
-// the same mint as the `GET`.
+// the same mint as every other message.
 foreach (
 	[
 		'a transport error' => njr_test_transport_error( "refused: Authorization: Bearer $secret" ),

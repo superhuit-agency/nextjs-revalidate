@@ -102,3 +102,8 @@ refusal is `false`, as before; so is a change the site's own
 refused a hearing, and a URL that names no path. The failed-insert `false` is
 gone with the insert. The REST routes still read the reason where this function
 reads a bool — from `PendingChanges::report()` now, rather than from the queue.
+
+The queue itself went in #160. Nothing about this record's contract depended on
+it: the answer was always *accepted*, and the one thing that changed is how long
+after the answer the delivery comes — when the request ends, rather than on a
+later cron run.

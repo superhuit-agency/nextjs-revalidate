@@ -12,5 +12,5 @@
       "./src/types"
     ],
   },
-	"exclude": ["vendor", ".sandcastle"]
+	"exclude": ["vendor", ".sandcastle", "examples"]
 }

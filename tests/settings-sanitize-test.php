@@ -41,13 +41,7 @@ $GLOBALS['njr_test_sanitizers'] = [];
 $GLOBALS['njr_test_settings_errors'] = [];
 
 /**
- * Every url `wp_remote_get()` was asked for since the last reset, in order.
- * @var string[]
- */
-$GLOBALS['njr_test_requests'] = [];
-
-/**
- * What the next `wp_remote_get()` answers.
+ * What the next `wp_remote_post()` answers.
  * @var mixed
  */
 $GLOBALS['njr_test_response'] = [ 'response' => [ 'code' => 200 ] ];
@@ -126,12 +120,6 @@ function wp_make_link_relative( $url ) {
 
 function add_query_arg( $args, $url ) {
 	return $url . ( false === strpos( $url, '?' ) ? '?' : '&' ) . http_build_query( $args );
-}
-
-function wp_remote_get( $url, $args = [] ) {
-	$GLOBALS['njr_test_requests'][] = $url;
-
-	return $GLOBALS['njr_test_response'];
 }
 
 /**
@@ -214,7 +202,6 @@ require_once __DIR__ . '/../include/Revalidate.php';
 require_once __DIR__ . '/../include/FailureWindow.php';
 require_once __DIR__ . '/../include/Change.php';
 require_once __DIR__ . '/../include/PendingChanges.php';
-require_once __DIR__ . '/../include/RevalidateQueue.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\Settings;
@@ -251,7 +238,6 @@ function check_same( $expected, $actual, $description ) {
 function site( array $options ) {
 	$GLOBALS['njr_test_options']         = $options;
 	$GLOBALS['njr_test_settings_errors'] = [];
-	$GLOBALS['njr_test_requests']        = [];
 }
 
 /**
@@ -412,13 +398,6 @@ site( [ DOMAIN => 'https://front-end.test', SECRET => "  s3cret\n" ] );
 
 check_same( 's3cret', $settings->secret, 'a stored secret with surrounding whitespace reads trimmed' );
 
-$revalidate = new NextJsRevalidate\Revalidate();
-check_same(
-	'https://front-end.test/api/revalidate?path=%2Fhello%2F&secret=s3cret',
-	$revalidate->build_revalidate_uri( 'https://example.test/hello/' ),
-	'the revalidate endpoint is sent the trimmed secret'
-);
-
 $pending = new NextJsRevalidate\PendingChanges();
 $pending->report( NextJsRevalidate\Change::templates() );
 $pending->deliver();
@@ -432,10 +411,10 @@ $rest = new NextJsRevalidate\RestApi();
 check_same( true,  $rest->check_permission( new WP_REST_Request( [ 'secret' => 's3cret' ] ) ), 'the REST routes accept a caller sending the trimmed secret' );
 check_same( false, $rest->check_permission( new WP_REST_Request( [ 'secret' => "  s3cret\n" ] ) ), 'and do not accept the untrimmed one' );
 
-// The redaction matches on the value the URL was built with. A message quoting
-// the secret with no `secret=` arg around it is only caught by value.
+// The redaction matches on the value the request was sent with. A message
+// quoting the secret with no `secret=` arg around it is only caught by value.
 $GLOBALS['njr_test_response'] = new WP_Error( 'http_request_failed', 'the front-end said s3cret was wrong' );
-$outcome = $revalidate->purge( 'https://example.test/hello/' );
+$outcome = $pending->deliver_probe( NextJsRevalidate\Change::path( '/hello/' ) );
 check_same( 'the front-end said *** was wrong', $outcome->get_error_message(), 'the transport redacts the trimmed secret out of what it hands back' );
 
 printf( "\n%d failure(s)\n", $failures );

@@ -25,7 +25,6 @@ class Assets implements Hookable {
 	 */
 	public function register_hooks(): void {
 		add_action( 'init', [$this, 'register_assets'] );
-		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_admin_assets'] );
 		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_editor_assets'] );
 		add_action( 'admin_enqueue_scripts',	[$this, 'enqueue_settings_assets'] );
 	}
@@ -35,7 +34,6 @@ class Assets implements Hookable {
 		$manifest = null;
 		$assets_uri = '';
 		$this->assets = [
-			'admin'    => [],
 			'editor'   => [],
 			'settings' => [],
 		];
@@ -59,29 +57,14 @@ class Assets implements Hookable {
 			return;
 		}
 
-		$this->assets['admin']['js']  = !empty($manifest->{'admin.js'})  ? $assets_uri . $manifest->{'admin.js'}  : null;
-		// $this->assets['admin']['css']  = !empty($manifest->{'admin.css'})  ? $assets_uri . $manifest->{'admin.css'}  : null;
-
 		$this->assets['editor']['js']  = !empty($manifest->{'editor.js'})  ? $assets_uri . $manifest->{'editor.js'}  : null;
 
 		$this->assets['settings']['js']  = !empty($manifest->{'settings.js'})  ? $assets_uri . $manifest->{'settings.js'}  : null;
 		$this->assets['settings']['css']  = !empty($manifest->{'settings.css'})  ? $assets_uri . $manifest->{'settings.css'}  : null;
 	}
 
-	function enqueue_admin_assets() {
-		if ( !empty($this->assets['admin']['js']) ) {
-			wp_register_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
-			wp_localize_script( 'njr-admin-script', 'nextjs_revalidate', [
-				'url'   => admin_url( 'admin-ajax.php' ),
-				'nonce' => wp_create_nonce( 'nextjs-revalidate-revalidate_queue_progress' ),
-			] );
-			wp_enqueue_script( 'njr-admin-script', $this->assets['admin']['js'], [], null, true );
-		}
-		if ( !empty($this->assets['admin']['css']) ) wp_enqueue_style( 'njr-admin-styles', $this->assets['admin']['css'] );
-	}
-
 	/**
-	 * Register the block editor script, and hand it the purge notice core
+	 * Register the block editor script, and hand it the revalidation notice core
 	 * would otherwise hide on an editor screen.
 	 *
 	 * Registered whenever the asset exists, enqueued only by whoever has

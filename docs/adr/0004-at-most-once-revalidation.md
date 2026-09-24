@@ -69,3 +69,23 @@ The unconfigured branch in `purge()` returns `not_configured` and is logged as a
 **refusal**, not a failure, preserving the distinction the glossary draws. After
 #37 lands it is unreachable from the drain, which refuses at enqueue time
 instead; it stays as a guard rather than a live path.
+
+## Amended for v2: the unit is a request
+
+Built in #156 and #160, under ADR 0034. At most once stands — a failure is
+recorded and dropped, never retried — with its unit widened from a queue item to
+a **request**: a site's pending changes are delivered together when the request
+that produced them ends, and the front-end answers once for all of them. A
+failed request drops every change it carried, and the log line names how many
+and of which subjects, `❌ Failed to revalidate 3 changes (post ×2, templates) —
+http_500: …`, where it used to name one permalink.
+
+The queue, its drain and `purge()` are gone (#160), so the argument above about
+an attempt counter the table did not have has no table left to be about. The
+reason not to retry survives it: a retry needs somewhere to keep what failed
+beyond the request that produced it, which is the queue this record's successor
+removed, and a front-end that is down would still be asked again for as long as
+content kept changing. What the outcome is named by is unchanged —
+`Traits\FrontEndRequest::send_front_end_changes()` answers `true` or a
+`WP_Error` whose code is one of `unreachable`, `no_response`, `http_{status}` or
+`exception`, any 2xx being the success a `POST` may answer with.

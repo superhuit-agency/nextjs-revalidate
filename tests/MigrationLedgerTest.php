@@ -162,46 +162,103 @@ function delete_option( $name ) {
 }
 
 /**
- * How many times the migration asked the queue to bring its table up to date.
+ * The fixture site's scheduled cron events: hook name => next timestamp.
  *
- * @var int
+ * @var array
  */
-$GLOBALS['njr_test_table_migrations'] = 0;
+$GLOBALS['njr_test_cron'] = [];
 
-/**
- * The revalidation queue, as much of it as a migration reaches.
- *
- * `Settings::migrate_db()` asks the queue to bring its table to the shape the
- * running code expects (ADR 0029): a site's table is its data exactly as its
- * options are, and the same request has to carry both. There is no database
- * here, so this records that it was asked rather than doing anything.
- */
-class NJR_Queue_Double {
+function wp_next_scheduled( $hook, $args = [] ) {
+	return $GLOBALS['njr_test_cron'][ $hook ] ?? false;
+}
 
-	public function migrate_table() {
-		$GLOBALS['njr_test_table_migrations']++;
-	}
+function wp_unschedule_hook( $hook ) {
+	if ( ! isset( $GLOBALS['njr_test_cron'][ $hook ] ) ) return 0;
+
+	$GLOBALS['njr_test_writes'][] = "unschedule:$hook";
+	unset( $GLOBALS['njr_test_cron'][ $hook ] );
+	return 1;
+}
+
+/** A transient is an option under core's own naming, which is all this store needs. */
+function delete_transient( $name ) {
+	return delete_option( "_transient_$name" );
 }
 
 /**
- * The composition root, as much of it as `migrate_db()` reaches: `Abstracts\Base`
- * hands a subclass its collaborators from here, and the queue is the one this
- * file's subject asks for.
+ * The fixture site's database, as much of it as a migration reaches: whether
+ * the revalidation queue's table is there, and how many rows it holds.
+ *
+ * 2.0 drops that table (ADR 0034), and asks about it on every run, since the
+ * upgrade is guarded on the table rather than on the ledger. Only the three
+ * statements it issues are understood; anything else fails the file rather
+ * than being answered with a guess.
+ */
+class NJR_Wpdb_Double {
+
+	/** @var string */
+	public $prefix = 'wp_';
+
+	/** @var array table name => number of rows */
+	public $tables = [];
+
+	/** @var string[] Every statement issued since the last reset. */
+	public $statements = [];
+
+	public function esc_like( $text ) {
+		return addcslashes( $text, '_%\\' );
+	}
+
+	public function prepare( $query, ...$args ) {
+		return str_replace( '%s', "'" . $args[0] . "'", $query );
+	}
+
+	public function get_var( $query ) {
+		$this->statements[] = $query;
+
+		// The pattern arrives LIKE-escaped, as `esc_like()` above writes it.
+		if ( preg_match( "/^SHOW TABLES LIKE '(.*)'$/", $query, $m ) ) {
+			$table = stripslashes( $m[1] );
+			return isset( $this->tables[ $table ] ) ? $table : null;
+		}
+
+		if ( preg_match( '/^SELECT COUNT\(\*\) FROM `(.+)`$/', $query, $m ) ) return (string) $this->tables[ $m[1] ];
+
+		throw new LogicException( "The database double does not understand: $query" );
+	}
+
+	public function query( $query ) {
+		$this->statements[] = $query;
+
+		if ( preg_match( '/^DROP TABLE IF EXISTS `(.+)`$/', $query, $m ) ) {
+			$GLOBALS['njr_test_writes'][] = "drop:{$m[1]}";
+			unset( $this->tables[ $m[1] ] );
+			return true;
+		}
+
+		throw new LogicException( "The database double does not understand: $query" );
+	}
+}
+
+$GLOBALS['wpdb'] = new NJR_Wpdb_Double();
+
+/**
+ * The composition root, as much of it as `migrate_db()` reaches: the logger
+ * asks it for the settings, to learn whether logging is switched on.
  */
 class NextJsRevalidate {
 
 	/** @var NextJsRevalidate|null */
 	private static $instance;
 
-	/** @var NJR_Queue_Double */
-	public $queue;
-
-	public function __construct() {
-		$this->queue = new NJR_Queue_Double();
-	}
+	/** @var \NextJsRevalidate\Settings */
+	public $settings;
 
 	public static function init() {
-		if ( ! isset( self::$instance ) ) self::$instance = new self();
+		if ( ! isset( self::$instance ) ) {
+			self::$instance           = new self();
+			self::$instance->settings = new \NextJsRevalidate\Settings();
+		}
 
 		return self::$instance;
 	}
@@ -232,13 +289,17 @@ $failures = 0;
  * Put the fixture site in a known state and migrate it.
  *
  * @param array $options The option rows the site holds beforehand.
+ * @param array $tables  The tables it holds, as name => number of rows.
+ * @param array $cron    The cron events it has scheduled, as hook => timestamp.
  * @return Settings The instance which migrated it, for a second run.
  */
-function migrate( array $options ) {
-	$GLOBALS['njr_test_options']          = $options;
-	$GLOBALS['njr_test_writes']           = [];
-	$GLOBALS['njr_test_table_migrations'] = 0;
-	$GLOBALS['njr_test_settings_errors']  = [];
+function migrate( array $options, array $tables = [], array $cron = [] ) {
+	$GLOBALS['njr_test_options']         = $options;
+	$GLOBALS['njr_test_writes']          = [];
+	$GLOBALS['njr_test_settings_errors'] = [];
+	$GLOBALS['njr_test_cron']            = $cron;
+	$GLOBALS['wpdb']->tables             = $tables;
+	$GLOBALS['wpdb']->statements         = [];
 
 	// In the order `admin_init` runs them.
 	$settings = new Settings();
@@ -292,9 +353,9 @@ migrate( [] );
 check_same( [ LEDGER => NJR_VERSION ], options(), 'a fresh install is stamped, and nothing else' );
 check_same( [ 'update:' . LEDGER ], writes(), 'a fresh install runs no migration body' );
 check_same(
-	1,
-	$GLOBALS['njr_test_table_migrations'],
-	'every site is asked to bring its queue table to the current shape, fresh install included'
+	[ "SHOW TABLES LIKE 'wp\\_revalidate\\_queue'" ],
+	$GLOBALS['wpdb']->statements,
+	'every site is asked whether it still holds a queue table, fresh install included, and nothing more'
 );
 
 // A 1.4.x site: both migrations run, in order, on the one request. The option
@@ -491,6 +552,106 @@ check_same( [], writes(), 'a downgraded site keeps its higher DB version' );
 // digits, which made 1.7.0 (170) compare as *older* than 1.6.10 (1610) — one
 // patch release away, the day it was written.
 check( version_compare( '1.7.0', '1.6.10', '>' ), '1.7.0 is newer than 1.6.10' );
+
+// 2.0.0 — the revalidation queue is dropped, and three settings with it.
+// ====
+//
+// Guarded on the data, for the reason the URL split is: a 1.6.9 site upgrading
+// straight to 2.0 holds no ledger and no fingerprint, is backfilled to the
+// running release, and would never meet a `< 2.0.0` gate (ADR 0034, ADR 0017).
+// So these cases hold whatever the ledger says, stamped sites included.
+
+const QUEUE_TABLE   = 'wp_' . Settings::LEGACY_QUEUE_TABLE_NAME;
+const QUEUE_CRON    = Settings::LEGACY_QUEUE_CRON_HOOK_NAME;
+const QUEUE_RUNNING = '_transient_' . Settings::LEGACY_QUEUE_RUNNING_TRANSIENT_NAME;
+const REMOVED       = [ Settings::LEGACY_FSE_ENDPOINT_PATH_NAME, Settings::LEGACY_REVALIDATE_ON_FSE_SAVE, Settings::LEGACY_REVALIDATE_ON_MENU_SAVE ];
+
+/** What the site has logged, or '' when it has written nothing. */
+function logged() {
+	$path = Logger::path();
+	return file_exists( $path ) ? (string) file_get_contents( $path ) : '';
+}
+
+/** Take the log directory away again, so the next case starts without one. */
+function remove_log() {
+	if ( ! is_dir( Logger::directory() ) ) return;
+
+	foreach ( glob( Logger::directory() . '/{,.}[!.]*', GLOB_BRACE ) as $file ) unlink( $file );
+	rmdir( Logger::directory() );
+}
+
+$logging = [ Settings::SETTINGS_DEBUG => [ 'enable-logs' => 'on' ], LOG_SUFFIX => 'abc123' ];
+
+// A 1.7 site with rows still waiting: the table goes, the count goes to the log,
+// and the drain it would have run is unscheduled along with its running count.
+$settings = migrate(
+	$logging + [
+		LEDGER                                   => NJR_VERSION,
+		QUEUE_RUNNING                            => 2,
+		Settings::LEGACY_FSE_ENDPOINT_PATH_NAME  => '/api/revalidate-fse',
+		Settings::LEGACY_REVALIDATE_ON_FSE_SAVE  => 'on',
+		Settings::LEGACY_REVALIDATE_ON_MENU_SAVE => [ 'post' => 'on' ],
+	],
+	[ QUEUE_TABLE => 3 ],
+	[ QUEUE_CRON => 1700000000 ]
+);
+check_same( [], $GLOBALS['wpdb']->tables, 'the queue table is dropped' );
+check(
+	false !== strpos( logged(), '🗑️ Upgraded to 2.0: dropped the revalidation queue, and the 3 path(s) still waiting in it' ),
+	'the rows it still held are counted in the log'
+);
+check_same( [], $GLOBALS['njr_test_cron'], 'the queue cron is unscheduled' );
+check( ! array_key_exists( QUEUE_RUNNING, options() ), 'the count of running drains goes with it' );
+foreach ( REMOVED as $removed ) check( ! array_key_exists( $removed, options() ), "the removed setting $removed is deleted" );
+
+// Any number of runs after the first finds nothing: a lookup, and no write.
+$logged = logged();
+$GLOBALS['njr_test_writes']       = [];
+$GLOBALS['wpdb']->statements      = [];
+$settings->migrate_db();
+$settings->migrate_db();
+check_same( [], writes(), 'a second admin request writes nothing' );
+check_same( $logged, logged(), 'and logs nothing' );
+check_same(
+	[ "SHOW TABLES LIKE 'wp\\_revalidate\\_queue'", "SHOW TABLES LIKE 'wp\\_revalidate\\_queue'" ],
+	$GLOBALS['wpdb']->statements,
+	'and asks the database nothing but whether the table is back'
+);
+remove_log();
+
+// An empty queue is dropped the same way, and says so.
+migrate( $logging + [ LEDGER => NJR_VERSION ], [ QUEUE_TABLE => 0 ] );
+check_same( [], $GLOBALS['wpdb']->tables, 'an empty queue table is dropped too' );
+check( false !== strpos( logged(), 'and the 0 path(s) still waiting in it' ), 'and its count of none is logged' );
+remove_log();
+
+// A removed setting holding an empty value is still a row the site holds.
+migrate( [ LEDGER => NJR_VERSION, Settings::LEGACY_REVALIDATE_ON_MENU_SAVE => '' ] );
+check( ! array_key_exists( Settings::LEGACY_REVALIDATE_ON_MENU_SAVE, options() ), 'a removed setting holding an empty value is deleted' );
+
+// A 1.7 site whose `CREATE TABLE` standard MySQL refused (#121) had no table,
+// and could still hold a scheduled drain.
+migrate( [ LEDGER => NJR_VERSION ], [], [ QUEUE_CRON => 1700000000 ] );
+check_same( [], $GLOBALS['njr_test_cron'], 'a queue cron with no table beside it is unscheduled all the same' );
+
+// The whole upgrade from 1.6.9 in one pass: no ledger, the single legacy URL,
+// a queue table with rows in it, its cron, and the FSE switch 1.6 had.
+migrate(
+	[
+		LEGACY_URL                              => 'https://front-end.test/api/revalidate',
+		SECRET                                  => 's3cret',
+		Settings::LEGACY_REVALIDATE_ON_FSE_SAVE => 'on',
+	],
+	[ QUEUE_TABLE => 1204 ],
+	[ QUEUE_CRON => 1700000000 ]
+);
+check_same(
+	[ LEDGER => NJR_VERSION, DOMAIN => 'https://front-end.test', PATH_OPT => '/api/revalidate', SECRET => 's3cret' ],
+	options(),
+	'a 1.6.9 site reaches the 2.0 shape of its options in one pass'
+);
+check_same( [], $GLOBALS['wpdb']->tables, 'and holds no queue table' );
+check_same( [], $GLOBALS['njr_test_cron'], 'and no queue cron' );
 
 // A site upgrading into ADR-0024 has its log at the legacy path, and
 // `migrate_db()` moves it — on whatever request reaches it, so the log does not

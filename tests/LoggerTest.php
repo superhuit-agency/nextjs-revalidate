@@ -142,7 +142,7 @@ njr_test_assert( null === $contents, 'no log file when logs are not enabled' );
 
 // A checked switch submits `on`: this is the case #19 reported as broken.
 $contents = njr_test_run( [ 'enable-logs' => 'on' ], function() {
-	Logger::log( 'hello', 'RevalidateQueue.php' );
+	Logger::log( 'hello', 'PendingChanges.php' );
 } );
 njr_test_assert( null !== $contents, 'log file written when logs are enabled' );
 njr_test_assert(
@@ -150,7 +150,7 @@ njr_test_assert(
 	'log file contains the logged text'
 );
 njr_test_assert(
-	false !== strpos( (string) $contents, '[RevalidateQueue.php]' ),
+	false !== strpos( (string) $contents, '[PendingChanges.php]' ),
 	'log line names the file that logged, even when longer than the alignment column'
 );
 njr_test_assert(

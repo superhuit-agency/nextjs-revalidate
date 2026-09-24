@@ -114,9 +114,9 @@ class FailureWindow extends Base implements Hookable {
 	 * Record the outcome of one revalidation attempt, dropping the oldest
 	 * outcome once the window is full.
 	 *
-	 * One attempt is one request to the front-end: a drained queue item, or a
-	 * site's pending changes delivered together — recorded once however many
-	 * changes that request carried, because the front-end answered once for
+	 * One attempt is one request to the front-end: a site's pending changes
+	 * delivered together — recorded once however many changes that request
+	 * carried, because the front-end answered once for
 	 * all of them. A window counting changes would let one bad minute during a
 	 * bulk edit pin the notice for ten requests after the front-end recovered
 	 * (ADR 0034).
@@ -137,8 +137,7 @@ class FailureWindow extends Base implements Hookable {
 	 *    one would let a diagnostic silence its own alarm. See
 	 *    `docs/adr/0013-a-probe-is-not-evidence.md`.
 	 *
-	 * @param true|WP_Error $outcome What the request answered — `Revalidate::purge()`
-	 *                               or a delivery of pending changes. Only
+	 * @param true|WP_Error $outcome What a delivery of pending changes answered. Only
 	 *                               `true` is a success: any other value —
 	 *                               including the `false` older code answered
 	 *                               with — is counted as a failure naming no
@@ -157,9 +156,8 @@ class FailureWindow extends Base implements Hookable {
 			'code'   => $failed ? $code : '',
 		];
 
-		// Read-modify-write, and up to `RevalidateQueue::MAX_NB_RUNNING_CRON`
-		// drains run at once, so two attempts finishing together can cost one
-		// outcome. Left as it is: the window is a sample of recent health, not
+		// Read-modify-write, and any number of requests may be delivering at
+		// once, so two attempts finishing together can cost one outcome. Left as it is: the window is a sample of recent health, not
 		// a ledger, and a lost outcome moves the condition by one slot out of
 		// ten — well inside the tolerance of numbers that were invented in the
 		// first place. Locking a per-site option to protect a threshold nobody
@@ -168,7 +166,7 @@ class FailureWindow extends Base implements Hookable {
 		// slightly slower than the failures arrive and the notice appears an
 		// attempt or two later than it could have.
 		//
-		// Not autoloaded: the drain writes this once per attempt, and an
+		// Not autoloaded: a delivery writes this once per attempt, and an
 		// autoloaded option would flush the whole alloptions cache each time.
 		update_option( self::OPTION_NAME, array_slice( $outcomes, -self::LENGTH ), false );
 	}
@@ -255,7 +253,8 @@ class FailureWindow extends Base implements Hookable {
 
 		// Yields to the unconfigured notice, on the screens that actually
 		// render it. The two are nearly exclusive already, since an
-		// unconfigured site refuses at enqueue and never attempts anything; the
+		// unconfigured site refuses a change when it is reported and never
+		// attempts anything; the
 		// overlap is a site that was configured and failing and then lost a
 		// setting, where the window is evidence about a configuration that no
 		// longer exists and the missing setting is the thing to fix.

@@ -1,5 +1,12 @@
 # An enqueue escalates an already-queued permalink, and never demotes it
 
+> **Status: superseded by [ADR 0034](0034-changes-are-delivered-when-the-request-ends.md).**
+> v2 removed the revalidation queue (#160), and with it the priority this record
+> orders: a change is delivered when the request that produced it ends, and there
+> is nothing left waiting for one entry to overtake another. `priority` survives
+> only as an argument the deprecated functions and the REST routes accept and
+> ignore (ADR 0035). Kept as the record of why the queue behaved as it did.
+
 Decided while fixing #119.
 
 `RevalidateQueue::add_item( $permalink, $priority )` deduplicates by permalink:

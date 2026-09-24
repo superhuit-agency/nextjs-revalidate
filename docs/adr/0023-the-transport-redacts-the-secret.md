@@ -99,9 +99,9 @@ clumsy about — is driven through a bare class using the trait, because the who
 claim is that a caller cannot opt out. The seam is a token scan over `include/`
 for every `new WP_Error(...)` whose message argument mentions
 `get_error_message()` or `getMessage()`, each of which must also mention
-`redact_secret()`. `purge-outcome-test.php` and `FseSnapshotTest.php` each pin
-one end-to-end trip through a real caller reading a real setting (the second
-one moved in v2 — see the amendment below), which is what would catch the
+`redact_secret()`. `purge-outcome-test.php` and `FseSnapshotTest.php` each pinned
+one end-to-end trip through a real caller reading a real setting (both moved in
+v2 — see the amendment below), which is what would catch the
 redaction going through a `settings` the trait's own fixture supplies and no
 real class does.
 
@@ -119,9 +119,10 @@ back quotes `Bearer <secret>`, not a `secret=` arg, and only the configured
 value can find that. `tests/transport-redaction-test.php` drives it through the
 `POST` as well as the `GET`.
 
-**The by-shape pass stays.** While the revalidation queue still sends v1's `GET`
-with `secret=` in its URL, it is doing exactly the work it was written for. Once
-nothing sends that `GET`, the pass finds nothing in a message about a request of
+**The by-shape pass stays.** While the revalidation queue still sent v1's `GET`
+with `secret=` in its URL, it was doing exactly the work it was written for.
+#160 removed the queue, and `send_front_end_request()` and the `GET` with it, so
+nothing sends that `GET` any more: the pass finds nothing in a message about a request of
 this plugin's own, and it is left in place as a harmless no-op rather than
 removed: it costs one `preg_replace()` per failure, it still catches a secret
 that has been changed since the message was minted, and taking it out would be
@@ -131,4 +132,6 @@ a change to the one function whose whole job is to fail safe.
 trip through a real caller reading a real setting is
 `tests/pending-changes-test.php` — the real `Settings` and the real `Logger`,
 with a transport error quoting the header and a log file that must not hold the
-secret afterwards — beside `purge-outcome-test.php` for the `GET`.
+secret afterwards. `purge-outcome-test.php` pinned the `GET`'s trip, and went
+with it in #160; `tests/transport-redaction-test.php` drives the trait through
+the `POST` alone.

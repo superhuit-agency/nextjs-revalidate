@@ -21,9 +21,7 @@ use NextJsRevalidate\Interfaces\Hookable;
  * The plugin's own objects are reached through the same `__get()`, off the
  * base class rather than off the table below.
  *
- * @property RevalidateQueue $queue      The queue, read for the pending count this page shows, and
- *                                      asked to migrate its own table alongside the options.
- * @property Revalidate      $revalidate The gate, asked which post types this page offers switches for.
+ * @property Revalidate $revalidate The gate, asked which post types this page offers switches for.
  */
 class Settings extends Base implements Hookable {
 
@@ -53,6 +51,16 @@ class Settings extends Base implements Hookable {
 	 * above, only so that an uninstall takes the row and the upgrade can delete it.
 	 */
 	const LEGACY_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
+
+	/**
+	 * What v1's revalidation queue kept on a site, which v2 removed with the
+	 * queue itself (ADR 0034): its table, after the site's prefix; the cron
+	 * hook that drained it; and the transient counting the drains running.
+	 * Named only so the upgrade can find and drop them.
+	 */
+	const LEGACY_QUEUE_TABLE_NAME = 'revalidate_queue';
+	const LEGACY_QUEUE_CRON_HOOK_NAME = 'nextjs_revalidate-queue';
+	const LEGACY_QUEUE_RUNNING_TRANSIENT_NAME = 'nextjs_revalidate-running_queue';
 
 	/**
 	 * The settings this plugin reads, declared once.
@@ -217,14 +225,10 @@ class Settings extends Base implements Hookable {
 	 */
 	public function render_page() {
 
-		$queue = $this->queue->get_queue();
-		$nb_in_queue = count($queue);
-
 		$sections = [
 			[ 'id' => 'api',            'title' => __('Next.js API', 'nextjs-revalidate')     ],
-			[ 'id' => 'allow_all_opts', 'title' => __('Allow purge all', 'nextjs-revalidate') ],
+			[ 'id' => 'allow_all_opts', 'title' => __('Allow revalidate all', 'nextjs-revalidate') ],
 			[ 'id' => 'debug',          'title' => __('Debug', 'nextjs-revalidate')           ],
-			[ 'id' => 'queue',          'title' => __('Queue', 'nextjs-revalidate') . sprintf('<span class="badge">%s</span>', $nb_in_queue) ],
 			[ 'id' => 'probe',          'title' => __('Probe', 'nextjs-revalidate')          ],
 		];
 		?>
@@ -253,32 +257,9 @@ class Settings extends Base implements Hookable {
 					settings_fields( self::SETTINGS_GROUP );
 					// Prints all registered section for this page
 					do_settings_sections( self::PAGE_NAME );
-					?>
-					<section id="tab-panel--queue" role="tabpanel" tabindex="-1" aria-labelledby="tab-queue" aria-hidden="true">
-						<h2><?php _e('Purge queue', 'nextjs-revalidate'); ?></h2>
-						<p>
-							<strong><?php printf( _n( '%d URL waiting to be purged', '%d URLs waiting to be purged', $nb_in_queue, 'nextjs-revalidate'), $nb_in_queue ); ?></strong>
-							<?php if ( $nb_in_queue > 0 ) submit_button( "Reset queue (stop purging URLs in the queue)", 'secondary', 'revalidate_reset_queue', false ); ?>
-						</p>
-						<table>
-							<thead>
-								<th><?php _e('Id', 'nextjs-revalidate'); ?></th>
-								<th><?php _e('Priority', 'nextjs-revalidate'); ?></th>
-								<th><?php _e('URL', 'nextjs-revalidate'); ?></th>
-							</thead>
-							<tbody>
-								<?php foreach ($queue as $item): ?>
-								<tr>
-									<td><?php echo $item->id; ?></td>
-									<td><?php echo $item->priority; ?></td>
-									<td><?php echo $item->permalink; ?></td>
-								</tr>
-								<?php endforeach; ?>
-							</tbody>
-						</table>
-					</section>
 
-					<?php submit_button(); ?>
+					submit_button();
+				?>
 			</form>
 			<?php
 				// Its own form, beside the settings one rather than inside it:
@@ -362,9 +343,9 @@ class Settings extends Base implements Hookable {
 		// Revalidate All section settings
 		add_settings_section(
 			'nextjs-revalidate-section-allow_revalidate_all',
-			__('Allow purge all options', 'nextjs-revalidate'),
+			__('Allow revalidate all options', 'nextjs-revalidate'),
 			function() {
-				printf( '<p>%s</p>', __('Define which post type has the option to have all posts purged in the admin bar.', 'nextjs-revalidate') );
+				printf( '<p>%s</p>', __('Define which post types offer a revalidate all in the admin bar.', 'nextjs-revalidate') );
 			},
 			self::PAGE_NAME,
 			[
@@ -410,7 +391,6 @@ class Settings extends Base implements Hookable {
 				'id'        => $id,
 				'name'      => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME.'[all]',
 				'checked'   => $this->allow_revalidate_all['all'] ?? false,
-				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
 			]
 		);
 
@@ -716,12 +696,12 @@ class Settings extends Base implements Hookable {
 	/**
 	 * The refusal an unconfigured site answers every revalidation with.
 	 *
-	 * Declared once because it is raised from two places — `add_item()` refuses
-	 * at enqueue time, `purge()` guards the delivery it is unreachable from —
-	 * and a refusal that reads differently depending on which guard caught it
-	 * is a refusal an operator has to learn twice. The code is the contract:
-	 * `RestApi::process_items` reports it per item, and the drain branches on it
-	 * to write ⛔ rather than ❌.
+	 * Declared once because it is raised from more than one place — the pending
+	 * changes refuse a change when it is reported, and again at delivery for a
+	 * site whose settings were cleared in between — and a refusal that reads
+	 * differently depending on which guard caught it is a refusal an operator
+	 * has to learn twice. The code is the contract: `RestApi::process_items`
+	 * reports it per item, and a probe branches on it.
 	 *
 	 * @return \WP_Error Always `not_configured`.
 	 */
@@ -846,8 +826,8 @@ class Settings extends Base implements Hookable {
 
 	/**
 	 * Migrate this site's data to the shape the running code expects — its
-	 * options, and everything else this plugin keeps per site: the log file's
-	 * location, and the queue table's own columns and keys.
+	 * options, and everything else this plugin keeps or once kept per site: the
+	 * log file's location, and the revalidation queue's table.
 	 *
 	 * Each migration is gated on the site's DB version — read from the
 	 * migration ledger, never from the plugin version, which is always the
@@ -895,14 +875,15 @@ class Settings extends Base implements Hookable {
 		// name (ADR-0024). Guarded on the data for the same reason as above.
 		Logger::migrate_legacy_log();
 
-		// The queue's unique key moved off the `permalink` TEXT column and onto
-		// a hash of it (ADR-0029), so the dedup the queue depends on exists on
-		// standard MySQL and not only on MariaDB. Guarded on the data for the
-		// same reason as the two above, and it is also where a site whose
-		// `CREATE TABLE` MySQL refused gets a queue table at all — unless an
-		// enqueue got there first, which runs the same migration when its write
-		// fails on a table not yet in this shape.
-		$this->queue->migrate_table();
+		// 2.0.0 — the revalidation queue is gone (ADR 0034), and so are the
+		// three settings v2 removed. Guarded on the data for the same reason as
+		// the two above, and with the same force: a 1.6.9 site upgrading
+		// straight to 2.0 holds no ledger and no fingerprint, so it is
+		// backfilled to the running release, and a `< 2.0.0` gate would never
+		// fire for it. After the first run there is nothing left for either to
+		// find, and a re-run costs a table lookup and three option reads.
+		$this->drop_revalidation_queue();
+		$this->delete_removed_settings();
 
 		// Stamp the ledger, so none of the above is eligible to run again.
 		// A site whose data was migrated by newer code than is running now
@@ -921,8 +902,9 @@ class Settings extends Base implements Hookable {
 	 * data, and `register_activation_hook` does not fire on an update at all,
 	 * so nothing else closes the gap. It is not dormant inertia either — cron
 	 * on a site is triggered by *front-end* traffic, so a subsite with visitors
-	 * and no admin visitors drains its queue and reads its revalidate domain
-	 * and secret out of unmigrated options for as long as nobody logs in.
+	 * and no admin visitors reports its scheduled purges with a revalidate
+	 * domain and secret read out of unmigrated options for as long as nobody
+	 * logs in.
 	 *
 	 * The trigger is a version *comparison* and not an update *event*, on
 	 * purpose: Composer, git and manual zip deploys all replace the plugin's
@@ -1060,6 +1042,65 @@ class Settings extends Base implements Hookable {
 		if ( $path !== '' ) update_option( self::SETTINGS_ENDPOINT_PATH_NAME, $path );
 
 		delete_option( self::LEGACY_URL_OPTION_NAME );
+	}
+
+	/**
+	 * Drop the revalidation queue v1 kept: its table, the rows still waiting in
+	 * it, its drain cron and the drain's running count.
+	 *
+	 * The rows are dropped rather than converted, and counted in the log so an
+	 * operator can see what went. v2 ships in lockstep with a front-end deploy,
+	 * and no Next.js cache survives a deploy — the build ID is part of every
+	 * key — so every path still queued is already fresh on the new front-end.
+	 * Converting them would send changes to a front-end that has just been
+	 * rebuilt, thousands of them if a revalidate all was mid-flight (ADR 0034).
+	 *
+	 * Guarded on the table itself, so it runs once per site whatever the
+	 * ledger says, and finds nothing to do afterwards. The cron is looked for
+	 * on its own rather than only beside a table: a 1.7 site whose
+	 * `CREATE TABLE` standard MySQL refused (#121) had no table and could
+	 * still hold a scheduled drain.
+	 *
+	 * @return void
+	 */
+	private function drop_revalidation_queue() {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::LEGACY_QUEUE_TABLE_NAME;
+
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) === $table ) {
+			$pending = (int) $wpdb->get_var( "SELECT COUNT(*) FROM `$table`" );
+
+			$wpdb->query( "DROP TABLE IF EXISTS `$table`" );
+
+			Logger::log(
+				sprintf( '🗑️ Upgraded to 2.0: dropped the revalidation queue, and the %d path(s) still waiting in it', $pending ),
+				__FILE__
+			);
+
+			delete_transient( self::LEGACY_QUEUE_RUNNING_TRANSIENT_NAME );
+		}
+
+		if ( false !== wp_next_scheduled( self::LEGACY_QUEUE_CRON_HOOK_NAME ) ) wp_unschedule_hook( self::LEGACY_QUEUE_CRON_HOOK_NAME );
+	}
+
+	/**
+	 * Delete the rows of the three settings v2 removed, where a site still
+	 * holds them: the FSE snapshot's endpoint path and its on/off switch, which
+	 * went with the separate endpoint (ADR 0034), and the per-post-type
+	 * "revalidate on menu save" switches, which went when a menu save became
+	 * one `menu` change (ADR 0033).
+	 *
+	 * Nothing reads them any more, so this is tidiness with a reason: a row
+	 * left behind is a setting an operator can no longer see or change, and
+	 * would come back to life if a later release ever reused the name.
+	 *
+	 * @return void
+	 */
+	private function delete_removed_settings() {
+		foreach ( [ self::LEGACY_FSE_ENDPOINT_PATH_NAME, self::LEGACY_REVALIDATE_ON_FSE_SAVE, self::LEGACY_REVALIDATE_ON_MENU_SAVE ] as $option_name ) {
+			if ( self::option_exists( $option_name ) ) delete_option( $option_name );
+		}
 	}
 
 	/**

@@ -5,8 +5,9 @@
  * `migrate_db()` is hooked on `admin_init`, which fires per site, so on a
  * network a site migrated only when a human opened *that site's* admin. A
  * traffic-only subsite therefore ran new code over unmigrated data for as long
- * as nobody logged in — and its cron, which front-end traffic triggers, drained
- * its queue against whatever those options happened to hold.
+ * as nobody logged in — and its cron, which front-end traffic triggers, read
+ * its revalidate domain and secret out of whatever those options happened to
+ * hold.
  *
  * What this file pins is *when every site gets asked*: once per network per
  * release, triggered by a version comparison rather than by an update event,
@@ -65,12 +66,20 @@ $GLOBALS['njr_sweeps'] = 0;
 $GLOBALS['njr_visited'] = [];
 
 /**
- * The sites whose queue table the migration asked to bring up to date, in the
- * order they were asked.
+ * The revalidation queue table each fixture site still holds, as site id =>
+ * number of rows. A site absent from it holds none.
+ *
+ * @var array
+ */
+$GLOBALS['njr_queue_tables'] = [];
+
+/**
+ * The sites whose queue table the migration dropped, in the order it dropped
+ * them.
  *
  * @var int[]
  */
-$GLOBALS['njr_tables_migrated'] = [];
+$GLOBALS['njr_tables_dropped'] = [];
 
 /** The site id the sweep should die on, to model a sweep cut short. @var int|null */
 $GLOBALS['njr_interrupt_at'] = null;
@@ -152,20 +161,42 @@ function trailingslashit( $string ) { return rtrim( $string, '/\\' ) . '/'; }
 // moves where is `LogLocationTest.php`'s subject, not this file's.
 function wp_upload_dir() { return [ 'basedir' => sys_get_temp_dir() . '/njr-network-sweep-test-no-uploads' ]; }
 
-/**
- * The revalidation queue, as much of it as a migration reaches.
- *
- * `Settings::migrate_db()` asks the queue to bring its table to the shape the
- * running code expects (ADR 0029): a site's table is its data exactly as its
- * options are, and the same request has to carry both. There is no database
- * here, so this records that it was asked rather than doing anything.
- */
-class NJR_Queue_Double {
+function wp_next_scheduled( $hook, $args = [] ) { return false; }
+function delete_transient( $name ) { return delete_option( "_transient_$name" ); }
 
-	public function migrate_table() {
-		$GLOBALS['njr_tables_migrated'][] = $GLOBALS['njr_current'];
+/**
+ * Each site's database, as much of it as a migration reaches: whether it still
+ * holds the revalidation queue's table, which 2.0 drops (ADR 0034). A site's
+ * table is its data exactly as its options are, so the prefix follows the site
+ * the sweep is on, as `switch_to_blog()` makes it.
+ */
+class NJR_Wpdb_Double {
+
+	public function __get( $name ) {
+		return 'prefix' === $name ? 'wp_' . $GLOBALS['njr_current'] . '_' : null;
+	}
+
+	public function esc_like( $text ) { return addcslashes( $text, '_%\\' ); }
+
+	public function prepare( $query, ...$args ) { return str_replace( '%s', "'" . $args[0] . "'", $query ); }
+
+	public function get_var( $query ) {
+		$site  = $GLOBALS['njr_current'];
+		$table = "wp_{$site}_revalidate_queue";
+
+		if ( 0 === strpos( $query, 'SHOW TABLES' ) ) return isset( $GLOBALS['njr_queue_tables'][ $site ] ) ? $table : null;
+
+		return (string) $GLOBALS['njr_queue_tables'][ $site ];
+	}
+
+	public function query( $query ) {
+		$GLOBALS['njr_tables_dropped'][] = $GLOBALS['njr_current'];
+		unset( $GLOBALS['njr_queue_tables'][ $GLOBALS['njr_current'] ] );
+		return true;
 	}
 }
+
+$GLOBALS['wpdb'] = new NJR_Wpdb_Double();
 
 /**
  * A double for the composition root, standing in for its sweep helper.
@@ -181,19 +212,18 @@ class NextJsRevalidate {
 	/** @var NextJsRevalidate|null */
 	private static $instance;
 
-	/** @var NJR_Queue_Double */
-	public $queue;
-
-	public function __construct() {
-		$this->queue = new NJR_Queue_Double();
-	}
+	/** @var \NextJsRevalidate\Settings */
+	public $settings;
 
 	/**
-	 * The root `Abstracts\Base` reaches a collaborator through, which is how
-	 * `migrate_db()` gets at the queue.
+	 * The root the logger reaches the settings through, to learn whether
+	 * logging is switched on.
 	 */
 	public static function init() {
-		if ( ! isset( self::$instance ) ) self::$instance = new self();
+		if ( ! isset( self::$instance ) ) {
+			self::$instance           = new self();
+			self::$instance->settings = new \NextJsRevalidate\Settings();
+		}
 
 		return self::$instance;
 	}
@@ -288,7 +318,8 @@ function network( array $sites, array $network = [] ) {
 	$GLOBALS['njr_is_super_admin']  = true;
 	$GLOBALS['njr_sweeps']          = 0;
 	$GLOBALS['njr_visited']         = [];
-	$GLOBALS['njr_tables_migrated'] = [];
+	$GLOBALS['njr_queue_tables']    = [];
+	$GLOBALS['njr_tables_dropped']  = [];
 	$GLOBALS['njr_interrupt_at']    = null;
 	$GLOBALS['njr_ms_only_called']  = false;
 
@@ -335,13 +366,15 @@ $settings = network( [
 	2 => [ 'nextjs_revalidate-allow_purge_all' => [ 'post' => '1' ] ],
 	3 => [ 'nextjs-revalidate-queue' => [ 'https://front-end.test/' ] ],
 ] );
+$GLOBALS['njr_queue_tables'] = [ 1 => 0, 3 => 12 ];
 $settings->sweep_migrations();
 check_same( [ 1, 2, 3 ], $GLOBALS['njr_visited'], 'the sweep reaches every site of the network' );
 check_same(
-	[ 1, 2, 3 ],
-	$GLOBALS['njr_tables_migrated'],
-	'every site migrates its queue table too, and not only its options'
+	[ 1, 3 ],
+	$GLOBALS['njr_tables_dropped'],
+	'every site still holding a queue table has it dropped too, and not only its options migrated'
 );
+check_same( [], $GLOBALS['njr_queue_tables'], 'no site of the network is left holding a queue table' );
 check_same(
 	[ 1 => '1.7.0', 2 => '1.7.0', 3 => '1.7.0' ],
 	ledgers(),

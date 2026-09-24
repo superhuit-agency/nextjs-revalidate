@@ -3,13 +3,11 @@
  * Bootstrap for the integration suite.
  *
  * Boots the WordPress test library wp-env mounts at WP_TESTS_DIR, with this
- * plugin loaded, and creates the revalidation queue's table before the first
- * test runs.
+ * plugin loaded, and installs Redirection's tables before the first test runs.
  *
  * Run with `npm run test:integration`. See `docs/adr/0008-two-testing-idioms.md`
  * for why this suite exists alongside the standalone scripts of
- * `npm run test:php`, and why the queue table is created here rather than by a
- * test.
+ * `npm run test:php`.
  *
  * @package NextJsRevalidate
  */
@@ -39,8 +37,7 @@ require_once $njr_polyfills;
 require_once $njr_tests_dir . '/includes/functions.php';
 
 // Load the plugin as a mu-plugin would be loaded: early, unconditionally, and
-// without an activation. Nothing the activation hook does happens here, which
-// is why the queue table is created by hand below.
+// without an activation. Nothing the activation hook does happens here.
 tests_add_filter(
 	'muplugins_loaded',
 	function () use ( $njr_plugin_dir ) {
@@ -68,13 +65,10 @@ require $njr_tests_dir . '/includes/bootstrap.php';
 // Test cases and helpers autoload through composer's `autoload-dev`, so adding
 // one is adding a file rather than a file and a line here.
 
-// The queue table is created once, here, outside any transaction — a test
-// cannot create it, because the DDL would commit the transaction that isolates
-// that test. QueueTestCase empties the table between tests instead.
-NextJsRevalidate::init()->queue->create_table();
-
-// Redirection's tables, for the same reason and in the same place. The test
-// library activates no plugin, so nothing has run Redirection's installer.
+// Redirection's tables are created once, here, outside any transaction — a test
+// cannot create them, because the DDL would commit the transaction that
+// isolates that test. The test library activates no plugin, so nothing has run
+// Redirection's installer.
 //
 // Which files that takes depends on the Redirection release installed, and
 // `redirection-database.php` is where that question is answered — both layouts,

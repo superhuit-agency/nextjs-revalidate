@@ -148,8 +148,8 @@ in both directions, which is the whole of the bug this names the fix for.
 
 **Offered post type**:
 A post type whose posts this plugin offers an operator an action over: the
-"Purge caches" bulk action on its list screen, its allow purge all switch on the
-settings page, and its entry in the admin bar's purge-all menu. One axis, the
+"Revalidate" bulk action on its list screen, its allow revalidate all switch on
+the settings page, and its entry in the admin bar's revalidate all menu. One axis, the
 type axis of a **revalidatable post** — WordPress's own `is_post_type_viewable()`
 — with attachments taken out, because an uploaded file is not a page the
 front-end holds.
@@ -330,9 +330,9 @@ is allowed to come out garbled.
 > From v2 the secret travels in an `Authorization` header rather than a query
 > arg, so the by-shape pass has nothing left to find in a request of this
 > plugin's own; the by-value pass is what still applies, because a transport
-> message can quote a header back. The by-shape pass stays while the
-> revalidation queue still sends v1's `GET`, and is a harmless no-op once it
-> does not (ADR 0023, amended).
+> message can quote a header back. The by-shape pass stayed while the
+> revalidation queue still sent v1's `GET`, and is a harmless no-op now that
+> nothing does (ADR 0023, amended).
 
 A property of messages *leaving the transport*, never a property of the **log
 file**: a redaction says nothing about what a file already holds, or about who
@@ -413,7 +413,7 @@ may *trigger* setup, not the work itself.
 
 **Site teardown**:
 The inverse of site setup, in its two distinct depths: unscheduling cron on
-deactivation, and dropping the table and options on uninstall. A site is torn
+deactivation, and deleting its options and scheduled purges on uninstall. A site is torn
 down at the same depth on a network as it would be on a single install.
 
 The **failure window** is the one exception, and is cleared at the shallower
@@ -449,7 +449,7 @@ returns the already-built root, not the thing that builds it.
 Attaching a class's callbacks to WordPress actions and filters. A separate act
 from constructing that class, performed once, by the composition root. The order
 is load-bearing: WordPress runs same-hook, same-priority callbacks in
-registration order, and nine of this plugin's callbacks sit on `admin_init` at
+registration order, and eight of this plugin's callbacks sit on `admin_init` at
 priority 10.
 _Avoid_: Wiring, binding, hooking up
 

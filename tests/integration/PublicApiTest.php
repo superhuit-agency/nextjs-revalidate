@@ -224,9 +224,8 @@ class PublicApiTest extends PendingChangesTestCase {
 
 	/**
 	 * Isolation of what a scheduled purge writes, second half — this test is
-	 * paired with the ones above it and only means anything run after them,
-	 * for the reason `QueueHarnessTest`'s pairs give: the leak appears on the
-	 * *next* test and is invisible in a source review.
+	 * paired with the ones above it and only means anything run after them:
+	 * a leak appears on the *next* test, and is invisible in a source review.
 	 */
 	public function test_no_scheduled_path_survives_into_the_next_test() {
 		$this->assertSame(

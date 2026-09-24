@@ -28,7 +28,7 @@ class RevalidateAll extends Base implements Hookable {
 
 	/**
 	 * Admin
-	 * Display the Purge all pages/posts/... dropdown in Admin top bar
+	 * Display the revalidate all dropdown in Admin top bar
 	 */
 	function admin_top_bar_menu( WP_Admin_Bar $admin_bar ) {
 
@@ -55,7 +55,7 @@ class RevalidateAll extends Base implements Hookable {
 				// A toggle stored for a post type this plugin does not offer —
 				// one unregistered since it was ticked, or one the settings
 				// page offered on the `public` it asked for before #53 — would
-				// be an entry that purges nothing. The row itself is left in
+				// be an entry that revalidates nothing. The row itself is left in
 				// the option: it is the operator's, and the next save of the
 				// settings page drops it anyway, the form posting only the
 				// switches it rendered.
@@ -82,7 +82,7 @@ class RevalidateAll extends Base implements Hookable {
 					)
 				),
 				'meta'   => [
-					'title' => _x( 'Purging all cache may take some time according to the number of pages to purge.', 'Admin top bar menu', 'nextjs-revalidate' ),
+					'title' => _x( 'Tell the front-end to revalidate everything it cached from these posts.', 'Admin top bar menu', 'nextjs-revalidate' ),
 				]
 			] );
 		}
@@ -99,7 +99,7 @@ class RevalidateAll extends Base implements Hookable {
 
 			printf(
 				'<div class="notice notice-error"><p>%s</p></div>',
-				esc_html__( 'Revalidate all: nothing was queued, this site is not configured.', 'nextjs-revalidate' )
+				esc_html__( 'Revalidate all: nothing was sent, this site is not configured.', 'nextjs-revalidate' )
 			);
 			return;
 		}
