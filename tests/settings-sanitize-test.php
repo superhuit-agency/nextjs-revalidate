@@ -224,7 +224,6 @@ const PATH_OPT = Settings::SETTINGS_ENDPOINT_PATH_NAME;
 const SECRET   = Settings::SETTINGS_SECRET_NAME;
 const SWITCHES = [
 	Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,
-	Settings::SETTINGS_REVALIDATE_ON_MENU_SAVE,
 	Settings::SETTINGS_DEBUG,
 ];
 
@@ -273,9 +272,9 @@ function save( $name, $value ) {
 // One loop, and every setting in it carries a callback: a setting added to the
 // table without one is stored exactly as typed, which is this bug over again.
 check_same(
-	[ DOMAIN, PATH_OPT, SECRET, Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, Settings::SETTINGS_REVALIDATE_ON_MENU_SAVE, Settings::SETTINGS_DEBUG ],
+	[ DOMAIN, PATH_OPT, SECRET, Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, Settings::SETTINGS_DEBUG ],
 	array_keys( $GLOBALS['njr_test_sanitizers'] ),
-	'all six settings are registered with a sanitize callback'
+	'all five settings are registered with a sanitize callback'
 );
 
 // The domain

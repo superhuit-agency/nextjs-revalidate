@@ -65,11 +65,12 @@ Precondition: section 1 done.
 - [ ] **Confirm the queue table exists**:
       `npx wp-env run cli wp db query "SHOW TABLES LIKE 'wp_revalidate_queue'"`.
       Expect one row.
-- [ ] **Settings → Next.js revalidate.** Expect six tabs — **Next.js API**,
-      **Allow purge all**, **On menu update**, **Debug**, **Queue**, **Probe** —
-      with a count badge on Queue, and no **On FSE update** tab: v2 removed it.
-      Click each: expect one panel visible at a time, Probe included, though it
-      is a form of its own. (All six stacked means a broken `settings.js`.)
+- [ ] **Settings → Next.js revalidate.** Expect five tabs — **Next.js API**,
+      **Allow purge all**, **Debug**, **Queue**, **Probe** — with a count badge
+      on Queue, and neither an **On FSE update** nor an **On menu update** tab:
+      v2 removed both. Click each: expect one panel visible at a time, Probe
+      included, though it is a form of its own. (All five stacked means a
+      broken `settings.js`.)
 - [ ] **On Next.js API, confirm the seeded values**: domain
       `http://host.docker.internal:8083`, revalidate path `/revalidate`, secret
       `my-super-secret` — and no FSE revalidate path field: there is one
@@ -112,10 +113,12 @@ cron, and nothing in the queue. The console prints each change as it was sent;
 
 Precondition: spine state.
 
-- [ ] **Admin bar → Next.js revalidate → All**, then open Settings → Next.js
-      revalidate → Queue. Expect the badge to show a non-zero count matching the
-      table, and a notice "Purging caches. Please wait… " with a "View purge
-      caches queue" link.
+- [ ] **Posts list → tick "Runbook post" → Bulk actions → Purge caches → Apply,
+      and the same for "Runbook page" on the Pages list**, then open Settings →
+      Next.js revalidate → Queue. Expect the badge to show a non-zero count
+      matching the table, and a notice "Purging caches. Please wait… " with a
+      "View purge caches queue" link. (Not revalidate all: from v2 it reports
+      one change and queues nothing.)
 - [ ] **Load admin pages until it drains.** Expect the badge to fall to zero, the
       table to empty, and one console line per path with no duplicates.
 - [ ] **Queue a batch, then use the reset control on the Queue tab.** Expect the

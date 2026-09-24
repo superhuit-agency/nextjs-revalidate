@@ -212,8 +212,8 @@ class Revalidate extends Base implements Hookable {
 	 * An offer, and not a gate. Nothing here decides whether a change is
 	 * reported — `should_revalidate()` is asked about every post by every entry
 	 * point, and it alone answers that. This decides only what an operator is
-	 * shown: the "Purge caches" bulk action, the two settings toggle lists, and
-	 * the post types a revalidate all walks.
+	 * shown: the "Purge caches" bulk action, the allow purge all toggles, and
+	 * the admin bar's revalidate all entries.
 	 *
 	 * The axis is the one the gate's own type axis uses,
 	 * `is_post_type_viewable()`, rather than the `public` these selections asked

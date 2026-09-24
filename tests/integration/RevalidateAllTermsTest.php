@@ -1,18 +1,22 @@
 <?php
 /**
- * Revalidate all enqueues the archives of a revalidatable taxonomy — issue #54.
+ * Revalidate all of one post type names its revalidatable taxonomies — issue
+ * #54, as v2 reports it (ADR 0033).
  *
- * The seam is the revalidation queue's contents: each test registers a taxonomy
- * whose `public` and `publicly_queryable` say different things, gives it a term,
- * runs revalidate all, and asserts whether that term's archive is in the queue.
- * The gate and the selector are both pinned by
- * `tests/revalidatable-taxonomy-test.php`, which needs no WordPress; what only
- * this suite can see is that a real `get_term_link()` reaches the queue, and
- * that a term of a taxonomy core would not route reaches nothing.
+ * The seam is the `all` change revalidate all reports: each test registers a
+ * taxonomy whose `public` and `publicly_queryable` say different things, runs
+ * revalidate all over `post`, and asserts whether the change's `taxonomies`
+ * names it. The gate and the selector are both pinned by
+ * `tests/revalidatable-taxonomy-test.php`, and the change's shape by
+ * `tests/revalidate-all-change-test.php`, neither of which needs WordPress;
+ * what only this suite can see is that a real `register_taxonomy()` and a real
+ * `is_taxonomy_viewable()` reach the change.
  *
- * Assertions are on the presence of one permalink rather than on the whole
- * queue: revalidate all also enqueues every published post of the type, and
- * what those are is the test site's business rather than this file's.
+ * The change is read from the `nextjs_revalidate_change` filter and dropped
+ * there, so nothing is left pending for the test process's `shutdown` to send.
+ * Assertions are on the presence of one taxonomy rather than on the whole list:
+ * which other taxonomies `post` has is the test site's business rather than
+ * this file's.
  *
  * @package NextJsRevalidate
  */
@@ -28,13 +32,15 @@ class RevalidateAllTermsTest extends QueueTestCase {
 	 */
 	private $registered = [];
 
+	/**
+	 * Every change revalidate all reported during the test.
+	 *
+	 * @var array[]
+	 */
+	private $reported = [];
+
 	public function set_up() {
 		parent::set_up();
-
-		// A term link is composed from the permastruct when there is one, and
-		// from a query var when there is not. Which one this site has is the
-		// test's decision rather than whatever the environment was left holding.
-		$this->set_permalink_structure( '/%postname%/' );
 
 		$this->configure_site();
 	}
@@ -42,6 +48,7 @@ class RevalidateAllTermsTest extends QueueTestCase {
 	public function tear_down() {
 		foreach ( $this->registered as $taxonomy ) unregister_taxonomy( $taxonomy );
 		$this->registered = [];
+		$this->reported   = [];
 
 		parent::tear_down();
 	}
@@ -52,55 +59,49 @@ class RevalidateAllTermsTest extends QueueTestCase {
 	/**
 	 * A taxonomy WordPress will route a query for has a front-end archive, and
 	 * `public => false` does not change that. This direction used to be missed
-	 * entirely: nothing enqueued, nothing logged, the archive never updating.
+	 * entirely: nothing revalidated, nothing logged, the archive never updating.
 	 */
-	public function test_a_term_of_a_queryable_taxonomy_that_is_not_public_is_revalidated() {
-		$term_id = $this->term_of( 'njr_queryable_not_public', [ 'public' => false, 'publicly_queryable' => true ] );
+	public function test_a_queryable_taxonomy_that_is_not_public_is_named() {
+		$this->register( 'njr_queryable_not_public', [ 'public' => false, 'publicly_queryable' => true ] );
 
-		$this->revalidate_all_posts();
-
-		$this->assertContains( get_term_link( $term_id ), $this->queue_permalinks() );
+		$this->assertContains( 'njr_queryable_not_public', $this->revalidate_all_posts() );
 	}
 
 	/**
 	 * And a taxonomy it will not route has no archive to rebuild, whatever its
-	 * `public` says. This direction used to enqueue every one of its terms.
+	 * `public` says. This direction used to revalidate every one of its terms.
 	 */
-	public function test_a_term_of_a_public_taxonomy_that_is_not_queryable_is_not_revalidated() {
-		$term_id = $this->term_of( 'njr_public_not_queryable', [ 'public' => true, 'publicly_queryable' => false ] );
+	public function test_a_public_taxonomy_that_is_not_queryable_is_not_named() {
+		$this->register( 'njr_public_not_queryable', [ 'public' => true, 'publicly_queryable' => false ] );
 
-		$this->revalidate_all_posts();
-
-		$this->assertNotContains( get_term_link( $term_id ), $this->queue_permalinks() );
+		$this->assertNotContains( 'njr_public_not_queryable', $this->revalidate_all_posts() );
 	}
 
 	/**
 	 * The ordinary case, so that the two above are read as the exceptions they
 	 * are rather than as the whole rule.
 	 */
-	public function test_a_term_of_an_ordinary_taxonomy_is_revalidated() {
-		$term_id = $this->term_of( 'njr_ordinary', [ 'public' => true ] );
+	public function test_an_ordinary_taxonomy_is_named() {
+		$this->register( 'njr_ordinary', [ 'public' => true ] );
 
-		$this->revalidate_all_posts();
-
-		$this->assertContains( get_term_link( $term_id ), $this->queue_permalinks() );
+		$this->assertContains( 'njr_ordinary', $this->revalidate_all_posts() );
 	}
 
 	// The site has the last word
 	// ====
 
 	/**
-	 * The gate is asked about every registered taxonomy, so the filter can keep
-	 * a whole taxonomy's archives out of a purge all.
+	 * The gate is asked about every taxonomy registered for the type, so the
+	 * filter can keep a whole taxonomy's archives out of a revalidate all.
 	 */
 	public function test_the_filter_declines_a_viewable_taxonomy() {
-		$term_id = $this->term_of( 'njr_filtered_out', [ 'public' => true ] );
+		$this->register( 'njr_filtered_out', [ 'public' => true ] );
 
-		$this->with_verdict( 'njr_filtered_out', false, function() {
-			$this->revalidate_all_posts();
+		$taxonomies = $this->with_verdict( 'njr_filtered_out', false, function() {
+			return $this->revalidate_all_posts();
 		});
 
-		$this->assertNotContains( get_term_link( $term_id ), $this->queue_permalinks() );
+		$this->assertNotContains( 'njr_filtered_out', $taxonomies );
 	}
 
 	/**
@@ -109,31 +110,29 @@ class RevalidateAllTermsTest extends QueueTestCase {
 	 * silently. See ADR 0022.
 	 */
 	public function test_the_filter_admits_a_taxonomy_that_is_not_viewable() {
-		$term_id = $this->term_of( 'njr_filtered_in', [ 'public' => false, 'publicly_queryable' => false ] );
+		$this->register( 'njr_filtered_in', [ 'public' => false, 'publicly_queryable' => false ] );
 
-		$this->with_verdict( 'njr_filtered_in', true, function() {
-			$this->revalidate_all_posts();
+		$taxonomies = $this->with_verdict( 'njr_filtered_in', true, function() {
+			return $this->revalidate_all_posts();
 		});
 
-		$this->assertContains( get_term_link( $term_id ), $this->queue_permalinks() );
+		$this->assertContains( 'njr_filtered_in', $taxonomies );
 	}
 
 	// Fixtures
 	// ====
 
 	/**
-	 * Register a taxonomy on `post` and give it one term.
+	 * Register a taxonomy on `post`.
 	 *
 	 * @param string $taxonomy The taxonomy name.
 	 * @param array  $args     The registration arguments to override.
 	 *
-	 * @return int The term id.
+	 * @return void
 	 */
-	private function term_of( $taxonomy, array $args ) {
+	private function register( $taxonomy, array $args ) {
 		register_taxonomy( $taxonomy, 'post', array_merge( [ 'hierarchical' => true ], $args ) );
 		$this->registered[] = $taxonomy;
-
-		return $this->factory()->term->create( [ 'taxonomy' => $taxonomy ] );
 	}
 
 	/**
@@ -144,7 +143,7 @@ class RevalidateAllTermsTest extends QueueTestCase {
 	 * @param bool     $verdict  The verdict to force.
 	 * @param callable $during   What to run while it is forced.
 	 *
-	 * @return void
+	 * @return mixed What $during answered.
 	 */
 	private function with_verdict( $taxonomy, $verdict, callable $during ) {
 		$forced = function( $should_revalidate, $taxonomy_name ) use ( $taxonomy, $verdict ) {
@@ -152,21 +151,38 @@ class RevalidateAllTermsTest extends QueueTestCase {
 		};
 
 		add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', $forced, 10, 2 );
-		$during();
+		$answer = $during();
 		remove_filter( 'nextjs_revalidate_should_revalidate_taxonomy', $forced, 10 );
+
+		return $answer;
 	}
 
 	/**
 	 * Run revalidate all over the `post` type, which is what the taxonomies
-	 * above are registered for.
+	 * above are registered for, and answer the taxonomies its change named.
 	 *
 	 * Through the plugin's own singleton: revalidate all reads the settings and
-	 * writes the queue of the site currently being served, and a second instance
-	 * would be a second answer to both.
+	 * reports into the pending changes of the site currently being served, and
+	 * a second instance would be a second answer to both. The change is read
+	 * from the filter and dropped there, so nothing is left for `shutdown`.
 	 *
-	 * @return void
+	 * @return string[]
 	 */
 	private function revalidate_all_posts() {
-		\NextJsRevalidate::init()->revalidateAll->revalidate_all( 'post' );
+		$capture = function( $change ) {
+			$this->reported[] = $change;
+			return false;
+		};
+
+		add_filter( 'nextjs_revalidate_change', $capture );
+		$answer = \NextJsRevalidate::init()->revalidateAll->revalidate_all( 'post' );
+		remove_filter( 'nextjs_revalidate_change', $capture );
+
+		$this->assertTrue( $answer, 'a configured site does not refuse revalidate all' );
+		$this->assertCount( 1, $this->reported, 'revalidate all reports exactly one change' );
+		$this->assertSame( 'all',  $this->reported[0]['subject'] );
+		$this->assertSame( 'post', $this->reported[0]['type'] );
+
+		return $this->reported[0]['taxonomies'];
 	}
 }

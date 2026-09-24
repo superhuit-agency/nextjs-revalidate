@@ -280,9 +280,8 @@ reports nothing either; the post it belongs to still has its page.
 ## Which post types the admin offers
 
 The same viewability decides what this plugin *offers* for a post type: the
-**Purge caches** bulk action on its list screen, its two switches on the
-settings page — allow purge all, and revalidate on menu update — the purge-all
-entry in the admin bar, and whether a purge all walks it at all. Attachments are
+**Purge caches** bulk action on its list screen, its allow purge all switch on
+the settings page, and its purge-all entry in the admin bar. Attachments are
 never offered: an uploaded file is not a Next.js route.
 
 Those are offers and not gates — what is revalidated is the section above, and
@@ -295,22 +294,31 @@ filter — this plugin asks that function, so the offer and the gate move
 together.
 
 A switch already stored for a post type that is no longer offered is left as it
-is, and does nothing: no purge-all entry is offered for it, and a menu update
-does not walk it. Saving the settings page drops the stored row.
+is, and does nothing: no purge-all entry is offered for it. Saving the settings
+page drops the stored row.
+
+## Menus
+
+Saving a menu reports one `menu` change, carrying the menu's ID and the theme
+locations it is assigned to — none, for a menu assigned to no location. Which
+pages that affects is the front-end's to decide; nothing is revalidated page by
+page, and there is no setting for it.
 
 ## Which terms are revalidated
 
-Revalidate all also enqueues the archive page of every term of every taxonomy
-registered for the post types it covers — provided the taxonomy is viewable,
-which is WordPress's own `publicly_queryable` test, via
+Revalidate all of the whole site reports one `all` change, and nothing else:
+which pages and archives that covers is the front-end's to decide. Revalidate all
+of one post type reports one `all` change naming the type and the taxonomies
+registered for it whose term archives the front-end may hold — provided the
+taxonomy is viewable, which is WordPress's own `publicly_queryable` test, via
 [`is_taxonomy_viewable()`](https://developer.wordpress.org/reference/functions/is_taxonomy_viewable/).
 The question is asked once per taxonomy rather than once per term: a term has no
-status and no viewability of its own.
+status and no viewability of its own, and no term is read.
 
 Note that for a taxonomy `publicly_queryable` is that setting and nothing else,
 with none of the `public` fallback the post type test applies — so a taxonomy
-registered `public => true, publicly_queryable => false` has no term revalidated,
-and one registered the other way round has all of them. A headless site can say
+registered `public => true, publicly_queryable => false` is never named,
+and one registered the other way round is. A headless site can say
 otherwise with the filter below, which is consulted for every registered
 taxonomy and can admit one WordPress would never route.
 

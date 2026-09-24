@@ -260,12 +260,13 @@ foreach ( $empty_checks as [ $name, $expected_empty ] ) {
 //
 // Until v2 a new install was seeded with the FSE gate on (#30). The gate went
 // with the FSE snapshot's own endpoint (ADR 0034), so setup now writes every
-// setting's empty value on any site, new or not — and neither of the rows v2
+// setting's empty value on any site, new or not — and none of the rows v2
 // removed.
 
 $removed = [
 	NextJsRevalidate\Settings::LEGACY_FSE_ENDPOINT_PATH_NAME,
 	NextJsRevalidate\Settings::LEGACY_REVALIDATE_ON_FSE_SAVE,
+	NextJsRevalidate\Settings::LEGACY_REVALIDATE_ON_MENU_SAVE,
 ];
 
 $GLOBALS['njr_test_options'] = [];
@@ -274,7 +275,7 @@ $settings->define_settings();
 $seeded = $GLOBALS['njr_test_options'];
 
 if ( [] === array_intersect( $removed, array_keys( $seeded ) ) ) {
-	printf( "ok   — a new install is not seeded with either setting v2 removed\n" );
+	printf( "ok   — a new install is not seeded with any setting v2 removed\n" );
 }
 else {
 	$failures++;

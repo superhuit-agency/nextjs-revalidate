@@ -16,7 +16,6 @@ use NextJsRevalidate\Interfaces\Hookable;
  * @property string $endpoint_path           The revalidate route, or '' for the default.
  * @property string $secret                  The shared secret every request carries, read trimmed.
  * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
- * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
  * @property array  $debug                   Debug switches, keyed by name.
  *
  * The plugin's own objects are reached through the same `__get()`, off the
@@ -36,7 +35,6 @@ class Settings extends Base implements Hookable {
 	const SETTINGS_ENDPOINT_PATH_NAME = 'nextjs_revalidate-endpoint_path';
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
-	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
 
 	/**
@@ -47,6 +45,14 @@ class Settings extends Base implements Hookable {
 	 */
 	const LEGACY_FSE_ENDPOINT_PATH_NAME = 'nextjs_revalidate-fse_endpoint_path';
 	const LEGACY_REVALIDATE_ON_FSE_SAVE = 'nextjs_revalidate-revalidate-on-fse-save';
+
+	/**
+	 * The per-post-type "revalidate on menu save" switches, which v2 removed
+	 * when a menu save became one `menu` change (ADR 0033): they existed only to
+	 * bound the cost of a revalidate all per menu save. Named, like the two
+	 * above, only so that an uninstall takes the row and the upgrade can delete it.
+	 */
+	const LEGACY_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
 
 	/**
 	 * The settings this plugin reads, declared once.
@@ -68,7 +74,6 @@ class Settings extends Base implements Hookable {
 		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,        'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
 		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_secret'        ], 'read' => [ self::class, 'sanitize_secret' ] ],
 		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
-		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
 		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
 	];
 
@@ -218,7 +223,6 @@ class Settings extends Base implements Hookable {
 		$sections = [
 			[ 'id' => 'api',            'title' => __('Next.js API', 'nextjs-revalidate')     ],
 			[ 'id' => 'allow_all_opts', 'title' => __('Allow purge all', 'nextjs-revalidate') ],
-			[ 'id' => 'on_menu_save',   'title' => __('On menu update', 'nextjs-revalidate')  ],
 			[ 'id' => 'debug',          'title' => __('Debug', 'nextjs-revalidate')           ],
 			[ 'id' => 'queue',          'title' => __('Queue', 'nextjs-revalidate') . sprintf('<span class="badge">%s</span>', $nb_in_queue) ],
 			[ 'id' => 'probe',          'title' => __('Probe', 'nextjs-revalidate')          ],
@@ -406,54 +410,6 @@ class Settings extends Base implements Hookable {
 				'id'        => $id,
 				'name'      => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME.'[all]',
 				'checked'   => $this->allow_revalidate_all['all'] ?? false,
-				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
-			]
-		);
-
-
-		// On menu save section settings
-		add_settings_section(
-			'nextjs-revalidate-section-revalidate-on-menu-save',
-			__('On menu update options', 'nextjs-revalidate'),
-			function() {
-				printf( '<p>%s</p>', __('Define which post type will be revalidated when updating a menu.', 'nextjs-revalidate') );
-			},
-			self::PAGE_NAME,
-			[
-				'before_section' => '<section aria-hidden="true" id="tab-panel--on_menu_save" role="tabpanel" tabindex="-1" aria-labelledby="tab-on_menu_save">',
-				'after_section'  => '</section>',
-			]
-		);
-
-		foreach ($post_types as $post_type) {
-			$post_type_object = get_post_type_object( $post_type );
-			$id = "revalidate-on-menu-save-$post_type";
-			add_settings_field(
-				$id,
-				$post_type_object->labels->name,
-				'Kuuak\WordPressSettingFields\Fields::switch',
-				self::PAGE_NAME,
-				'nextjs-revalidate-section-revalidate-on-menu-save',
-				[
-					'label_for' => $id,
-					'id'        => $id,
-					'name'      => self::SETTINGS_REVALIDATE_ON_MENU_SAVE."[$post_type]",
-					'checked'   => $this->revalidate_on_menu_save[$post_type] ?? false,
-				]
-			);
-		}
-		$id = "revalidate-on-menu-save-all";
-		add_settings_field(
-			$id,
-			__('All post types', 'nextjs-revalidate'),
-			'Kuuak\WordPressSettingFields\Fields::switch',
-			self::PAGE_NAME,
-			'nextjs-revalidate-section-revalidate-on-menu-save',
-			[
-				'label_for' => $id,
-				'id'        => $id,
-				'name'      => self::SETTINGS_REVALIDATE_ON_MENU_SAVE.'[all]',
-				'checked'   => $this->revalidate_on_menu_save['all'] ?? false,
 				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
 			]
 		);
@@ -649,10 +605,11 @@ class Settings extends Base implements Hookable {
 			delete_option( $setting['name'] );
 		}
 
-		// The two settings v2 removed, on a site whose upgrade has not yet
+		// The settings v2 removed, on a site whose upgrade has not yet
 		// deleted them.
 		delete_option( self::LEGACY_FSE_ENDPOINT_PATH_NAME );
 		delete_option( self::LEGACY_REVALIDATE_ON_FSE_SAVE );
+		delete_option( self::LEGACY_REVALIDATE_ON_MENU_SAVE );
 
 		// The URL the settings above were split out of, on a site upgraded
 		// before it was ever visited in the admin: the migration that consumes

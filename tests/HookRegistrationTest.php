@@ -199,7 +199,7 @@ $expected_per_class = [
 		[ 'admin_bar_menu',      'admin_top_bar_menu',                100, 1 ],
 		[ 'admin_notices',       'revalidated_notice',                 10, 1 ],
 		[ 'admin_init',          'revalidate_all_pages_action',        10, 1 ],
-		[ 'wp_update_nav_menu',  'revalidate_all_after_menu_update',   10, 1 ],
+		[ 'wp_update_nav_menu',  'on_menu_update',                     10, 1 ],
 	],
 
 	FseSnapshot::class => [

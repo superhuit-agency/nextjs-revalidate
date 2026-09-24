@@ -115,20 +115,20 @@ The oracle is the revalidate server console, which prints each post change as
       Publish one from the new **Hidden** menu. Expect **no** post change.
 - [ ] **Look at what the admin offers for Hidden.** Expect **no** Purge caches
       entry in the Hidden list's Bulk actions dropdown, and no **Hidden** switch
-      under either *Allow purge all options* or *On menu update options* in the
-      settings: a post type the gate declines every post of is offered nothing.
+      under *Allow purge all options* in the settings: a post type the gate
+      declines every post of is offered nothing.
 - [ ] **Admit it with the filter.** Append to that mu-plugin
       `add_filter("nextjs_revalidate_should_revalidate_post", "__return_true");`
       and publish another Hidden post. Expect a post change with
       `"type":"njr_hidden"` — the site has the last word over the viewability
-      gate. Expect the bulk action and the two switches to be **still absent**:
-      that filter answers about one post, so it widens the gate and not what
-      the admin offers.
+      gate. Expect the bulk action and the switch to be **still absent**: that
+      filter answers about one post, so it widens the gate and not what the
+      admin offers.
 - [ ] **Make the post type viewable instead.** Append to that mu-plugin
       `add_filter("is_post_type_viewable", function($v, $pt) { return "njr_hidden" === $pt->name ? true : $v; }, 10, 2);`
-      and reload the settings page. Expect a **Hidden** switch in both lists, and
-      **Purge caches** in the Hidden list's Bulk actions — core's own filter
-      moves the offer and the gate together. Then
+      and reload the settings page. Expect a **Hidden** switch under *Allow
+      purge all options*, and **Purge caches** in the Hidden list's Bulk
+      actions — core's own filter moves the offer and the gate together. Then
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-runbook-cpt.php`.
 - [ ] **Change a published post's slug and Update.** Expect **one** post change
       whose `before` holds the old path and whose `after` holds the new one. v1
@@ -168,25 +168,50 @@ The oracle is the revalidate server console, which prints each post change as
 
 ## F. Revalidate all
 
+The oracle is the **revalidate server console**, not the queue: revalidate all
+is one change, delivered in one v2 `POST`, and names no page.
+
 - [ ] **Admin bar → Next.js revalidate.** Expect items for **All**, **Posts** and
       **Pages**, and none for post types not ticked in the settings.
-- [ ] **Click Posts.** Expect "Purge all: N pages added to purge…" with N
-      matching your published post count, and N rows in the queue table.
-- [ ] **Drain it.** Expect one console line per path and no duplicates.
-- [ ] **Click All.** Expect posts and pages both queued.
+- [ ] **Click Posts.** Expect the notice "Revalidate all: the revalidation was
+      sent to the front-end." — no page count — and **exactly one**
+      `= Revalidating (v2): {"subject":"all","type":"post","taxonomies":[…]}` in
+      the console, its `taxonomies` naming `category` and `post_tag`.
+- [ ] **Click Pages.** Expect
+      `= Revalidating (v2): {"subject":"all","type":"page","taxonomies":[]}` in
+      the console: a page has no taxonomy, and still names its type.
+- [ ] **Click All.** Expect `= Revalidating (v2): {"subject":"all"}` in the
+      console — no type, no taxonomies — and `✅ Revalidated 1 change (all)` in
+      the log.
 - [ ] **Untick `page` in the settings, save, reopen the admin bar.** Expect the
       Pages item gone. Re-tick it afterwards.
 - [ ] **As a subscriber, open the admin bar.** Expect no Next.js revalidate menu.
-- [ ] **Register a post type with no published posts and allow it.** Expect
-      "Purge all: 0 pages added to purge." rather than an error.
 
 ## G. Menu save
 
-- [ ] **Settings → Next.js revalidate → On menu update: enable, save.**
-- [ ] **Appearance → Menus → create a menu, add the page, Save Menu.** Expect a
-      revalidate-all's worth of rows in the queue.
-- [ ] **Disable the setting, save, and save the menu again.** Expect **no** new
-      queue rows.
+Precondition: two menu locations, registered by a mu-plugin whatever the theme:
+
+```sh
+npx wp-env run cli -- bash -c 'mkdir -p wp-content/mu-plugins && cat > wp-content/mu-plugins/njr-runbook-menus.php <<PHP
+<?php add_action("after_setup_theme", function() { register_nav_menus(["primary" => "Primary", "footer" => "Footer"]); });
+PHP'
+```
+
+The oracle is the **revalidate server console**. There is no setting: every
+menu save reports one `menu` change, and nothing reaches the queue.
+
+- [ ] **Appearance → Menus → create a menu "Runbook menu", add the page, and
+      Save Menu with no display location ticked.** Expect
+      `= Revalidating (v2): {"subject":"menu","id":N,"locations":[]}` in the
+      console for the save — one line per request, never one per page.
+- [ ] **Tick both display locations, Primary and Footer, and Save Menu.** Expect
+      `{"subject":"menu","id":N,"locations":[…]}` with the same N, its
+      `locations` naming `primary` and `footer`, and
+      `✅ Revalidated 1 change (menu)` in the log.
+- [ ] **Clear the secret, save, and save the menu again.** Expect
+      `⛔ Refused a menu change — site not configured (missing: secret)` in the
+      log and **no** request in the console. Restore the secret, then
+      `npx wp-env run cli -- rm wp-content/mu-plugins/njr-runbook-menus.php`.
 
 ## H. FSE update
 
@@ -218,9 +243,9 @@ in one v2 `POST`, and nothing about it reaches the queue. Expect
       Expect one templates change per switch — every template changed at once.
 - [ ] **Save an ordinary post.** Expect a post change and **no** templates
       change: a post has not touched the snapshot.
-- [ ] **Save a navigation menu** (Appearance → Menus, with the On menu update
-      setting off). Expect **no** templates change. Menu items are fetched at
-      request time by the front-end and are deliberately not in the snapshot.
+- [ ] **Save a navigation menu** (Appearance → Menus). Expect a `menu` change
+      and **no** templates change. Menu items are fetched at request time by
+      the front-end and are deliberately not in the snapshot.
 - [ ] **Clear the secret, save, and edit a template part.** Expect
       `⛔ Refused a templates change — site not configured (missing: secret)` in
       the log and **no** request in the console. Restore the secret.

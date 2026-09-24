@@ -9,9 +9,9 @@ use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
 
 /**
- * @property Revalidate      $revalidate
- * @property RevalidateQueue $queue
- * @property Settings        $settings
+ * @property Revalidate     $revalidate
+ * @property PendingChanges $pendingChanges
+ * @property Settings       $settings
  */
 class RevalidateAll extends Base implements Hookable {
 	use AdminBarMenu;
@@ -23,7 +23,7 @@ class RevalidateAll extends Base implements Hookable {
 
 		add_action( 'admin_init', [$this, 'revalidate_all_pages_action'] );
 
-		add_action( 'wp_update_nav_menu', [$this, 'revalidate_all_after_menu_update'] );
+		add_action( 'wp_update_nav_menu', [$this, 'on_menu_update'] );
 	}
 
 	/**
@@ -89,7 +89,7 @@ class RevalidateAll extends Base implements Hookable {
 	}
 
 	/**
-	 * Display a success admin notice when all page revalidate has been triggered
+	 * Display the outcome of a revalidate all, once its action has redirected back
 	 */
 	function revalidated_notice() {
 		if ( isset($_GET['nextjs-revalidate-revalidate-all-refused']) ) {
@@ -106,12 +106,11 @@ class RevalidateAll extends Base implements Hookable {
 
 		if ( !isset($_GET['nextjs-revalidate-revalidate-all']) ) return;
 
+		// No page count: a revalidate all is one change, and which pages it
+		// covers is the front-end's to work out.
 		printf(
 			'<div class="notice notice-success"><p>%s</p></div>',
-			sprintf(
-				__( 'Purge all: %d pages added to purge. Please wait until all pages are purged.', 'nextjs-revalidate' ),
-				$_GET['nextjs-revalidate-revalidate-all']
-			)
+			esc_html__( 'Revalidate all: the revalidation was sent to the front-end.', 'nextjs-revalidate' )
 		);
 	}
 
@@ -123,11 +122,17 @@ class RevalidateAll extends Base implements Hookable {
 
 		check_admin_referer( 'nextjs-revalidate-revalidate-all' );
 
-		$nb_added = $this->revalidate_all( $_GET['nextjs-revalidate-type'] );
+		// The type travels to the front-end in the change, so it is read as
+		// what a post type name is: a key, as `register_post_type()` makes it.
+		$type = ( isset($_GET['nextjs-revalidate-type']) && is_string($_GET['nextjs-revalidate-type']) )
+			? sanitize_key( wp_unslash( $_GET['nextjs-revalidate-type'] ) )
+			: 'all';
+
+		$reported = $this->revalidate_all( $type );
 		$sendback = add_query_arg(
-			( false === $nb_added
+			( false === $reported
 				? [ 'nextjs-revalidate-revalidate-all-refused' => 1 ]
-				: [ 'nextjs-revalidate-revalidate-all' => $nb_added ]
+				: [ 'nextjs-revalidate-revalidate-all' => 1 ]
 			),
 			$this->get_sendback_url()
 		);
@@ -137,44 +142,54 @@ class RevalidateAll extends Base implements Hookable {
 	}
 
 	/**
-	 * Revalidate all content after a menu update
+	 * A menu was saved: report one `menu` change, naming the theme locations
+	 * the menu is assigned to.
 	 *
-	 * @param int $menu_id
+	 * The locations are read as the hook fires. The menus screen stores an
+	 * existing menu's locations before it saves the menu, so a location ticked
+	 * in the same save is already among them. A menu assigned to no location
+	 * is reported all the same, with none: a block, a widget or the front-end
+	 * itself may render it by its ID.
+	 *
+	 * Until v2 a menu save ran a revalidate all for every post type ticked in
+	 * the "revalidate on menu save" setting, which existed only to bound the
+	 * cost of that walk. One change has no cost to bound, so the setting went
+	 * with the walk — see `docs/adr/0033-the-plugin-reports-changes-not-tags.md`.
+	 *
+	 * @param int $menu_id The menu's term ID.
 	 * @return void
 	 */
-	function revalidate_all_after_menu_update( $menu_id ) {
-		$revalidate_on_save = $this->settings->revalidate_on_menu_save;
+	function on_menu_update( $menu_id ) {
+		$menu_id = (int) $menu_id;
 
-		if (isset($revalidate_on_save['all']) && $revalidate_on_save['all'] === 'on') {
-			$this->revalidate_all();
+		$locations = [];
+		foreach ( (array) get_nav_menu_locations() as $location => $assigned ) {
+			if ( (int) $assigned === $menu_id ) $locations[] = (string) $location;
 		}
-		else {
-			$offered = $this->revalidate->offered_post_types();
 
-			foreach ($revalidate_on_save as $post_type => $enabled) {
-				if ( $enabled !== 'on' ) continue;
-
-				// A switch stored for a post type this plugin no longer offers
-				// is one the settings page does not show, so it does not act
-				// either — the same as the admin bar's purge-all entries. The
-				// gate would decline its posts anyway; this spares the walk.
-				if ( !isset($offered[$post_type]) ) continue;
-
-				$this->revalidate_all($post_type);
-			}
-		}
+		$this->pendingChanges->report( Change::menu( $menu_id, $locations ) );
 	}
 
 	/**
-	 * Retrive all post type content nodes to revalidate, saves them in option
-	 * and schedule the revalidate all cron to run.
+	 * Report a revalidate all as one `all` change: of the whole site, or of
+	 * one post type and the revalidatable taxonomies registered for it.
 	 *
-	 * @param string $type Optional. The type of post type to revalidate. Default. 'all'.
-	 * @return int|false The number of nodes added to revalidate, or false on a
-	 *                   refusal — an unconfigured site, where nothing was
-	 *                   enqueued because nothing enqueued could be delivered.
-	 *                   Zero and false are different answers: zero is a site
-	 *                   that had nothing revalidatable to add.
+	 * Never the pages it covers. Which cache entries the change expires is the
+	 * front-end's decision, so nothing here reads a post: the whole site needs
+	 * nothing but the change, and a post type needs only its taxonomies, which
+	 * only WordPress knows. A site holding thousands of posts costs what an
+	 * empty one does.
+	 *
+	 * A named type is the caller's own instruction, and is reported whatever
+	 * this plugin would have offered of its own accord.
+	 *
+	 * @param string $type Optional. The post type to revalidate, or 'all' for
+	 *                     the whole site. Default 'all'.
+	 * @return bool True when the change was reported, false on a refusal — an
+	 *              unconfigured site, where nothing was reported because
+	 *              nothing reported could be delivered. A change the
+	 *              `nextjs_revalidate_change` filter then drops was still
+	 *              reported: dropping it is the site's decision, not a refusal.
 	 */
 	function revalidate_all( $type = 'all' ) {
 		if ( !$this->settings->is_configured() ) {
@@ -186,65 +201,15 @@ class RevalidateAll extends Base implements Hookable {
 			return false;
 		}
 
-		$count = 0;
-		if ( $type === 'all' ) {
-			// The post types this plugin offers, rather than the `public` ones
-			// this asked for until #53: a `public` type that is not viewable has
-			// every one of its posts declined by the gate below, and a viewable
-			// one that is not `public` was walked by nothing at all.
-			//
-			// A pre-filter, unlike the taxonomy selection further down, and
-			// deliberately so — the gate for a post sits *below* this
-			// enumeration, once per post, where the gate for a taxonomy sits
-			// above it. Walking every registered type would mean reading every
-			// revision, menu item and product variation on the site to be told
-			// no. See `docs/adr/0025-viewability-selects-the-post-types-offered.md`.
-			$post_types = $this->revalidate->offered_post_types();
-		}
-		else {
-			// A named type is the caller's own instruction and is walked
-			// whatever this plugin would have offered of its own accord. The
-			// gate still answers for every post either way.
-			$post_types = [ $type ];
-		}
+		$change = ( $type === 'all' )
+			? Change::all()
+			: Change::all( $type, array_values( $this->revalidatable_taxonomies( $type ) ) );
 
-		foreach ($post_types as $post_type) {
-			$posts = get_posts([
-				'post_type'      => $post_type,
-				'posts_per_page' => -1,
-				'fields'         => 'ids',
-				'post_status'    => ['publish', 'private'],
-			]);
-
-			foreach ($posts as $post_id) {
-				$permalink = $this->revalidate->get_post_permalink( $post_id );
-
-				// A post that is not revalidatable yields no permalink, and no queue item.
-				if ( empty($permalink) ) continue;
-
-				$this->queue->add_item( $permalink );
-				$count++;
-			}
-		}
-
-		foreach ($this->revalidatable_taxonomies( $type ) as $taxonomy) {
-			$terms = get_terms([
-				'taxonomy'   => $taxonomy,
-				'hide_empty' => false,
-				'fields'     => 'ids',
-			]);
-
-			foreach ($terms as $term_id) {
-				$this->queue->add_item( get_term_link( $term_id ) );
-				$count++;
-			}
-		}
-
-		return $count;
+		return !is_wp_error( $this->pendingChanges->report( $change ) );
 	}
 
 	/**
-	 * The taxonomies whose terms revalidate-all enumerates.
+	 * The taxonomies a revalidate all of one post type names in its change.
 	 *
 	 * Every registered taxonomy is offered to the gate, and the gate alone
 	 * decides. Pre-selecting by `public` — which is what this did before #54 —

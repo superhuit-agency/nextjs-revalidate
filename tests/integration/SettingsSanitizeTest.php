@@ -28,7 +28,7 @@ class SettingsSanitizeTest extends \WP_UnitTestCase {
 
 	public function tear_down() {
 
-		// All six, as `set_up()` registered them: the rollback restores the
+		// All five, as `set_up()` registered them: the rollback restores the
 		// options table, not `$wp_registered_settings`, and a callback left
 		// behind would sanitise the next test's writes.
 		foreach ( [
@@ -36,7 +36,6 @@ class SettingsSanitizeTest extends \WP_UnitTestCase {
 			Settings::SETTINGS_ENDPOINT_PATH_NAME,
 			Settings::SETTINGS_SECRET_NAME,
 			Settings::SETTINGS_ALLOW_REVALIDATE_ALL_NAME,
-			Settings::SETTINGS_REVALIDATE_ON_MENU_SAVE,
 			Settings::SETTINGS_DEBUG,
 		] as $name ) {
 			unregister_setting( Settings::SETTINGS_GROUP, $name );

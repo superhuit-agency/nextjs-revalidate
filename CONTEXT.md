@@ -142,17 +142,17 @@ a whole taxonomy as readily as decline one.
 
 Only **revalidate all** asks the question today: nothing in this plugin reacts to
 a term being created, edited or deleted, so a term archive goes stale until
-somebody purges all. That gap is an enhancement, not a property of the taxonomy.
+somebody revalidates all. That gap is an enhancement, not a property of the taxonomy.
 _Avoid_: Public taxonomy — `public` is a different setting and the two disagree
 in both directions, which is the whole of the bug this names the fix for.
 
 **Offered post type**:
 A post type whose posts this plugin offers an operator an action over: the
-"Purge caches" bulk action on its list screen, its two switches on the settings
-page, its entry in the admin bar's purge-all menu, and its place among the post
-types a **revalidate all** walks. One axis, the type axis of a **revalidatable
-post** — WordPress's own `is_post_type_viewable()` — with attachments taken out,
-because an uploaded file is not a page the front-end holds.
+"Purge caches" bulk action on its list screen, its allow purge all switch on the
+settings page, and its entry in the admin bar's purge-all menu. One axis, the
+type axis of a **revalidatable post** — WordPress's own `is_post_type_viewable()`
+— with attachments taken out, because an uploaded file is not a page the
+front-end holds.
 
 An offer, and not a gate: that is the whole of the term. Being offered decides
 nothing about whether a change is reported, which is **revalidatable post**'s
