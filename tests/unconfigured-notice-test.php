@@ -401,6 +401,13 @@ degrade_site();
 on_block_editor_screen();
 assert_same( 'unhooked, the degraded notice still stands in on a block editor screen', false, is_null( ( new FailureWindow() )->get_block_editor_degraded_notice() ) );
 
+// With no degraded window there is nothing to stand in with, so nothing to
+// ask the filter about either.
+reset_site();
+on_block_editor_screen();
+assert_same( 'an unconfigured site that is not degraded says nothing there', null, ( new FailureWindow() )->get_degraded_notice() );
+assert_same( 'without the filter ever being asked', [], filter_calls() );
+
 reset_site();
 degrade_site();
 on_block_editor_screen();

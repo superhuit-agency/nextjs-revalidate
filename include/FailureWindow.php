@@ -241,6 +241,10 @@ class FailureWindow extends Base implements Hookable {
 	 */
 	public function get_degraded_notice() {
 
+		// First, so a window that is not degraded never asks the unconfigured
+		// notice's filter below about a notice nobody would see.
+		if ( !self::is_degraded() ) return null;
+
 		// Yields to the unconfigured notice, on the screens that actually
 		// render it. The two are nearly exclusive already, since an
 		// unconfigured site refuses at enqueue and never attempts anything; the
@@ -262,8 +266,6 @@ class FailureWindow extends Base implements Hookable {
 			if ( !$this->is_block_editor_screen() ) return null;
 			if ( !$this->settings->shows_unconfigured_notice() ) return null;
 		}
-
-		if ( !self::is_degraded() ) return null;
 
 		$can_configure = current_user_can( 'manage_options' );
 

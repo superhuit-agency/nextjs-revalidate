@@ -532,10 +532,6 @@ It silences the notice and nothing else. An unconfigured site still refuses
 every revalidation, still logs each refusal when logs are on, and its REST
 routes still answer 503.
 
-It is a filter rather than a setting on purpose: a stored "hide this" would be
-the dismissible notice the plugin declines to offer, and code in a theme or an
-mu-plugin is visible in review.
-
 #### Usage
 ```php
 // In an mu-plugin: silence the notice on the network's staging subsite only.

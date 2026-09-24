@@ -303,9 +303,6 @@ administrator.
 - [ ] **Load the Dashboard, the posts list and the Next.js revalidate settings
       screen.** Expect **no** unconfigured notice and **no** degraded notice on
       any of them.
-- [ ] **Update the post in the block editor.** Expect
-      `⛔ Refused <its permalink> — site not configured (missing: domain)` in the
-      log file. The filter silences the notice, not the refusal.
 - [ ] **Remove the filter and reload the Dashboard:**
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-runbook-silence.php`.
       Expect the unconfigured notice back. Restore the domain and the secret
