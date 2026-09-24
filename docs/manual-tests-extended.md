@@ -625,6 +625,49 @@ Precondition: Y done. This rewinds the ledger to fake a site that predates it.
 
 - [ ] **`npm run stop`**, then **`ls .wp-env.override.json`** and expect it
       absent.
+- [ ] **`npx wp-env destroy`** and confirm, so Part 4 starts from nothing.
+
+---
+
+# Part 4 — A WordPress below the floor
+
+The only stack that can show the **WordPress floor** refused rather than
+declared. `tests/wordpress-floor-test.php` holds the number in every file that
+states it; what it cannot hold is core reading that number and declining the
+activation, which it does from 5.2 on (ADR 0028). Run this part when the floor
+moves.
+
+## AB. Raise a 5.5 site
+
+- [ ] **Write the override**, pinning core to the release just below the floor,
+      a PHP it runs on, and only this plugin — Redirection's current release
+      needs a newer WordPress than this:
+      ```sh
+      cat > .wp-env.override.json <<'JSON'
+      {
+        "core": "WordPress/WordPress#5.5",
+        "phpVersion": "7.4",
+        "plugins": [ "." ]
+      }
+      JSON
+      ```
+- [ ] **`npx wp-env destroy`**, then **`npm start`**, then confirm the release:
+      `npx wp-env run cli wp core version` prints `5.5`, or a `5.5.x`.
+
+## AC. The activation is refused
+
+- [ ] **Plugins → Activate "Next.js revalidate"**, deactivating it first if
+      wp-env left it active. Expect a WordPress error page reading "Current
+      WordPress version (5.5…) does not meet minimum requirements for Next.js
+      revalidate. The plugin requires WordPress 5.6." — the number from the
+      header, and not `5.6.0`.
+- [ ] **Back to Plugins.** Expect the plugin listed as inactive, and no
+      **Settings → Next.js revalidate** entry.
+
+## AD. Teardown
+
+- [ ] **`npm run stop`**, then **`rm .wp-env.override.json`** — a leftover pins
+      every later `wp-env start` to 5.5.
 - [ ] **`npx wp-env destroy`** and confirm.
 - [ ] **`git status`.** Expect a clean tree, with no ticked boxes in either
       runbook.

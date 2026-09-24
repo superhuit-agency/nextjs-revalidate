@@ -23,7 +23,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "NextJsRevalidate\\Tests\\": "tests/integration/"
+            "NextJsRevalidate\\Tests\\": "tests/integration/",
+            "NextJsRevalidate\\PHPStan\\": "config/phpstan/"
         }
     },
     "autoload": {

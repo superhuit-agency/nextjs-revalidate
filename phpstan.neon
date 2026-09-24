@@ -82,6 +82,12 @@ parameters:
 		# The plugin file itself: the composition root, the two public API
 		# functions and the activation hooks all live in it, and it ships.
 		- nextjs-revalidate.php
+		# The WordPress floor rule, which ships nothing but is loaded into every
+		# run. PHPStan only notices an edit to an extension it analyses: outside
+		# these paths, a changed rule leaves a stale result cache and a warning
+		# that fails the run. The file alone, not config/phpstan — the canary
+		# fixture beside it is meant to fail and is analysed on its own (ADR 0030).
+		- config/phpstan/WordPressFloorRule.php
 
 	# A `{min, max}` range, not a single version. PHPStan 2.x is what supports
 	# this shape — an older major reads `phpVersion` as one int and would analyse
@@ -89,3 +95,31 @@ parameters:
 	phpVersion:
 		min: 70400
 		max: 80400
+
+	# The WordPress release the plugin declares as its floor — `Requires at least`
+	# in nextjs-revalidate.php and readme.txt, and "Requires WordPress" in
+	# README.md — and what `WordPressFloorRule` below holds the core functions,
+	# methods, classes and constants the plugin uses to. A use of anything core
+	# documents as `@since` a newer release fails the analysis, naming the API and
+	# the release.
+	#
+	# It is a copy of the header, and deliberately: PHPStan's result cache is keyed
+	# on this file, so a floor read from the header would leave every cached
+	# verdict standing when only the header moved. `tests/wordpress-floor-test.php`
+	# fails when any of the four disagree, so moving the floor is one edit in each
+	# and the gate refuses anything less. `MAJOR.MINOR`, for the reason ADR 0028
+	# gives. Hooks are outside what the rule can see, and
+	# `config/phpstan/floor-canary/` proves the rule still reports before each
+	# analysis trusts it — ADR 0030.
+	wordpressFloor: '5.6'
+
+parametersSchema:
+	wordpressFloor: string()
+
+services:
+	-
+		class: NextJsRevalidate\PHPStan\WordPressFloorRule
+		arguments:
+			floor: %wordpressFloor%
+		tags:
+			- phpstan.rules.rule
