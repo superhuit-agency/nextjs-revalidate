@@ -9,8 +9,9 @@
 #   turns version updates off; the entry's groups, ignore and prefix still apply
 #   to security pull requests.
 # - Composer: security updates, and weekly version updates. `require` ships in
-#   the release zip, so each bump to it gets a pull request of its own, never
-#   grouped; the dev tooling comes as one.
+#   the release zip, so each version bump to it gets a pull request of its own,
+#   never grouped; the dev tooling comes as one. Security fixes, `require`
+#   included, come as one pull request.
 #
 # A deliberate pin in a manifest gets a matching `ignore`, whose comment gives the
 # reason and when it lifts. Without one, Dependabot proposes exactly the bump the
@@ -64,9 +65,9 @@ updates:
         applies-to: version-updates
         dependency-type: "development"
     ignore:
-      # Follows the tested release: the WordPress `.wp-env.json` runs and
-      # `Tested up to` declares, and the source the Xdebug path mappings point
-      # at. It moves only with them, by hand, in one change (ADR 0036).
+      # Follows the tested release: the WordPress both wp-env environments run
+      # and `Tested up to` declares, and the source the Xdebug path mappings
+      # point at. It moves only with them, by hand, in one change (ADR 0036).
       - dependency-name: "johnpbloch/wordpress-core"
     commit-message:
       prefix: "chore: ⬆️"
