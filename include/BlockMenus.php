@@ -44,7 +44,7 @@ class BlockMenus extends Base implements Hookable {
 		// other — a trash and a restore from the trash all go through
 		// `wp_insert_post()`. A revision is a post of type `revision`, and never
 		// reaches this hook.
-		add_action( 'save_post_' . self::POST_TYPE, [$this, 'on_block_menu_save'], 10, 2 );
+		add_action( 'save_post_wp_navigation', [$this, 'on_block_menu_save'], 10, 2 );
 
 		// A permanent delete fires no save hook at all.
 		add_action( 'deleted_post', [$this, 'on_post_delete'], 10, 2 );

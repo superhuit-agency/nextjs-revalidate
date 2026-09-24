@@ -194,6 +194,27 @@ them, and a page holds no part of it separately.
 > Once no request revalidates a path, it is a revalidation like the rest, and
 > the term is retired.
 
+### Menus
+
+**Classic menu**:
+A menu built under Appearance → Menus: a `nav_menu` term, assigned to none or
+more of the theme's locations. A save reports a `menu` change carrying its term
+ID and the locations it is assigned to.
+_Avoid_: Nav menu — WordPress's name for the storage, and a block menu is a
+navigation menu too.
+
+**Block menu**:
+A menu the Site Editor and the Navigation block save: a `wp_navigation` post,
+which the front-end renders by its post ID and which no theme location holds.
+Saved, trashed, restored or permanently deleted, it reports a `menu` change of
+the classic menu's shape, carrying its post ID and no locations. Its type is not
+viewable, so a block menu is never a **revalidatable post**: it has a producer of
+its own, and nothing about it widens that question for other types. A block
+menu's post ID and a classic menu's term ID can be the same number, and no field
+tells them apart — the cost is one extra menu expired on the front-end.
+_Avoid_: Navigation, navigation post — the block that renders it, and the
+storage.
+
 ### Integrations
 
 **Integration**:

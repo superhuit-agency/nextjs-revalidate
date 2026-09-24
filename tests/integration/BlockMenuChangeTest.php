@@ -19,6 +19,7 @@
 
 namespace NextJsRevalidate\Tests;
 
+use NextJsRevalidate\BlockMenus;
 use NextJsRevalidate\Change;
 use WP_REST_Request;
 
@@ -284,7 +285,7 @@ class BlockMenuChangeTest extends PendingChangesTestCase {
 	 */
 	private function block_menu( $status = 'publish' ) {
 		return self::factory()->post->create( [
-			'post_type'    => 'wp_navigation',
+			'post_type'    => BlockMenus::POST_TYPE,
 			'post_status'  => $status,
 			'post_title'   => 'Header navigation',
 			'post_content' => '<!-- wp:navigation-link {"label":"Home","url":"/"} /-->',
