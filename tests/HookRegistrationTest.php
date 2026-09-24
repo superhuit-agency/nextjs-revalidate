@@ -115,9 +115,11 @@ require_once __DIR__ . '/../include/Probe.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
+require_once __DIR__ . '/../include/BlockMenus.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\Assets;
+use NextJsRevalidate\BlockMenus;
 use NextJsRevalidate\Cron\ScheduledPurges;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
@@ -204,6 +206,11 @@ $expected_per_class = [
 		[ 'save_post_wp_template_part', 'on_template_save', 10, 1 ],
 		[ 'deleted_post',               'on_post_delete',   10, 2 ],
 		[ 'switch_theme',               'on_theme_switch',  10, 1 ],
+	],
+
+	BlockMenus::class => [
+		[ 'save_post_wp_navigation', 'on_block_menu_save', 10, 2 ],
+		[ 'deleted_post',            'on_post_delete',     10, 2 ],
 	],
 
 	RestApi::class => [
