@@ -84,6 +84,15 @@ with or without the index, which is the whole reason it is three statements.
 
 Revisit this only if #121 concludes the key is dependable everywhere.
 
+> Revisited. #121 made the key dependable — it is now on a fixed-width hash of
+> the permalink, which every engine can carry
+> ([ADR 0029](0029-the-queue-dedups-on-a-hash-of-the-permalink.md)) — and the
+> answer is still no, on the *other* ground above: the statement answers with an
+> affected-row count, `0` when the new value equals the old, and #93 reads a
+> falsy `add_item()` as failure. The read-then-branch also has somewhere to put
+> the promotion's log line. Portability was the argument that has expired; it was
+> not the only one.
+
 **Return the affected-row count from the dedup branch.** Honest-looking, and it
 turns the idempotent re-submission into a reported failure for the reason given
 above. Rejected.
@@ -132,6 +141,11 @@ purges reach this path too.
 **The `SELECT`-then-`INSERT` race on a *new* permalink is unchanged.** Two
 concurrent enqueues of a permalink nothing holds can still both read nothing and
 both insert. That predates this decision and belongs to #121.
+
+> Closed there. The unique key refuses the second insert, and the loser re-reads
+> the winner's row and promotes through the branch this ADR added — so the race
+> now ends in the state the caller asked for rather than in a duplicate entry.
+> See [ADR 0029](0029-the-queue-dedups-on-a-hash-of-the-permalink.md).
 
 **These tests need a real `$wpdb` and a real table**, so they live in the wp-env
 integration suite ([ADR 0008](0008-two-testing-idioms.md)) and do not run in the

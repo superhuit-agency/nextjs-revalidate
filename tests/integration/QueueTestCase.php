@@ -7,6 +7,7 @@
 
 namespace NextJsRevalidate\Tests;
 
+use NextJsRevalidate\Logger;
 use NextJsRevalidate\RevalidateItem;
 use NextJsRevalidate\RevalidateQueue;
 use NextJsRevalidate\Settings;
@@ -133,6 +134,24 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 		$reset->invoke( $this->queue() );
 	}
 
+	/**
+	 * The name of the queue table of the site currently being served.
+	 *
+	 * Reflected out of the queue for the same reason `reset_queue()` is: the
+	 * expression that builds it follows `switch_to_blog()`, and a copy of it in
+	 * test code is the one thing this suite must not own. Reachable because a
+	 * test about the table's own shape — its columns and its keys — has nothing
+	 * else to ask the question of.
+	 *
+	 * @return string
+	 */
+	protected function queue_table() {
+		$name = new ReflectionMethod( RevalidateQueue::class, 'get_table_name' );
+		$name->setAccessible( true );
+
+		return $name->invoke( $this->queue() );
+	}
+
 	// Fixtures
 	// ====
 
@@ -175,6 +194,44 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 */
 	protected function enqueue( $path, $priority = 10 ) {
 		return $this->queue()->add_item( $this->permalink_of( $path ), $priority );
+	}
+
+	// The log
+	// ====
+
+	/**
+	 * Switch the plugin's logging on, which is the only way a skipped redirect
+	 * or a queue table that could not be built leaves any record at all.
+	 *
+	 * @return void
+	 */
+	protected function enable_logs() {
+		update_option( Settings::SETTINGS_DEBUG, [ 'enable-logs' => 'on' ] );
+	}
+
+	/**
+	 * Everything the plugin has logged on this site.
+	 *
+	 * @return string
+	 */
+	protected function log() {
+		$log_file = Logger::path();
+
+		return file_exists( $log_file ) ? (string) file_get_contents( $log_file ) : '';
+	}
+
+	/**
+	 * The log file is on disk rather than in the database, so no rollback
+	 * reaches it: it is removed on both sides of a test by hand.
+	 *
+	 * @return void
+	 */
+	protected function reset_log() {
+		$log_file = Logger::path();
+
+		if ( file_exists( $log_file ) ) unlink( $log_file );
+
+		delete_option( Settings::SETTINGS_DEBUG );
 	}
 
 	// Paths and permalinks
@@ -317,9 +374,12 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 * Assert the queue revalidates exactly these paths at these priorities, in
 	 * this order.
 	 *
-	 * Keyed by path, which is lossless only because the queue's `permalink`
-	 * column is UNIQUE: no two entries of one site can revalidate the same path,
-	 * so no key can collapse onto another. Assert with
+	 * Keyed by path, which is lossless only because the queue's
+	 * `permalink_hash` column is UNIQUE: no two entries of one site can
+	 * revalidate the same path, so no key can collapse onto another. It used to
+	 * name `permalink` — the key was declared over that `TEXT` column, which only
+	 * MariaDB accepts, so on every other engine the guarantee this sentence
+	 * rests on was simply absent (#121, ADR 0029). Assert with
 	 * `assertQueueRevalidates()` as well when the count matters to the test.
 	 *
 	 * @param int[]  $priorities The expected path => priority map, drain order first.
