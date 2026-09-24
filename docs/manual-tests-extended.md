@@ -28,17 +28,17 @@ page.
 
 - [ ] **Clear the revalidate path, leaving it empty, save.** Expect the field to
       show its placeholder `/api/revalidate`, not an empty box with no hint.
-- [ ] **Update a post and run the queue cron.** Expect a failure in the log
-      naming `http_404` — the dev server serves the single-path revalidation at
+- [ ] **Update a post.** Expect `❌ Failed to revalidate 1 change (post)` in the
+      log naming `http_404` — the dev server serves revalidations at
       `/revalidate` only, so the default path composing to `/api/revalidate` is
       *expected* to 404 here. That the request went to `/api/revalidate` at all is
       what this proves.
 - [ ] **Type the path without its leading slash** — `revalidate` — save, update a
-      post, run cron. Expect a success: exactly one slash is inserted between the
-      domain and the path.
+      post. Expect a success, `✅ Revalidated 1 change (post)`: exactly one slash
+      is inserted between the domain and the path.
 - [ ] **Put a trailing slash on the domain** — `http://host.docker.internal:8083/`
-      — save, update, run cron. Expect a success, and no `//` in the logged
-      permalink's endpoint.
+      — save, update a post. Expect a success, and the post change in the
+      revalidate server console: a `//revalidate` would not have been served.
 - [ ] **Set the domain to `ftp://host.docker.internal:8083` and save.** (The
       field is `type="url"`, so the browser itself stops a value with no scheme
       at all; `ftp://` gets past it.) Expect a single error notice on the
@@ -94,11 +94,15 @@ them at its end, so run this after it or check the Next.js API tab first.
 
 ## C. Which posts revalidate, and at which path
 
-- [ ] **Publish a post with visibility Private.** Expect a revalidation — private
-      posts are revalidatable.
-- [ ] **Publish a post with a password.** Expect a revalidation.
-- [ ] **Save a draft that has never been published.** Expect **no** revalidation
-      and no queue row. It was never a candidate, so nothing is logged as refused
+The oracle is the revalidate server console, which prints each post change as
+`= Revalidating (v2): {"subject":"post",…,"before":…,"after":…}`.
+
+- [ ] **Publish a post with visibility Private.** Expect a post change with
+      `"before":null` and its URI as the `after` — private posts are
+      revalidatable.
+- [ ] **Publish a post with a password.** Expect a post change.
+- [ ] **Save a draft that has never been published.** Expect **no** post change
+      in the console. It was never a candidate, so nothing is logged as refused
       either — absence here is correct, not a swallowed error.
 - [ ] **Register a non-viewable post type and publish one:**
       ```sh
@@ -106,40 +110,43 @@ them at its end, so run this after it or check the Next.js API tab first.
       <?php register_post_type("njr_hidden", ["public"=>false,"show_ui"=>true,"label"=>"Hidden"]);
       PHP'
       ```
-      Publish one from the new **Hidden** menu. Expect **no** revalidation.
+      Publish one from the new **Hidden** menu. Expect **no** post change.
 - [ ] **Look at what the admin offers for Hidden.** Expect **no** Purge caches
       entry in the Hidden list's Bulk actions dropdown, and no **Hidden** switch
       under either *Allow purge all options* or *On menu update options* in the
       settings: a post type the gate declines every post of is offered nothing.
 - [ ] **Admit it with the filter.** Append to that mu-plugin
-      `add_filter("nextjs_revalidate_purge_should_revalidate_post_on_save", "__return_true");`
-      and publish another Hidden post. Expect a revalidation — the site has the
-      last word over the viewability gate. Expect the bulk action and the two
-      switches to be **still absent**: that filter answers about one post, so it
-      widens the gate and not what the admin offers.
+      `add_filter("nextjs_revalidate_should_revalidate_post", "__return_true");`
+      and publish another Hidden post. Expect a post change with
+      `"type":"njr_hidden"` — the site has the last word over the viewability
+      gate. Expect the bulk action and the two switches to be **still absent**:
+      that filter answers about one post, so it widens the gate and not what
+      the admin offers.
 - [ ] **Make the post type viewable instead.** Append to that mu-plugin
       `add_filter("is_post_type_viewable", function($v, $pt) { return "njr_hidden" === $pt->name ? true : $v; }, 10, 2);`
       and reload the settings page. Expect a **Hidden** switch in both lists, and
       **Purge caches** in the Hidden list's Bulk actions — core's own filter
       moves the offer and the gate together. Then
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-runbook-cpt.php`.
-- [ ] **Change a published post's slug and Update.** Expect a revalidation, and
-      record **which** path arrives: WordPress reports the new permalink, so the
-      old path is not revalidated and the front-end may keep a stale page at the
-      old slug. Behaviour to know rather than a step that fails.
+- [ ] **Change a published post's slug and Update.** Expect **one** post change
+      whose `before` holds the old path and whose `after` holds the new one. v1
+      revalidated only the new permalink and left the old path cached; the
+      `before` is what reaches it now.
 
 ## D. Row action and bulk action
 
 - [ ] **Posts list → hover a published post.** Expect a **Purge cache** row
       action beside Edit and Trash.
 - [ ] **Click it.** Expect to land back on the posts list with "“Runbook post”
-      cache will be purged shortly.", a revalidation to follow, and the purge
+      cache will be purged shortly.", a post change in the console whose
+      `before` and `after` are both `{"uri":"/runbook-post/"}`, and the purge
       query arg gone from the URL once the notice has been shown.
 - [ ] **Hover a draft.** Expect **no** Purge cache action.
 - [ ] **Select both published posts → Bulk actions → Purge caches → Apply.**
-      Expect "2 caches will be purged shortly." and two revalidations.
-- [ ] **Repeat the bulk action on the Pages list.** Expect the same, with the
-      page's path.
+      Expect "2 caches will be purged shortly." and **one** console line
+      carrying two post changes, each with both sides its current URI.
+- [ ] **Repeat the bulk action on the Pages list.** Expect the same, with
+      `"type":"page"` and the page's path.
 - [ ] **Trash a post from the row action and confirm the list still works.**
       Expect no PHP notice and no broken action column.
 
@@ -207,8 +214,8 @@ in one v2 `POST`, and nothing about it reaches the queue. Expect
       the database post, and there is no save to hook.
 - [ ] **Switch themes**: activate another installed theme, then switch back.
       Expect one templates change per switch — every template changed at once.
-- [ ] **Save an ordinary post.** Expect a queue row and **no** templates change:
-      a post has not touched the snapshot.
+- [ ] **Save an ordinary post.** Expect a post change and **no** templates
+      change: a post has not touched the snapshot.
 - [ ] **Save a navigation menu** (Appearance → Menus, with the On menu update
       setting off). Expect **no** templates change. Menu items are fetched at
       request time by the front-end and are deliberately not in the snapshot.
@@ -239,16 +246,16 @@ in one v2 `POST`, and nothing about it reaches the queue. Expect
 - [ ] **Request an upload beside it**: add any image to the Media Library, then
       `curl -sI` its URL. Expect `200 OK`. A `403` means a guard landed in
       uploads itself and the site no longer serves its own media.
-- [ ] **Turn logging off** on the Debug tab, save, update a post, run cron.
+- [ ] **Turn logging off** on the Debug tab, save, update a post.
       Expect the revalidation to still happen (console) and **no new lines** in
       the file. Every line the plugin can write passes through that one setting.
 - [ ] **Turn logging back on** and confirm new lines appear.
-- [ ] **Read a success line.** Expect
-      `[timestamp]\t[INFO]\t[RevalidateQueue.php]  #id: ✅ Revalidated in Ns <permalink> (priority: N)`.
-- [ ] **Break the secret, fail once, read the failure line.** Expect `[ERROR]`
-      and `❌ Failed to revalidate after Ns <permalink> (priority: N) —
-      http_401: The front-end answered 401.` — the code and message the front-end
-      actually produced, not a generic failure. Restore the secret.
+- [ ] **Update a post and read its success line.** Expect
+      `[timestamp]\t[INFO]\t[PendingChanges.php] ✅ Revalidated 1 change (post)`.
+- [ ] **Break the secret, update a post, read the failure line.** Expect
+      `[ERROR]` and `❌ Failed to revalidate 1 change (post) — http_401: The
+      front-end answered 401.` — the code and message the front-end actually
+      produced, not a generic failure. Restore the secret.
 - [ ] **Enqueue while configured, then clear the secret before running cron.**
       Expect `⛔ Refused` with `not_configured` — a refusal given at the drain
       rather than at enqueue, and visibly not the same thing as a failure.
@@ -275,11 +282,11 @@ A site that is unconfigured on purpose can silence its notice with the
 `nextjs_revalidate_show_unconfigured_notice` filter. The steps below run as the
 administrator.
 
-- [ ] **Set the secret to `wrong-secret` and update a post three times, forcing
-      the cron after each, then clear the revalidate domain and open the post in
-      the block editor.** Expect the degraded notice in the block editor, standing
-      in for the unconfigured notice that core hides there. This is the baseline
-      the next step silences.
+- [ ] **Set the secret to `wrong-secret` and update a post three times, then
+      clear the revalidate domain and open the post in the block editor.**
+      Expect the degraded notice in the block editor, standing in for the
+      unconfigured notice that core hides there. This is the baseline the next
+      step silences.
 - [ ] **Silence the notice, then reload the post in the block editor:**
       ```sh
       npx wp-env run cli -- bash -c 'mkdir -p wp-content/mu-plugins && cat > wp-content/mu-plugins/njr-runbook-silence.php <<PHP
@@ -403,8 +410,10 @@ Precondition: O done, main site configured, `second` not.
       Settings screen at `http://localhost:8080/second/wp-admin`.
 - [ ] **Change the main site's secret to something else.** Expect `second`'s
       secret unchanged.
-- [ ] **Publish a post on `second`.** Expect a revalidation carrying `second`'s
-      permalink, landing in `second`'s queue table — not the main site's.
+- [ ] **Publish a post on `second`.** Expect a post change in the console whose
+      `after` is `second`'s URI — `{"uri":"/second/<slug>/"}` — and
+      `✅ Revalidated 1 change (post)` in `second`'s log: it travelled with
+      `second`'s secret, not the main site's.
 - [ ] **Expect a separate log file** for `second`, at the path its own Debug
       tab reports: beneath `wp-content/uploads/sites/2/nextjs-revalidate/`, and
       under a different filename from the main site's.
@@ -588,11 +597,13 @@ what the backfill exists to avoid needing.
       npx wp-env run cli wp db query "SELECT permalink, permalink_hash, priority FROM wp_revalidate_queue"
       ```
       Expect the row still there at priority 7, with a 64-character
-      `permalink_hash` beside it. Check this before the next step: updating a
-      post schedules a drain, which takes the row with it.
-- [ ] **Update the post published in U.** Expect a revalidation of its path in
-      the dev server console: the table carried through the upgrade takes a new
-      entry under its new key.
+      `permalink_hash` beside it. Check this before the next step: enqueueing
+      schedules a drain, which takes the row with it.
+- [ ] **Enqueue the post published in U, then run the queue cron**:
+      `npx wp-env run cli wp eval 'nextjs_revalidate_purge_url( get_permalink( get_posts()[0] ) );'`.
+      Expect a revalidation of its path in the dev server console: the table
+      carried through the upgrade takes a new entry under its new key. (Saving
+      the post would not do: a post is reported as a change, never queued.)
 - [ ] **Reload wp-admin several times.** Expect the ledger to stay put and
       nothing to be re-migrated: a migration decides by the ledger, never by the
       plugin version.

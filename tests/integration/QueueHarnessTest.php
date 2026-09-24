@@ -26,7 +26,7 @@ class QueueHarnessTest extends QueueTestCase {
 	}
 
 	/**
-	 * Proving test 1 — enqueue a path, the queue holds exactly it.
+	 * Proving test — enqueue a path, the queue holds exactly it.
 	 */
 	public function test_the_queue_revalidates_a_path_that_was_enqueued() {
 		$this->configure_site();
@@ -174,22 +174,5 @@ class QueueHarnessTest extends QueueTestCase {
 		$this->assertNotFalse( $this->queue()->add_item( $permalink ), 'The second enqueue was refused instead of recognising the permalink as already queued.' );
 
 		$this->assertQueueHolds( [ $permalink ] );
-	}
-
-	/**
-	 * Proving test 2 — the fixture path is reachable: a configured site
-	 * publishes a revalidatable post and the queue holds that post's permalink.
-	 *
-	 * Declared last on purpose. It creates a post and *then* enqueues, so the
-	 * plugin's own `COMMIT` commits that post past the rollback — see
-	 * `QueueTestCase`. Nothing enforces the position, so a test appended below
-	 * this one inherits a stray published post; put it above instead.
-	 */
-	public function test_publishing_a_post_on_a_configured_site_enqueues_its_permalink() {
-		$this->configure_site();
-
-		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-
-		$this->assertQueueHolds( [ get_permalink( $post_id ) ] );
 	}
 }

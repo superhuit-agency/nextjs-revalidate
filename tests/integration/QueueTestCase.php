@@ -11,7 +11,9 @@ use NextJsRevalidate\Logger;
 use NextJsRevalidate\RevalidateItem;
 use NextJsRevalidate\RevalidateQueue;
 use NextJsRevalidate\Settings;
+use NextJsRevalidate\PendingChanges;
 use ReflectionMethod;
+use ReflectionProperty;
 use WP_UnitTestCase;
 
 /**
@@ -93,6 +95,13 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 		$this->unconfigure_site();
 		$this->queue()->unschedule_cron();
 		$this->reset_queue();
+
+		// A post a fixture saves into place is reported as a change too, and
+		// the pending changes outlive the test: let them go rather than have
+		// them delivered at the cap, or when the run ends.
+		$pending = new ReflectionProperty( PendingChanges::class, 'pending' );
+		$pending->setAccessible( true );
+		$pending->setValue( \NextJsRevalidate::init()->pendingChanges, [] );
 
 		parent::tear_down();
 	}

@@ -90,16 +90,23 @@ Precondition: section 1 done.
 
 Precondition: spine state.
 
+A post save is a **post change**, delivered when the save's request ends — no
+cron, and nothing in the queue. The console prints each change as it was sent;
+`N` below is the post's ID.
+
 - [ ] **Edit "Runbook post", change a word, Update.** Expect
-      `= Revalidating: /runbook-post/` in the revalidate server console within a
-      minute, or immediately after forcing the cron.
-- [ ] **Check the log.** Expect a line of the shape
-      `#12: ✅ Revalidated in 0.04s http://localhost:8080/runbook-post/ (priority: 10)`
-      — the queue holds the permalink, and the front-end is asked for the path.
-- [ ] **Move it to Draft.** Expect a revalidation of `/runbook-post/` — the path
-      it held while published is the one the front-end still has cached.
-- [ ] **Move it to Trash, then restore and republish.** Expect a revalidation
-      each time.
+      `= Revalidating (v2): {"subject":"post","id":N,"type":"post","before":{"uri":"/runbook-post/"},"after":{"uri":"/runbook-post/"}}`
+      in the revalidate server console straight away — one line, two equal
+      sides.
+- [ ] **Check the log.** Expect a line ending `✅ Revalidated 1 change (post)`.
+- [ ] **Move it to Draft.** Expect `"before":{"uri":"/runbook-post/"},"after":null`
+      — the path it held while published is the one the front-end still has
+      cached, and it has no page now.
+- [ ] **Publish it again.** Expect `"before":null,"after":{"uri":"/runbook-post/"}`.
+- [ ] **Move it to Trash.** Expect `"before":{"uri":"/runbook-post/"},"after":null`
+      — never the `__trashed` name the post takes on the way in. **Restore it,
+      then publish it.** Expect nothing on the restore — a restored post comes
+      back a draft — and `"before":null` on the publish.
 
 ## 4. The queue
 
@@ -111,8 +118,6 @@ Precondition: spine state.
       caches queue" link.
 - [ ] **Load admin pages until it drains.** Expect the badge to fall to zero, the
       table to empty, and one console line per path with no duplicates.
-- [ ] **Update the same post twice before the cron runs.** Expect **one** queue
-      row for that permalink, not two.
 - [ ] **Queue a batch, then use the reset control on the Queue tab.** Expect the
       notice "Queue correctly resetted." and an empty table.
 
@@ -128,8 +133,9 @@ end — do not stop halfway.
       you are on the settings screen itself.
 - [ ] **Clear the revalidate domain too, save.** Expect the notice to now read
       "its revalidate domain and secret are missing".
-- [ ] **Update "Runbook post".** Expect **nothing** in the console and **no new
-      queue row** — the revalidation was refused at enqueue, not queued and
+- [ ] **Update "Runbook post".** Expect **nothing** in the console, and
+      `⛔ Refused a post change — site not configured (missing: domain, secret)`
+      in the log — the change was refused when it was produced, not held and
       dropped later. Then admin bar → Next.js revalidate → All: expect an error
       notice "Revalidate all: nothing was queued, this site is not configured."
 - [ ] **Restore the domain and secret, save.** Expect the notice gone from every
@@ -140,11 +146,11 @@ end — do not stop halfway.
 Precondition: spine state. This section deliberately breaks the secret and
 repairs it at the end.
 
-- [ ] **Set the secret to `wrong-secret`, save, then update a post three times,
-      forcing the cron after each.** The site is still *configured*, so these are
-      attempted and rejected — failures, not refusals. Expect three
-      `❌ Failed to revalidate … http_401: The front-end answered 401.` lines in
-      the log.
+- [ ] **Set the secret to `wrong-secret`, save, then update a post three times.**
+      The site is still *configured*, so these are attempted and rejected —
+      failures, not refusals. Expect three
+      `❌ Failed to revalidate 1 change (post) — http_401: The front-end answered 401.`
+      lines in the log, one per save.
 - [ ] **Load any classic admin screen.** Expect an error notice: "Next.js
       revalidate is not keeping this site up to date — 3 of the last 10
       revalidations failed…", naming the most recent error as "the front-end

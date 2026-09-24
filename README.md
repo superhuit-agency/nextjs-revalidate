@@ -230,20 +230,37 @@ is viewable — WordPress's own `publicly_queryable` test, via
 [`is_post_type_viewable()`](https://developer.wordpress.org/reference/functions/is_post_type_viewable/)
 — and its status is `publish` or `private`, or it has just left the front-end:
 the save moved it from `publish` or `private` to any other status — `draft`,
-`pending`, `future`, `trash`, or one an editorial workflow plugin registers. Its
-permalink from before the save is the one revalidated. Posts of a post type that
-is not viewable are never revalidated, whatever their status.
+`pending`, `future`, `trash`, or one an editorial workflow plugin registers.
+Posts of a post type that is not viewable are never revalidated, whatever their
+status.
+
+A revalidated post is reported as a `post` change, which describes the post as
+the front-end sees it before and after:
+
+```json
+{ "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/" }, "after": { "uri": "/hello-world/" } }
+```
+
+`uri` is the path from the domain root. A side is `null` when the post is not on
+the front-end on that side — its status is not `publish` or `private` — so a
+publish has no `before`, and a post that has left the front-end, or has been
+deleted, has no `after`. An edit has two equal sides, a slug change two
+different URIs, and the **Purge cache** row action, bulk action and admin bar
+entry report the post as it stands, with both sides its current URI. A post
+saved several times in one request is reported once, from the first `before` to
+the last `after`. A revision stands for the post it belongs to, and an
+attachment is never reported.
 
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
 
 Permanently deleting a post asks the same question of the post as it stands just
-before it is gone, and revalidates its permalink so the front-end stops serving
-a page for content that no longer exists. A post already in the trash is not
-revalidated again: trashing it revalidated that page already, and the front-end
-has had no reason to cache it since — so emptying the trash, by hand or through
-WordPress's scheduled sweep, enqueues nothing. Deleting a revision revalidates
-nothing either; the post it belongs to still has its page.
+before it is gone, and reports its URI with no `after`, so the front-end stops
+serving a page for content that no longer exists. A post already in the trash is
+not reported again: trashing it reported that page gone already, and the
+front-end has had no reason to cache it since — so emptying the trash, by hand
+or through WordPress's scheduled sweep, reports nothing. Deleting a revision
+reports nothing either; the post it belongs to still has its page.
 
 ## Which post types the admin offers
 
@@ -460,14 +477,27 @@ add_filter( 'nextjs_revalidate_should_revalidate_redirect', function( $should_re
 | path | string | The source path, normalised |
 | redirect | object | The redirect the path is the source of, as Redirection's own `Red_Item` |
 
-### nextjs_revalidate_purge_should_revalidate_post_on_save
+### nextjs_revalidate_should_revalidate_post
 
 Filters whether the given post is revalidated. Applied last, so it can admit a
-post the rules above decline, or decline one they admit.
+post the rules above decline, or decline one they admit. Every entry point asks
+it — a save, a permanent delete, the row action, the bulk action and the admin
+bar.
+
+It decides whether a post is a candidate, not what its change says: the two
+sides of the change are still read off the post's status, so a post admitted
+while it is on the front-end on neither side — a draft saved as a draft — is not
+reported.
+
+**Renamed in 2.0.0** from `nextjs_revalidate_purge_should_revalidate_post_on_save`,
+which it was called when only a save asked it. The old name is still applied,
+before this one, through `apply_filters_deprecated()`: a callback on it keeps
+working, and under `WP_DEBUG` WordPress raises a deprecation notice naming this
+filter. Move the callback here; the old name goes in 3.0.
 
 #### Usage
 ```php
-add_filter( 'nextjs_revalidate_purge_should_revalidate_post_on_save', function( $should_revalidate, $post_id ) {
+add_filter( 'nextjs_revalidate_should_revalidate_post', function( $should_revalidate, $post_id ) {
 	if ( 'my-headless-type' === get_post_type( $post_id ) ) return 'publish' === get_post_status( $post_id );
 	return $should_revalidate;
 }, 10, 2 );
@@ -502,17 +532,38 @@ add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_re
 | taxonomy_name | string | The taxonomy name |
 | taxonomy | WP_Taxonomy\|false | The taxonomy, or false when none is registered under that name |
 
-### nextjs_revalidate_purge_action_permalink
+### nextjs_revalidate_change
 
-Filters the permalink added to the purge queue by the "Purge cache" row and bulk
-actions. Return `false` to keep it out of the queue.
+Filters every change before it joins the request's pending changes. Return the
+change, altered or not, or `false` to drop it. What is returned is sent as it
+is, so keep it in the shape your front-end reads.
+
+#### Usage
+```php
+// Keep one post's manual and automatic revalidations away from the front-end.
+add_filter( 'nextjs_revalidate_change', function( $change ) {
+	if ( 'post' === $change['subject'] && 123 === $change['id'] ) return false;
+	return $change;
+} );
+```
 
 #### Arguments
 
 | Name | Type | Description |
 | --- | --- | --- |
-| permalink | string\|false | The post permalink. False if the post is not revalidatable |
-| post_id | int | The post ID |
+| change | array | The change, with its `subject` and that subject's fields — a post's are `id`, `type`, `before` and `after` |
+
+### nextjs_revalidate_purge_action_permalink
+
+**Retired in 2.0.0, and no longer applied.** It filtered the permalink the
+"Purge cache" row action, bulk action and admin bar entry put in the queue. A
+post is now reported as a change keyed by its ID, which carries no permalink to
+rewrite. A callback still on this filter is never called; when one of those
+actions runs, `_deprecated_hook()` names
+[`nextjs_revalidate_change`](#nextjs_revalidate_change) as the replacement.
+Move the callback there — it sees every change rather than those three entry
+points, so check `$change['subject']` is `post` — and return `false` where it
+returned `false`.
 
 ### nextjs_revalidate_show_unconfigured_notice
 
@@ -578,9 +629,9 @@ first.** A failing script's own exit code is the command's.
 ### `npm run test:integration` — the integration suite
 
 PHPUnit tests under `tests/integration/` that boot WordPress with this plugin
-active and assert on the **revalidation queue**: given some WordPress state and
-an event, which paths does the queue revalidate, in what order, at what
-priority?
+active and assert on what an event produces: given some WordPress state and an
+event, which changes are **pending** — a post's save or delete — or which paths
+does the **revalidation queue** revalidate, in what order, at what priority?
 
 From a fresh checkout:
 

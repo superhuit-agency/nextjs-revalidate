@@ -1,33 +1,34 @@
 <?php
 /**
- * A post permanently deleted revalidates its path — issue #77.
+ * A post permanently deleted is reported gone — issue #77.
  *
- * The seam is the revalidation queue's contents: each test arranges a post,
- * empties the queue of whatever saving that post into place enqueued, calls
- * `wp_delete_post()` with force, and asserts which paths the queue then holds.
+ * The seam is the pending changes: each test arranges a post, lets go of
+ * whatever saving that post into place reported, calls `wp_delete_post()` with
+ * force, and asserts which changes are then pending — a deleted post's is its
+ * URI before, and no `after`.
  * Nothing here asserts that a hook was added or which one — moving the handler
  * from `before_delete_post` to anything else that can still read the post's
- * permalink should break none of it.
+ * URI should break none of it.
  *
- * Only this suite can see it: the permalink of a real post, composed from a row
+ * Only this suite can see it: the URI of a real post, composed from a row
  * that exists at the moment the delete starts and not a moment later, is the
  * whole of what was missing — as is which deletes `wp_delete_post()` routes to
  * the trash instead. The handler's own decisions are pinned by
  * `tests/post-delete-revalidation-test.php`, and the gate they ask by
  * `tests/revalidatable-post-test.php`; neither needs WordPress.
  *
- * What the trash does on its way in is #68's, and is not asserted here: a save
- * time revalidation removes its own hook for the rest of the request, so a
- * fixture that enqueues would decide what a later one in the same process can.
- * These tests reset the queue between arranging and deleting for that reason,
- * and read only the delete's own answer.
+ * What the trash does on its way in is `PostChangeTest`'s. These tests let go
+ * of the pending changes between arranging and deleting, and read only the
+ * delete's own answer.
  *
  * @package NextJsRevalidate
  */
 
 namespace NextJsRevalidate\Tests;
 
-class PostDeletionRevalidationTest extends QueueTestCase {
+use NextJsRevalidate\Change;
+
+class PostDeletionRevalidationTest extends PendingChangesTestCase {
 
 	/**
 	 * The post types this test registered, to be unregistered after it.
@@ -60,21 +61,17 @@ class PostDeletionRevalidationTest extends QueueTestCase {
 	/**
 	 * Publish, then delete outright with no trash step: the front-end holds a
 	 * page for a post that no longer exists, and nothing else is ever going to
-	 * tell it otherwise. This is what used to enqueue nothing at all.
+	 * tell it otherwise. This is what used to report nothing at all.
 	 */
-	public function test_deleting_a_published_post_revalidates_its_path() {
+	public function test_deleting_a_published_post_is_reported_gone() {
 		$post_id = $this->published_post();
 		$path    = $this->path_of( get_permalink( $post_id ) );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertQueueRevalidates( [ $path ] );
-		$this->assertQueueRevalidatesAtPriorities(
-			[ $path => 10 ],
-			'A post leaving the site holds no special place in the queue.'
-		);
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null ) ] );
 	}
 
 	/**
@@ -82,15 +79,15 @@ class PostDeletionRevalidationTest extends QueueTestCase {
 	 * same event. The status axis admits private, which core's own
 	 * `is_post_status_viewable()` does not.
 	 */
-	public function test_deleting_a_private_post_revalidates_its_path() {
+	public function test_deleting_a_private_post_is_reported_gone() {
 		$post_id = $this->published_post( [ 'post_status' => 'private' ] );
 		$path    = $this->path_of( get_permalink( $post_id ) );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertQueueRevalidates( [ $path ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null ) ] );
 	}
 
 	/**
@@ -99,34 +96,34 @@ class PostDeletionRevalidationTest extends QueueTestCase {
 	 * `wp post delete` on the command line most of all. The everyday case for a
 	 * headless site, and the one the issue was found through.
 	 */
-	public function test_deleting_a_published_post_of_a_custom_type_revalidates_its_path() {
+	public function test_deleting_a_published_post_of_a_custom_type_is_reported_gone() {
 		$post_type = $this->viewable_post_type( 'njr_deletable' );
 
 		$post_id = $this->published_post( [ 'post_type' => $post_type ] );
 		$path    = $this->path_of( get_permalink( $post_id ) );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertQueueRevalidates( [ $path ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, $post_type, $path, null ) ] );
 	}
 
 	/**
 	 * A published post is deleted with its revisions, each of which reaches the
 	 * same hook. What comes out is the post's own revalidation and nothing else.
 	 */
-	public function test_deleting_a_post_with_revisions_revalidates_its_path_once() {
+	public function test_deleting_a_post_with_revisions_is_reported_gone_once() {
 		$post_id = $this->published_post();
 		$path    = $this->path_of( get_permalink( $post_id ) );
 
 		$this->revise( $post_id );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertQueueRevalidates( [ $path ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null ) ] );
 	}
 
 	/**
@@ -135,54 +132,54 @@ class PostDeletionRevalidationTest extends QueueTestCase {
 	 * there, unchanged, and asking for it to be rebuilt would be work nothing
 	 * asked for.
 	 */
-	public function test_deleting_a_revision_revalidates_nothing() {
+	public function test_deleting_a_revision_reports_nothing() {
 		$post_id = $this->published_post();
 
 		$revisions = $this->revise( $post_id );
 		$this->assertNotEmpty( $revisions, 'The fixture post has no revision to delete.' );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		wp_delete_post_revision( reset( $revisions )->ID );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
-	// What the delete deliberately does not enqueue
+	// What the delete deliberately does not report
 	// ====
 
 	/**
 	 * A post already in the trash was revalidated when it was trashed, and the
 	 * front-end has had no reason to cache it since — so emptying the trash,
 	 * whether by hand or through the `wp_scheduled_delete` sweep that is how
-	 * most posts actually leave a site, enqueues nothing.
+	 * most posts actually leave a site, reports nothing.
 	 *
 	 * Its permalink by then carries the `__trashed` suffix and names a path the
 	 * front-end never held, which is the second reason not to send it.
 	 */
-	public function test_deleting_a_trashed_post_revalidates_nothing() {
+	public function test_deleting_a_trashed_post_reports_nothing() {
 		$post_id = $this->published_post();
 
 		wp_trash_post( $post_id );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	/**
 	 * A draft has no page on the front-end to make go away.
 	 */
-	public function test_deleting_a_draft_revalidates_nothing() {
+	public function test_deleting_a_draft_reports_nothing() {
 		$post_id = $this->published_post( [ 'post_status' => 'draft' ] );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	/**
@@ -190,16 +187,16 @@ class PostDeletionRevalidationTest extends QueueTestCase {
 	 * route no query for is not one the front-end holds a page for, whatever the
 	 * status of its posts. See ADR 0005.
 	 */
-	public function test_deleting_a_post_of_a_type_that_is_not_viewable_revalidates_nothing() {
+	public function test_deleting_a_post_of_a_type_that_is_not_viewable_reports_nothing() {
 		$post_type = $this->registered_post_type( 'njr_not_viewable', [ 'public' => false, 'publicly_queryable' => false ] );
 
 		$post_id = $this->published_post( [ 'post_type' => $post_type ] );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
 	}
 
 	// The site has the last word
@@ -216,13 +213,13 @@ class PostDeletionRevalidationTest extends QueueTestCase {
 		$post_id = $this->published_post( [ 'post_type' => $post_type ] );
 		$path    = $this->path_of( get_permalink( $post_id ) );
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		$this->with_verdict( $post_id, true, function() use ( $post_id ) {
 			wp_delete_post( $post_id, true );
 		});
 
-		$this->assertQueueRevalidates( [ $path ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, $post_type, $path, null ) ] );
 	}
 
 	/**
@@ -231,13 +228,35 @@ class PostDeletionRevalidationTest extends QueueTestCase {
 	public function test_the_filter_declines_a_deleted_post() {
 		$post_id = $this->published_post();
 
-		$this->reset_queue();
+		$this->reset_pending_changes();
 
 		$this->with_verdict( $post_id, false, function() use ( $post_id ) {
 			wp_delete_post( $post_id, true );
 		});
 
-		$this->assertQueueIsEmpty();
+		$this->assertNoPendingChanges();
+	}
+
+	/**
+	 * The filter's v1 name is still applied, deprecated since 2.0.0 — a site
+	 * hooking it keeps its verdicts, and WordPress says the name is going.
+	 */
+	public function test_the_filter_under_its_v1_name_still_declines_a_deleted_post() {
+		$this->setExpectedDeprecated( 'nextjs_revalidate_purge_should_revalidate_post_on_save' );
+
+		$post_id = $this->published_post();
+
+		$this->reset_pending_changes();
+
+		$declined = function( $should_revalidate, $filtered_post_id ) use ( $post_id ) {
+			return ( intval( $filtered_post_id ) === $post_id ? false : $should_revalidate );
+		};
+
+		add_filter( 'nextjs_revalidate_purge_should_revalidate_post_on_save', $declined, 10, 2 );
+		wp_delete_post( $post_id, true );
+		remove_filter( 'nextjs_revalidate_purge_should_revalidate_post_on_save', $declined, 10 );
+
+		$this->assertNoPendingChanges();
 	}
 
 	// Fixtures
@@ -314,8 +333,8 @@ class PostDeletionRevalidationTest extends QueueTestCase {
 			return ( intval( $filtered_post_id ) === $post_id ? $verdict : $should_revalidate );
 		};
 
-		add_filter( 'nextjs_revalidate_purge_should_revalidate_post_on_save', $forced, 10, 2 );
+		add_filter( 'nextjs_revalidate_should_revalidate_post', $forced, 10, 2 );
 		$during();
-		remove_filter( 'nextjs_revalidate_purge_should_revalidate_post_on_save', $forced, 10 );
+		remove_filter( 'nextjs_revalidate_should_revalidate_post', $forced, 10 );
 	}
 }
