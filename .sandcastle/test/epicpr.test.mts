@@ -167,6 +167,7 @@ describe('narrativeArgs', () => {
 
 		assert.equal(args[0], '--print');
 		assert.ok(args.includes('--model'));
+		assert.equal(args[args.indexOf('--effort') + 1], 'high');
 		assert.equal(args[args.length - 1], 'write it');
 	});
 });

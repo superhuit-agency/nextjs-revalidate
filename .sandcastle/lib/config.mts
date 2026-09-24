@@ -52,7 +52,10 @@ export const IDLE_TIMEOUT_SECONDS = 600;
  * the strongest model is bounded. Downgrade this and the gate does not get any
  * stricter.
  */
-export const IMPLEMENTER_MODEL = 'claude-opus-5';
+export const IMPLEMENTER_MODEL = 'claude-opus-5-5';
+
+/** The implementer's reasoning effort, passed to Claude Code as `--effort`. */
+export const IMPLEMENTER_EFFORT = 'high';
 
 /**
  * The model that writes an epic PR's body — the one agent in the finalize
@@ -60,7 +63,10 @@ export const IMPLEMENTER_MODEL = 'claude-opus-5';
  * did, and a weaker reading of the branch would produce a body a reviewer
  * cannot trust.
  */
-export const PR_BODY_MODEL = 'claude-opus-5';
+export const PR_BODY_MODEL = 'claude-opus-5-5';
+
+/** That agent's reasoning effort, passed to Claude Code as `--effort`. */
+export const PR_BODY_EFFORT = 'high';
 
 /**
  * How long that one call gets. Short on purpose: it writes a few hundred words

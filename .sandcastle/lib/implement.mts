@@ -20,6 +20,7 @@ import {
 	COMPLETION_SIGNAL,
 	GATE_COMMAND,
 	IDLE_TIMEOUT_SECONDS,
+	IMPLEMENTER_EFFORT,
 	IMPLEMENTER_MODEL,
 	MAX_ITERATIONS,
 	SANDBOX_IMAGE,
@@ -300,7 +301,7 @@ export async function realDeps(repoRoot: string, log: (message: string) => void)
 
 	return {
 		repoRoot,
-		agent: claudeCode(IMPLEMENTER_MODEL),
+		agent: claudeCode(IMPLEMENTER_MODEL, { effort: IMPLEMENTER_EFFORT }),
 		promptFile: join(repoRoot, '.sandcastle', 'prompts', 'implement.md'),
 		commitsAhead: (branch, base) => commitsAhead(repoRoot, branch, base),
 		log,

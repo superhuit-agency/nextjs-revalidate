@@ -15,6 +15,7 @@ import {
 	CONCURRENCY,
 	GATE_COMMAND,
 	IDLE_TIMEOUT_SECONDS,
+	IMPLEMENTER_EFFORT,
 	IMPLEMENTER_MODEL,
 	MAX_ITERATIONS,
 } from '../lib/config.mts';
@@ -324,11 +325,12 @@ describe('pool', () => {
 });
 
 describe('the budget the ticket set', () => {
-	it('is three containers, 30 iterations, a 600s idle timeout and Opus 5', () => {
+	it('is three containers, 30 iterations, a 600s idle timeout and Opus 5.5 at high effort', () => {
 		assert.equal(CONCURRENCY, 3);
 		assert.equal(MAX_ITERATIONS, 30);
 		assert.equal(IDLE_TIMEOUT_SECONDS, 600);
-		assert.equal(IMPLEMENTER_MODEL, 'claude-opus-5');
+		assert.equal(IMPLEMENTER_MODEL, 'claude-opus-5-5');
+		assert.equal(IMPLEMENTER_EFFORT, 'high');
 	});
 });
 

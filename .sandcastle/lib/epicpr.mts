@@ -19,7 +19,7 @@
  *   is.
  */
 import { execFileSync } from 'node:child_process';
-import { PR_BODY_MODEL, PR_BODY_TIMEOUT_MS } from './config.mts';
+import { PR_BODY_EFFORT, PR_BODY_MODEL, PR_BODY_TIMEOUT_MS } from './config.mts';
 import { messageOf } from './errors.mts';
 import { git } from './git.mts';
 import type { PlanItem } from './plan.mts';
@@ -203,7 +203,7 @@ export function realBodyFor(sources: BodySources): (item: PlanItem) => string {
 
 /** Arguments for the one-shot Claude Code call that writes the narrative. */
 export function narrativeArgs(prompt: string): string[] {
-	return ['--print', '--model', PR_BODY_MODEL, prompt];
+	return ['--print', '--model', PR_BODY_MODEL, '--effort', PR_BODY_EFFORT, prompt];
 }
 
 /**
