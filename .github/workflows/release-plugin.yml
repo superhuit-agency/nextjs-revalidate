@@ -1,6 +1,11 @@
 ---
 name: "Release NEXT.js revalidate plugin"
 
+# Every action is pinned to a commit SHA, with the release it resolves to in a
+# comment. A tag or a branch can be moved to other code, and this job holds
+# `contents: write` and the release-belt SSH key. Dependabot bumps the SHA and the
+# comment together (ADR 0032).
+
 on:
   push:
     tags:
@@ -14,17 +19,17 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # PHP Composer dependencies
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: "7.4"
           coverage: none
         env:
           COMPOSER_TOKEN: ${{ github.token }}
       - id: composer-cache
-        uses: actions/cache@v3
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: vendor
           key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
@@ -34,7 +39,7 @@ jobs:
         run: composer install --no-dev --prefer-dist --no-progress
 
       - name: Install node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: "npm"
@@ -66,17 +71,24 @@ jobs:
           vendor/
           EOF
 
+      # The runner's own zip. The action this replaced built `FROM alpine:latest`
+      # and ran `apk add zip` on every release, so no pin could fix what ran
+      # (ADR 0032).
       - name: Archive Release
-        uses: montudor/action-zip@v1
-        with:
-          args: zip -qq -r nextjs-revalidate-${{  github.ref_name }}.zip nextjs-revalidate
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: zip -qq -r "nextjs-revalidate-$TAG.zip" nextjs-revalidate
 
       # Created as a draft, and published by the next step. The action cannot say
       # whether a release is "Latest", and GitHub makes every newly published
       # release Latest by default, so a v1.7.1 tagged after v2.0.0 would take it
       # (ADR 0031). A draft is never Latest. The changelog stays the action's: it
       # picks the previous tag by semver, so a v1.x release lists v1.x commits.
-      - uses: "marvinpinto/action-automatic-releases@latest"
+      #
+      # Pinned to what its `latest` tag resolves to, three rebuilds of `dist/` past
+      # v1.2.1. The repository is archived, so Dependabot will never bump this pin.
+      - uses: marvinpinto/action-automatic-releases@d68defdd11f9dcc7f52f35c1b7c236ee7513bcc1 # latest
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
@@ -105,7 +117,7 @@ jobs:
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest="$latest"
 
       - name: Upload to release-belt
-        uses: easingthemes/ssh-deploy@main
+        uses: easingthemes/ssh-deploy@2cc5b27bf3029d0455dd5e09fe02633904031447 # v6.0.3
         with:
           SSH_PRIVATE_KEY: ${{ secrets.RELEASE_BELT_PUBLISH_PRIVATE_KEY }}
           REMOTE_USER: ${{ secrets.RELEASE_BELT_USER }}

@@ -1,0 +1,19 @@
+# The workflows pin every action to a commit SHA (ADR 0032). A pin nobody bumps
+# only freezes the action, so Dependabot proposes the bumps and rewrites the
+# `# vX.Y.Z` comment next to each SHA. All actions come in one weekly pull
+# request, which CI checks like any other.
+#
+# It watches the default branch only. `v1.x` keeps the pins it was cut with,
+# unless a security fix there needs a bump.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci: 👷"
