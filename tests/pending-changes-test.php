@@ -322,6 +322,7 @@ njr_test_assert( [ 'subject' => 'redirect', 'uri' => '/old/' ] === Change::redir
 njr_test_assert( [ 'subject' => 'path', 'uri' => '/named/' ] === Change::path( '/named/' ), 'a path change carries its uri' );
 njr_test_assert( [ 'subject' => 'menu', 'id' => 3, 'locations' => [ 'primary', 'footer' ] ] === Change::menu( 3, [ 'primary', 'footer' ] ), 'a menu change carries its id and locations' );
 njr_test_assert( [ 'subject' => 'templates' ] === Change::templates(), 'a templates change carries nothing but its subject' );
+njr_test_assert( [ 'subject' => 'settings' ] === Change::settings(), 'a settings change carries nothing but its subject' );
 njr_test_assert( [ 'subject' => 'all' ] === Change::all(), 'revalidate all of the whole site carries nothing but its subject' );
 njr_test_assert(
 	[ 'subject' => 'all', 'type' => 'post', 'taxonomies' => [ 'category', 'post_tag' ] ] === Change::all( 'post', [ 'category', 'post_tag' ] ),
@@ -362,6 +363,16 @@ $pending->report( Change::post( 12, 'post', '/a/', '/a/' ) );
 njr_test_assert(
 	[ 'templates', 'path', 'path', 'post' ] === array_column( $pending->pending(), 'subject' ),
 	'identical changes collapse, different ones are each kept, and the order is the order they were first produced in'
+);
+
+// The site settings are one change whatever a filter made of each of them:
+// the subject alone is their identity, and the later one is kept.
+$pending = njr_test_subject();
+$pending->report( Change::settings() );
+$pending->report( [ 'subject' => 'settings', 'site' => 'main' ] );
+njr_test_assert(
+	[ [ 'subject' => 'settings', 'site' => 'main' ] ] === $pending->pending(),
+	'every settings change of a request is held as one, the later kept'
 );
 
 // A refusal

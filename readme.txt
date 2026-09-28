@@ -187,6 +187,11 @@ route. The full notes are in CHANGELOG.md on GitHub.
   deploy starts the front-end's cache afresh, so none of them is stale there.
 * Added: a block menu saved, trashed, restored or deleted in the Site Editor
   reports a menu change, carrying its post ID. 1.x reported nothing for one.
+* Added: a site setting saved — the site title, the tagline, the date and time
+  formats, the site icon, the site language — reports a settings change, and so
+  do Yoast SEO's SEO defaults and Polylang's languages when those plugins are
+  active. The `nextjs_revalidate_site_setting_options` filter decides which
+  options count. 1.x reported none of these.
 * Changed: the admin says "Revalidate" where it said "Purge", in English and in
   French, and the plugin is named Next.js Revalidate.
 = 1.7.0 =

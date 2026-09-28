@@ -116,6 +116,7 @@ require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
 require_once __DIR__ . '/../include/BlockMenus.php';
+require_once __DIR__ . '/../include/SiteSettings.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\Assets;
@@ -131,6 +132,7 @@ use NextJsRevalidate\RestApi;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Settings;
+use NextJsRevalidate\SiteSettings;
 
 // The expectations
 // ====
@@ -213,6 +215,12 @@ $expected_per_class = [
 		[ 'deleted_post',            'on_post_delete',     10, 2 ],
 	],
 
+	SiteSettings::class => [
+		[ 'added_option',   'on_option_change', 10, 1 ],
+		[ 'updated_option', 'on_option_change', 10, 1 ],
+		[ 'deleted_option', 'on_option_change', 10, 1 ],
+	],
+
 	RestApi::class => [
 		[ 'rest_api_init', 'register_routes', 10, 1 ],
 	],
@@ -228,10 +236,12 @@ $expected_per_class = [
  * @var array
  */
 $expected_of_the_root = [
-	// The integration registers after the Hookables, and defers the question of
-	// whether Redirection is installed to `plugins_loaded` — which, in this
-	// script, has not fired.
+	// The integrations register after the Hookables, and defer the question of
+	// whether the plugin each integrates with is installed to `plugins_loaded`
+	// — which, in this script, has not fired.
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Redirection::register_redirect_hooks', 10,  1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Yoast::register_yoast_hooks',          10,  1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Polylang::register_polylang_hooks',    10,  1 ],
 	[ 'wp_initialize_site', 'NextJsRevalidate::setup_new_site',                                      100, 1 ],
 ];
 

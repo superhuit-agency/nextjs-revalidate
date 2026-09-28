@@ -1,7 +1,9 @@
 {
 	"plugins": [
 		".",
-		"https://downloads.wordpress.org/plugin/redirection.zip"
+		"https://downloads.wordpress.org/plugin/redirection.zip",
+		"https://downloads.wordpress.org/plugin/wordpress-seo.zip",
+		"https://downloads.wordpress.org/plugin/polylang.zip"
 	],
 	"port": 8080,
 	"testsEnvironment": false,

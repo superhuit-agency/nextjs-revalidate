@@ -15,7 +15,8 @@
  * | `nodes`           | every single-node entry, whatever its ID                          |
  * | `uris`            | the resolution of a URI to what is there — routing and redirects  |
  * | `menu:{id}`       | one menu's items, keyed by its WordPress ID                       |
- * | `options`         | site-wide data: settings, and the FSE template snapshot           |
+ * | `templates`       | the FSE template snapshot                                         |
+ * | `settings`        | site-wide values every page renders: title, formats, SEO, languages |
  * | `content`         | every entry built from WordPress content, all of the above        |
  *
  * The contract itself is the README's "The front-end contract" section. The
@@ -82,6 +83,14 @@ export interface TemplatesChange {
 	subject: "templates";
 }
 
+/**
+ * A site setting saved — the site title, a date format, SEO defaults, the
+ * language list. Never names which: one per request, however many were saved.
+ */
+export interface SettingsChange {
+	subject: "settings";
+}
+
 /** Revalidate all of the whole site: no fields. */
 export interface SiteAllChange {
 	subject: "all";
@@ -110,6 +119,7 @@ export type Change =
 	| PathChange
 	| MenuChange
 	| TemplatesChange
+	| SettingsChange
 	| AllChange;
 
 /** The body of the plugin's `POST`. */
@@ -197,7 +207,11 @@ export function tagsFor(change: Change): string[] {
 			return [`menu:${change.id}`];
 
 		case "templates":
-			return ["options"];
+			return ["templates"];
+
+		// Every page renders the site settings, so every page carries this tag.
+		case "settings":
+			return ["settings"];
 
 		case "all":
 			return allTags(change);
