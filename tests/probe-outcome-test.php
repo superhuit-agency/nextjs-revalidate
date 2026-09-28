@@ -167,7 +167,7 @@ class NextJsRevalidate_Test_Settings {
 	public function endpoint_url() { return 'https://front-end.test/api/revalidate'; }
 
 	public function not_configured_error() {
-		return new WP_Error( 'not_configured', 'Next.js revalidate is not configured for this site. Missing: secret.' );
+		return new WP_Error( 'not_configured', 'Next.js Revalidate is not configured for this site. Missing: secret.' );
 	}
 }
 

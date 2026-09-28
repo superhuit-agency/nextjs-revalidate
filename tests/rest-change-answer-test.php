@@ -283,7 +283,7 @@ function njr_test_path( $uri ) {
 	return [ 'subject' => 'path', 'uri' => $uri ];
 }
 
-$refusal = new WP_Error( 'not_configured', 'Next.js revalidate is not configured for this site.' );
+$refusal = new WP_Error( 'not_configured', 'Next.js Revalidate is not configured for this site.' );
 
 // What is reported
 // ====

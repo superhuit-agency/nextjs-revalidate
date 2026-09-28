@@ -143,7 +143,7 @@ namespace {
 
 			return $this->configured
 				? true
-				: new WP_Error( 'not_configured', 'Next.js revalidate is not configured for this site.' );
+				: new WP_Error( 'not_configured', 'Next.js Revalidate is not configured for this site.' );
 		}
 	}
 

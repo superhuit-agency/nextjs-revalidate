@@ -52,7 +52,7 @@ published page.
 Precondition: spine state, with the seeded API settings — section A restores
 them at its end, so run this after it or check the Next.js API tab first.
 
-- [ ] **Settings → Next.js revalidate → Probe.** Expect the fourth tab holding a
+- [ ] **Settings → Next.js Revalidate → Probe.** Expect the fourth tab holding a
       path field showing `/`, a "Send probe" button, and the note that a probe
       uses the *saved* settings.
 - [ ] **Type `/runbook-post/` and press Send probe.** Expect
@@ -87,7 +87,7 @@ them at its end, so run this after it or check the Next.js API tab first.
       not be found", and no degraded notice anywhere: a probe is never
       evidence, so this button can neither trip its own alarm nor silence it.
 - [ ] **Clear the secret, save, and probe.** Expect an error notice "Nothing was
-      sent for http://localhost:8080/runbook-post/. Next.js revalidate is not
+      sent for http://localhost:8080/runbook-post/. Next.js Revalidate is not
       configured for this site…", a `🔎 Probe: ⛔ Refused` line in the log, and
       **nothing at all** in the revalidate server console.
 - [ ] **Restore the secret, save, and probe once more.** Expect the success
@@ -316,7 +316,7 @@ administrator.
       PHP'
       ```
       Expect **no** degraded notice in the block editor.
-- [ ] **Load the Dashboard, the posts list and the Next.js revalidate settings
+- [ ] **Load the Dashboard, the posts list and the Next.js Revalidate settings
       screen.** Expect **no** unconfigured notice and **no** degraded notice on
       any of them.
 - [ ] **Remove the filter and reload the Dashboard:**
@@ -327,7 +327,7 @@ administrator.
 ## L. The French translation
 
 - [ ] **Settings → General → Site Language → Français, save.**
-- [ ] **Load the Next.js revalidate settings screen.** Expect tab labels, field
+- [ ] **Load the Next.js Revalidate settings screen.** Expect tab labels, field
       labels and help text in French.
 - [ ] **Trigger the unconfigured notice, then the degraded notice.** Expect both
       in French, with the numbers correctly placed in the degraded one.
@@ -802,7 +802,7 @@ moves.
       Revalidate. The plugin requires WordPress 5.6." — the number from the
       header, and not `5.6.0`.
 - [ ] **Back to Plugins.** Expect the plugin listed as inactive, and no
-      **Settings → Next.js revalidate** entry.
+      **Settings → Next.js Revalidate** entry.
 
 ## AH. Teardown
 

@@ -572,7 +572,7 @@ through Redirection's own REST routes, from an admin that never reloads the
 page, so a revalidation that did not happen is answered by the plugin's **log
 file** or by nothing at all. Every case in the table writes one line to that
 file, and only while **Enable logs** is switched on under the **Debug** tab of
-*Settings → Next.js revalidate*; its full path is printed beneath that switch.
+*Settings → Next.js Revalidate*; its full path is printed beneath that switch.
 It lives in a `nextjs-revalidate/` directory beneath the site's uploads
 directory, under a name unique to the site — one file per site on a network, and
 never at a path you can type from memory. With logging off there is

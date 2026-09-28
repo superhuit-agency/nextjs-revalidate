@@ -279,7 +279,7 @@ function njr_test_batch( array $answers, array $items = null ) {
 // The site is unconfigured, so it declines to deliver rather than trying and
 // missing — a **refusal**, ADR 0015. Nothing is wrong with the request and
 // nothing broke.
-$refusal = new WP_Error( 'not_configured', 'Next.js revalidate is not configured for this site.' );
+$refusal = new WP_Error( 'not_configured', 'Next.js Revalidate is not configured for this site.' );
 
 // A `WP_Error` the pending changes do not produce today. It is this site
 // failing rather than declining, and must not be read as a configuration an

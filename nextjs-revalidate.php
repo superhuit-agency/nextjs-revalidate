@@ -384,7 +384,7 @@ class NextJsRevalidate {
 		wp_die(
 			sprintf(
 				/* translators: %s: number of sites on the network. */
-				__( 'Next.js revalidate cannot set up the %s sites of this network in a single request, and it does not set up some of them and leave the rest unable to revalidate. Activate the plugin on each site individually instead.', 'nextjs-revalidate' ),
+				__( 'Next.js Revalidate cannot set up the %s sites of this network in a single request, and it does not set up some of them and leave the rest unable to revalidate. Activate the plugin on each site individually instead.', 'nextjs-revalidate' ),
 				number_format_i18n( get_blog_count() )
 			),
 			__( 'Plugin could not be activated', 'nextjs-revalidate' ),

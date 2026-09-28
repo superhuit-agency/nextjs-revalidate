@@ -55,7 +55,7 @@ Precondition: section 1 done.
 
 - [ ] **Plugins → deactivate, then activate "Next.js Revalidate".** Expect no
       error and no white screen.
-- [ ] **Settings → Next.js revalidate.** Expect four tabs — **Next.js API**,
+- [ ] **Settings → Next.js Revalidate.** Expect four tabs — **Next.js API**,
       **Allow revalidate all**, **Debug**, **Probe** — and no **Queue**, **On
       FSE update** or **On menu update** tab: v2 removed all three. Click each:
       expect one panel visible at a time, Probe included, though it is a form of
@@ -104,9 +104,9 @@ Precondition: spine state. This section clears settings and restores them at the
 end — do not stop halfway.
 
 - [ ] **Clear the secret, save.** Expect a warning notice at the top of every
-      admin screen: "Next.js revalidate is not configured for this site — its
+      admin screen: "Next.js Revalidate is not configured for this site — its
       secret is missing. Content is still saved, but every revalidation is
-      refused…", with a "Configure Next.js revalidate" link, and no link while
+      refused…", with a "Configure Next.js Revalidate" link, and no link while
       you are on the settings screen itself.
 - [ ] **Clear the revalidate domain too, save.** Expect the notice to now read
       "its revalidate domain and secret are missing".
@@ -131,7 +131,7 @@ repairs it at the end.
 - [ ] **Load any classic admin screen.** Expect an error notice: "Next.js
       revalidate is not keeping this site up to date — 3 of the last 10
       revalidations failed…", naming the most recent error as "the front-end
-      rejected the secret", with a "Check the Next.js revalidate settings" link.
+      rejected the secret", with a "Check the Next.js Revalidate settings" link.
 - [ ] **Open the block editor.** Expect the same warning as a block editor
       notice, and expect it **not** to be dismissible — it is a condition, not an
       acknowledgement.

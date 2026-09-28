@@ -1,9 +1,9 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Next.js revalidate\n"
+"Project-Id-Version: Next.js Revalidate\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/nextjs-"
 "revalidate\n"
-"POT-Creation-Date: 2026-09-28T11:31:46+00:00\n"
+"POT-Creation-Date: 2026-09-28T11:35:05+00:00\n"
 "PO-Revision-Date: 2026-09-24 12:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -24,7 +24,7 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-1: vendor\n"
 
 #. Plugin Name of the plugin
-#: nextjs-revalidate.php
+#: nextjs-revalidate.php include/Settings.php:216
 msgid "Next.js Revalidate"
 msgstr "Next.js Revalidate"
 
@@ -58,11 +58,11 @@ msgstr "https://www.superhuit.ch"
 #: include/FailureWindow.php:288
 #, php-format
 msgid ""
-"Next.js revalidate is not keeping this site up to date — %1$d of the last "
+"Next.js Revalidate is not keeping this site up to date — %1$d of the last "
 "%2$d revalidations failed. Content is still saved, but the front-end is "
 "serving pages which are quietly out of date."
 msgstr ""
-"Next.js revalidate ne parvient pas à maintenir ce site à jour : %1$d des "
+"Next.js Revalidate ne parvient pas à maintenir ce site à jour : %1$d des "
 "%2$d dernières revalidations ont échoué. Le contenu est toujours enregistré, "
 "mais le front-end affiche des pages qui sont, sans que l'on s'en rende "
 "compte, obsolètes."
@@ -82,7 +82,7 @@ msgid "Please contact a site administrator."
 msgstr "Veuillez contacter un administrateur du site."
 
 #: include/FailureWindow.php:319
-msgid "Check the Next.js revalidate settings"
+msgid "Check the Next.js Revalidate settings"
 msgstr "Vérifier les paramètres Next.js Revalidate"
 
 #: include/FailureWindow.php:428
@@ -235,12 +235,8 @@ msgid "Revalidate all: the revalidation was sent to the front-end."
 msgstr "Tout revalider : la revalidation a été envoyée au front-end."
 
 #: include/Settings.php:215
-msgid "Next.js revalidate settings"
-msgstr "Next.js revalidate paramètres"
-
-#: include/Settings.php:216
-msgid "Next.js revalidate"
-msgstr "Next.js revalidate"
+msgid "Next.js Revalidate settings"
+msgstr "Next.js Revalidate paramètres"
 
 #: include/Settings.php:229
 msgid "Next.js API"
@@ -260,7 +256,7 @@ msgstr "Sonde"
 
 #: include/Settings.php:237
 msgid "NextJS-Revalidate settings tabs"
-msgstr "Paramètres de Next.js revalidate"
+msgstr "Paramètres de Next.js Revalidate"
 
 #: include/Settings.php:286
 msgid "Next.js API config"
@@ -328,10 +324,10 @@ msgstr ""
 
 #: include/Settings.php:711
 msgid ""
-"Next.js revalidate is not configured for this site: the revalidate domain "
+"Next.js Revalidate is not configured for this site: the revalidate domain "
 "and secret are both required before anything can be revalidated."
 msgstr ""
-"Next.js revalidate n'est pas configurée pour ce site : le domaine et la clé "
+"Next.js Revalidate n'est pas configurée pour ce site : le domaine et la clé "
 "secrète de revalidation sont tous deux obligatoires avant de pouvoir "
 "procéder à une revalidation."
 
@@ -351,23 +347,23 @@ msgstr "le secret de revalidation est manquant"
 #: include/Settings.php:763
 #, php-format
 msgid ""
-"Next.js revalidate is not configured for this site — %s. Content is still "
+"Next.js Revalidate is not configured for this site — %s. Content is still "
 "saved, but every revalidation is refused: the front-end is never asked to "
 "rebuild its pages."
 msgstr ""
-"Next.js revalidate n'est pas configurée pour ce site — %s. Le contenu est "
+"Next.js Revalidate n'est pas configurée pour ce site — %s. Le contenu est "
 "toujours enregistré, mais chaque revalidation est refusée : le front-end "
 "n'est jamais invité à reconstruire ses pages."
 
 #: include/Settings.php:774
-msgid "Configure Next.js revalidate"
-msgstr "Configurer Next.js revalidate"
+msgid "Configure Next.js Revalidate"
+msgstr "Configurer Next.js Revalidate"
 
 #. translators: %s: number of sites on the network.
 #: include/Settings.php:820
 #, php-format
 msgid ""
-"Next.js revalidate cannot migrate the %s sites of this network in a single "
+"Next.js Revalidate cannot migrate the %s sites of this network in a single "
 "request, and it does not migrate some of them and leave the rest running new "
 "code over old data. Open the admin of each site once instead — a site "
 "migrates itself the first time somebody does."
@@ -403,11 +399,11 @@ msgstr ""
 #: nextjs-revalidate.php:387
 #, php-format
 msgid ""
-"Next.js revalidate cannot set up the %s sites of this network in a single "
+"Next.js Revalidate cannot set up the %s sites of this network in a single "
 "request, and it does not set up some of them and leave the rest unable to "
 "revalidate. Activate the plugin on each site individually instead."
 msgstr ""
-"Next.js revalidate ne peut pas configurer les %s sites de ce réseau en une "
+"Next.js Revalidate ne peut pas configurer les %s sites de ce réseau en une "
 "seule requête, et il ne se contente pas d’en configurer certains en laissant "
 "les autres dans l’incapacité de revalider. Activez plutôt le plugin sur "
 "chaque site individuellement."

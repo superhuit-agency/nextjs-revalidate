@@ -212,8 +212,8 @@ class Settings extends Base implements Hookable {
 	 */
 	public function add_page() {
 		add_options_page(
-			__( 'Next.js revalidate settings', 'nextjs-revalidate'),
-			__( 'Next.js revalidate', 'nextjs-revalidate' ),
+			__( 'Next.js Revalidate settings', 'nextjs-revalidate'),
+			__( 'Next.js Revalidate', 'nextjs-revalidate' ),
 			'manage_options',
 			self::PAGE_NAME,
 			[$this, 'render_page']
@@ -708,7 +708,7 @@ class Settings extends Base implements Hookable {
 	public function not_configured_error() {
 		return new \WP_Error(
 			'not_configured',
-			__( 'Next.js revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+			__( 'Next.js Revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
 		);
 	}
 
@@ -760,7 +760,7 @@ class Settings extends Base implements Hookable {
 		$message = esc_html(
 			sprintf(
 				/* translators: %s: which of the two required settings are missing. */
-				__( 'Next.js revalidate is not configured for this site — %s. Content is still saved, but every revalidation is refused: the front-end is never asked to rebuild its pages.', 'nextjs-revalidate' ),
+				__( 'Next.js Revalidate is not configured for this site — %s. Content is still saved, but every revalidation is refused: the front-end is never asked to rebuild its pages.', 'nextjs-revalidate' ),
 				$what
 			)
 		);
@@ -771,7 +771,7 @@ class Settings extends Base implements Hookable {
 			$message .= sprintf(
 				' <a href="%s">%s</a>',
 				esc_url( admin_url( 'options-general.php?page=' . self::PAGE_NAME ) ),
-				esc_html__( 'Configure Next.js revalidate', 'nextjs-revalidate' )
+				esc_html__( 'Configure Next.js Revalidate', 'nextjs-revalidate' )
 			);
 		}
 		else if ( !$can_configure ) {
@@ -817,7 +817,7 @@ class Settings extends Base implements Hookable {
 			esc_html(
 				sprintf(
 					/* translators: %s: number of sites on the network. */
-					__( 'Next.js revalidate cannot migrate the %s sites of this network in a single request, and it does not migrate some of them and leave the rest running new code over old data. Open the admin of each site once instead — a site migrates itself the first time somebody does.', 'nextjs-revalidate' ),
+					__( 'Next.js Revalidate cannot migrate the %s sites of this network in a single request, and it does not migrate some of them and leave the rest running new code over old data. Open the admin of each site once instead — a site migrates itself the first time somebody does.', 'nextjs-revalidate' ),
 					number_format_i18n( get_blog_count() )
 				)
 			)

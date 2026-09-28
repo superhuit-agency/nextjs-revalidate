@@ -285,7 +285,7 @@ class FailureWindow extends Base implements Hookable {
 
 		$message = sprintf(
 			/* translators: 1: number of failed revalidations. 2: number of attempts on record. */
-			__( 'Next.js revalidate is not keeping this site up to date — %1$d of the last %2$d revalidations failed. Content is still saved, but the front-end is serving pages which are quietly out of date.', 'nextjs-revalidate' ),
+			__( 'Next.js Revalidate is not keeping this site up to date — %1$d of the last %2$d revalidations failed. Content is still saved, but the front-end is serving pages which are quietly out of date.', 'nextjs-revalidate' ),
 			$nb_failures,
 			$nb_attempts
 		);
@@ -316,7 +316,7 @@ class FailureWindow extends Base implements Hookable {
 
 		return [
 			'message'      => $message,
-			'action_label' => $on_settings_page ? '' : __( 'Check the Next.js revalidate settings', 'nextjs-revalidate' ),
+			'action_label' => $on_settings_page ? '' : __( 'Check the Next.js Revalidate settings', 'nextjs-revalidate' ),
 			'action_url'   => $on_settings_page ? '' : admin_url( 'options-general.php?page=' . Settings::PAGE_NAME ),
 		];
 	}
