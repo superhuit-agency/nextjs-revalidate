@@ -456,6 +456,27 @@ $pending = njr_test_subject();
 for ( $i = 0; $i < 3 * PendingChanges::CAP; $i++ ) $pending->report( Change::post( 12, 'post', '/a/', '/a/' ) );
 njr_test_assert( [] === $GLOBALS['njr_test_posts'], 'merged changes do not count towards the cap' );
 
+// After delivery
+// ====
+
+// A change reported later in `shutdown` than the delivery is still accepted,
+// but nothing is left to send it: the log says so.
+$pending = njr_test_subject();
+$pending->report( Change::path( '/in-time/' ) );
+$pending->deliver();
+njr_test_assert( false === strpos( njr_test_log(), 'after this request\'s changes were delivered' ), 'a change reported before delivery is not called late' );
+
+$answer = $pending->report( Change::settings() );
+njr_test_assert( true === $answer, 'a change reported after delivery is still accepted' );
+njr_test_assert( 1 === count( $GLOBALS['njr_test_posts'] ), 'but nothing sends it' );
+njr_test_assert( false !== strpos( njr_test_log(), '⚠️ A settings change was reported after this request\'s changes were delivered — it will not be sent' ), 'and the log says so, naming the subject' );
+
+// Delivery with nothing pending still ends the request's collecting.
+$pending = njr_test_subject();
+$pending->deliver();
+$pending->report( Change::templates() );
+njr_test_assert( false !== strpos( njr_test_log(), '⚠️ A templates change was reported after this request\'s changes were delivered' ), 'a change reported after an empty delivery is logged too' );
+
 // Per site
 // ====
 

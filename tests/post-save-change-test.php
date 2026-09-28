@@ -112,6 +112,9 @@ function get_permalink( $post ) {
 
 	if ( 'attachment' === $post->post_type ) return "https://example.test/wp-content/uploads/{$post->post_name}.pdf";
 
+	// A site on plain permalinks: every post is its query shape.
+	if ( ! empty( $GLOBALS['njr_test_plain_permalinks'] ) ) return "https://example.test/?p={$post->ID}";
+
 	return in_array( $post->post_status, [ 'publish', 'private' ], true )
 		? "https://example.test/{$post->post_name}/"
 		: "https://example.test/?p={$post->ID}";
@@ -123,6 +126,10 @@ function wp_get_upload_dir() {
 
 function wp_make_link_relative( $url ) {
 	return (string) preg_replace( '|^(https?:)?//[^/]+(/?.*)|i', '$2', (string) $url );
+}
+
+function wp_parse_url( $url, $component = -1 ) {
+	return -1 === $component ? parse_url( $url ) : parse_url( $url, $component );
 }
 
 class WP_Post {
@@ -328,6 +335,18 @@ njr_test_assert(
 	'a draft published and unpublished again in one request reports nothing',
 	njr_test_pending()
 );
+
+// A `uri` is a path, as every change's is: on plain permalinks the query that
+// names the post is not part of it.
+$GLOBALS['njr_test_plain_permalinks'] = true;
+$revalidate = njr_test_request( [ new WP_Post( 42, 'post', 'publish', 'hello' ) ] );
+njr_test_save( $revalidate, new WP_Post( 42, 'post', 'publish', 'hello' ) );
+njr_test_assert(
+	[ njr_test_change( 42, '/', '/' ) ] === njr_test_pending(),
+	'a post on plain permalinks reports the path of its permalink, without the query',
+	njr_test_pending()
+);
+$GLOBALS['njr_test_plain_permalinks'] = false;
 
 // Revisions
 // ====

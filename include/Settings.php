@@ -53,6 +53,16 @@ class Settings extends Base implements Hookable {
 	const LEGACY_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
 
 	/**
+	 * The three settings above: what v2 removed, for the uninstall and the
+	 * upgrade to delete alike.
+	 */
+	const REMOVED_BY_V2 = [
+		self::LEGACY_FSE_ENDPOINT_PATH_NAME,
+		self::LEGACY_REVALIDATE_ON_FSE_SAVE,
+		self::LEGACY_REVALIDATE_ON_MENU_SAVE,
+	];
+
+	/**
 	 * What v1's revalidation queue kept on a site, which v2 removed with the
 	 * queue itself (ADR 0034): its table, after the site's prefix; the cron
 	 * hook that drained it; and the transient counting the drains running.
@@ -587,9 +597,7 @@ class Settings extends Base implements Hookable {
 
 		// The settings v2 removed, on a site whose upgrade has not yet
 		// deleted them.
-		delete_option( self::LEGACY_FSE_ENDPOINT_PATH_NAME );
-		delete_option( self::LEGACY_REVALIDATE_ON_FSE_SAVE );
-		delete_option( self::LEGACY_REVALIDATE_ON_MENU_SAVE );
+		foreach ( self::REMOVED_BY_V2 as $option_name ) delete_option( $option_name );
 
 		// The URL the settings above were split out of, on a site upgraded
 		// before it was ever visited in the admin: the migration that consumes
@@ -1098,7 +1106,7 @@ class Settings extends Base implements Hookable {
 	 * @return void
 	 */
 	private function delete_removed_settings() {
-		foreach ( [ self::LEGACY_FSE_ENDPOINT_PATH_NAME, self::LEGACY_REVALIDATE_ON_FSE_SAVE, self::LEGACY_REVALIDATE_ON_MENU_SAVE ] as $option_name ) {
+		foreach ( self::REMOVED_BY_V2 as $option_name ) {
 			if ( self::option_exists( $option_name ) ) delete_option( $option_name );
 		}
 	}

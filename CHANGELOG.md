@@ -39,6 +39,11 @@ Content-Type: application/json
   [front-end contract](README.md#the-front-end-contract) lists. A post change
   carries where the post was before and where it is after, so a slug change now
   reaches the old path too.
+- **A `uri` is a path**, for every subject. 1.x sent a post's permalink with
+  its query string; 2.0 sends only its path, so a post on plain permalinks,
+  `/?p=42`, is reported at `/`. A private post is reported at its page even
+  when it changes with nobody logged in — from cron or WP-CLI — where 1.x sent
+  the `?p=` link core hands out there.
 - **One route for everything.** A saved FSE template or a switched theme is a
   `templates` change on the same route, not a request to a second endpoint.
 - **Revalidate all is one change**, and a menu save is one change, rather than a
@@ -144,5 +149,8 @@ its single revalidate URL split into a domain and a path in the same request.
 - **Changed:** the admin says **Revalidate** where it said **Purge** — the row
   action, the bulk action, the admin bar menu and its entries, and their
   notices, which now say that a revalidation was sent rather than counting pages
-  left to purge. The French translation follows.
+  left to purge. A revalidate all the `nextjs_revalidate_change` filter dropped
+  says that nothing was sent. The admin's own query args lose the word too, so
+  `nextjs-revalidate-purged` is now `nextjs-revalidate-revalidated`. The French
+  translation follows.
 - **Changed:** the plugin is named **Next.js Revalidate**.

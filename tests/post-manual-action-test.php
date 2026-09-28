@@ -141,6 +141,10 @@ function wp_make_link_relative( $url ) {
 	return (string) preg_replace( '|^(https?:)?//[^/]+(/?.*)|i', '$2', (string) $url );
 }
 
+function wp_parse_url( $url, $component = -1 ) {
+	return -1 === $component ? parse_url( $url ) : parse_url( $url, $component );
+}
+
 class WP_Post {
 	public $ID;
 	public $post_type;
@@ -262,19 +266,19 @@ function njr_test_pending() {
 }
 
 function njr_test_row_action( Revalidate $revalidate, $post_id ) {
-	$_GET = [ 'action' => 'nextjs-revalidate-purge', 'post' => (string) $post_id ];
+	$_GET = [ 'action' => 'nextjs-revalidate-revalidate-post', 'post' => (string) $post_id ];
 
 	return njr_test_redirected( [ $revalidate, 'revalidate_row_action' ] );
 }
 
 function njr_test_admin_bar( Revalidate $revalidate, $post_id ) {
-	$_GET = [ 'nextjs-revalidate-purge-post' => (string) $post_id ];
+	$_GET = [ 'nextjs-revalidate-revalidate-post' => (string) $post_id ];
 
 	return njr_test_redirected( [ $revalidate, 'revalidate_current_post_action' ] );
 }
 
 function njr_test_bulk_action( Revalidate $revalidate, array $post_ids ) {
-	return $revalidate->revalidate_bulk_action( 'https://example.test/wp-admin/edit.php', 'nextjs_revalidate-bulk_purge', $post_ids );
+	return $revalidate->revalidate_bulk_action( 'https://example.test/wp-admin/edit.php', 'nextjs_revalidate-bulk_revalidate', $post_ids );
 }
 
 // The row action
@@ -288,7 +292,7 @@ njr_test_assert(
 	njr_test_pending()
 );
 njr_test_assert(
-	false !== strpos( (string) $sendback, 'nextjs-revalidate-purged=42' ),
+	false !== strpos( (string) $sendback, 'nextjs-revalidate-revalidated=42' ),
 	'the row action sends the operator back with the post it reported',
 	$sendback
 );
@@ -297,7 +301,7 @@ $revalidate = njr_test_request();
 $sendback   = njr_test_row_action( $revalidate, 44 );
 njr_test_assert( [] === njr_test_pending(), 'the row action on a draft reports nothing', njr_test_pending() );
 njr_test_assert(
-	false !== strpos( (string) $sendback, 'nextjs-revalidate-purged=0' ),
+	false !== strpos( (string) $sendback, 'nextjs-revalidate-revalidated=0' ),
 	'and sends the operator back saying so',
 	$sendback
 );
@@ -322,7 +326,7 @@ njr_test_assert(
 	njr_test_pending()
 );
 njr_test_assert(
-	0 === strpos( (string) $sendback, get_edit_post_link( 43 ) ) && false !== strpos( (string) $sendback, 'nextjs-revalidate-purged=43' ),
+	0 === strpos( (string) $sendback, get_edit_post_link( 43 ) ) && false !== strpos( (string) $sendback, 'nextjs-revalidate-revalidated=43' ),
 	'the admin bar entry sends the operator back to the edit screen',
 	$sendback
 );
@@ -341,7 +345,7 @@ njr_test_assert(
 	njr_test_pending()
 );
 njr_test_assert(
-	false !== strpos( (string) $sendback, 'nextjs-revalidate-bulk-purged=2' ),
+	false !== strpos( (string) $sendback, 'nextjs-revalidate-bulk-revalidated=2' ),
 	'the bulk action counts the posts it reported',
 	$sendback
 );

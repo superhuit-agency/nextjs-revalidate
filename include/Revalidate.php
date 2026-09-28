@@ -66,7 +66,7 @@ class Revalidate extends Base implements Hookable {
 		add_action( 'admin_bar_menu', [$this, 'admin_top_bar_menu'], 100 );
 		add_action( 'admin_init', [$this, 'revalidate_current_post_action'] );
 
-		add_action( 'admin_notices', [$this, 'purged_notice'] );
+		add_action( 'admin_notices', [$this, 'revalidated_notice'] );
 	}
 
 	/**
@@ -218,7 +218,7 @@ class Revalidate extends Base implements Hookable {
 	 * for until #53. `public` and `publicly_queryable` default to each other but
 	 * are registered independently, so the two disagreed in both directions: a
 	 * type registered `public => true, publicly_queryable => false` was offered
-	 * a bulk action that purged nothing and two toggles that did nothing, and
+	 * a bulk action that revalidated nothing and two toggles that did nothing, and
 	 * one registered the other way round had a real front-end page and was
 	 * offered none of it.
 	 *
@@ -398,7 +398,9 @@ class Revalidate extends Base implements Hookable {
 	 * a post leaving the front-end is reported at the page the front-end
 	 * cached, rather than at the unpublished shape it has after, `/?p=42`.
 	 *
-	 * The URI is the path v1 sent as `path`.
+	 * The URI is the permalink reduced to its path, as every change's `uri`
+	 * is (`Change::uri_of()`): a query string, such as a plain permalink's
+	 * `?p=42`, is not part of it.
 	 *
 	 * @param WP_Post|null $post The post, as it was or as it is.
 	 * @return string|null
@@ -406,17 +408,43 @@ class Revalidate extends Base implements Hookable {
 	private function front_end_uri( $post ) {
 		if ( ! $post instanceof WP_Post ) return null;
 
-		// An uploaded file is not a Next.js route.
-		if ( 'attachment' === $post->post_type ) return null;
-
 		if ( ! $this->status_axis_admits( $post->post_status ) ) return null;
+
+		// Core gives a private post its pretty permalink only for a user who
+		// can read it, and `?p=42` to anyone else — cron, WP-CLI, a request
+		// with nobody logged in — which reduced to its path is the home page.
+		// Its page is the pretty one whoever asks, so it is asked for as if
+		// published, the way core builds its own sample permalink.
+		if ( 'private' === $post->post_status ) {
+			$post = clone $post;
+			$post->post_status = 'publish';
+		}
+
+		$permalink = $this->page_permalink( $post );
+
+		return is_null( $permalink ) ? null : Change::uri_of( $permalink );
+	}
+
+	/**
+	 * The permalink of the page the front-end could hold for a post, whatever
+	 * its status — or null for one that has none.
+	 *
+	 * An uploaded file is not a Next.js route: an attachment, or a permalink
+	 * pointing into the uploads directory, holds no page the front-end could
+	 * rebuild.
+	 *
+	 * @param WP_Post|null $post
+	 * @return string|null
+	 */
+	private function page_permalink( $post ) {
+		if ( ! $post instanceof WP_Post ) return null;
+
+		if ( 'attachment' === $post->post_type ) return null;
 
 		$permalink = get_permalink( $post );
 		if ( empty($permalink) || $this->is_uploaded_file_url( $permalink ) ) return null;
 
-		$uri = wp_make_link_relative( $permalink );
-
-		return ( '' === $uri ) ? null : $uri;
+		return $permalink;
 	}
 
 	function add_revalidate_row_action( $actions, $post ) {
@@ -428,11 +456,11 @@ class Revalidate extends Base implements Hookable {
 					wp_nonce_url(
 						add_query_arg(
 							[
-								'action'    => 'nextjs-revalidate-purge',
+								'action'    => 'nextjs-revalidate-revalidate-post',
 								'post'      => $post->ID,
 							]
 						),
-						"nextjs-revalidate-purge_{$post->ID}"
+						"nextjs-revalidate-revalidate-post_{$post->ID}"
 					),
 					esc_attr( sprintf( __('Revalidate post “%s”', 'nextjs-revalidate'), get_the_title($post)) ),
 					__('Revalidate', 'nextjs-revalidate'),
@@ -446,13 +474,13 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	function revalidate_row_action() {
-		if ( ! (isset( $_GET['action'] ) && $_GET['action'] === 'nextjs-revalidate-purge' && isset($_GET['post']))  ) return;
+		if ( ! (isset( $_GET['action'] ) && $_GET['action'] === 'nextjs-revalidate-revalidate-post' && isset($_GET['post']))  ) return;
 
 		$post_id = intval( $_GET['post'] );
 
-		check_admin_referer( "nextjs-revalidate-purge_$post_id" );
+		check_admin_referer( "nextjs-revalidate-revalidate-post_$post_id" );
 
-		$this->purge_post_and_redirect( $post_id, $this->get_sendback_url() );
+		$this->revalidate_post_and_redirect( $post_id, $this->get_sendback_url() );
 	}
 
 	/**
@@ -495,7 +523,7 @@ class Revalidate extends Base implements Hookable {
 
 	/**
 	 * Report the given post as it stands, then send the user back with the
-	 * outcome in the `nextjs-revalidate-purged` query arg — the post ID when
+	 * outcome in the `nextjs-revalidate-revalidated` query arg — the post ID when
 	 * its change joined the pending changes, `0` when it did not.
 	 *
 	 * Does not return: the request ends in a redirect.
@@ -504,7 +532,7 @@ class Revalidate extends Base implements Hookable {
 	 * @param string $sendback The url to redirect to.
 	 * @return void
 	 */
-	private function purge_post_and_redirect( $post_id, $sendback ) {
+	private function revalidate_post_and_redirect( $post_id, $sendback ) {
 		if ( ! current_user_can( 'edit_post', $post_id ) ) {
 			wp_die( __( 'Sorry, you are not allowed to revalidate this post.', 'nextjs-revalidate' ) );
 		}
@@ -512,7 +540,7 @@ class Revalidate extends Base implements Hookable {
 		$is_added = $this->report_post( $post_id );
 
 		wp_safe_redirect(
-			add_query_arg( [ 'nextjs-revalidate-purged' => $is_added ? $post_id : 0 ], $sendback )
+			add_query_arg( [ 'nextjs-revalidate-revalidated' => $is_added ? $post_id : 0 ], $sendback )
 		);
 		exit;
 	}
@@ -537,8 +565,8 @@ class Revalidate extends Base implements Hookable {
 			'title'  => _x( 'Revalidate this page', 'Admin top bar menu', 'nextjs-revalidate' ),
 			'href'   => esc_url(
 				wp_nonce_url(
-					add_query_arg( [ 'nextjs-revalidate-purge-post' => $post_id ], $edit_link ),
-					"nextjs-revalidate-purge_$post_id"
+					add_query_arg( [ 'nextjs-revalidate-revalidate-post' => $post_id ], $edit_link ),
+					"nextjs-revalidate-revalidate-post_$post_id"
 				)
 			),
 			'meta'   => [
@@ -582,16 +610,16 @@ class Revalidate extends Base implements Hookable {
 	 * edit screen, where the `action` arg is `post.php`'s own.
 	 */
 	function revalidate_current_post_action() {
-		if ( ! isset($_GET['nextjs-revalidate-purge-post']) ) return;
+		if ( ! isset($_GET['nextjs-revalidate-revalidate-post']) ) return;
 
-		$post_id = intval( $_GET['nextjs-revalidate-purge-post'] );
+		$post_id = intval( $_GET['nextjs-revalidate-revalidate-post'] );
 
-		check_admin_referer( "nextjs-revalidate-purge_$post_id" );
+		check_admin_referer( "nextjs-revalidate-revalidate-post_$post_id" );
 
 		$sendback = get_edit_post_link( $post_id, 'raw' );
 		if ( empty($sendback) ) $sendback = $this->get_sendback_url();
 
-		$this->purge_post_and_redirect( $post_id, $sendback );
+		$this->revalidate_post_and_redirect( $post_id, $sendback );
 	}
 
 	/**
@@ -612,36 +640,36 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	function add_revalidate_bulk_action( $bulk_actions ) {
-		$bulk_actions['nextjs_revalidate-bulk_purge'] = __( 'Revalidate', 'nextjs-revalidate' );
+		$bulk_actions['nextjs_revalidate-bulk_revalidate'] = __( 'Revalidate', 'nextjs-revalidate' );
 		return $bulk_actions;
 	}
 
 	function revalidate_bulk_action( $redirect_url, $action, $post_ids ) {
-		if ($action === 'nextjs_revalidate-bulk_purge') {
+		if ($action === 'nextjs_revalidate-bulk_revalidate') {
 
-			$purged = 0;
+			$revalidated = 0;
 			foreach ($post_ids as $post_id) {
 				if ( ! current_user_can( 'edit_post', $post_id ) ) continue;
-				if ( $this->report_post( $post_id ) ) $purged++;
+				if ( $this->report_post( $post_id ) ) $revalidated++;
 			}
 
-			$redirect_url = add_query_arg('nextjs-revalidate-bulk-purged', $purged, $this->get_sendback_url($redirect_url));
+			$redirect_url = add_query_arg('nextjs-revalidate-bulk-revalidated', $revalidated, $this->get_sendback_url($redirect_url));
 		}
 
 		return $redirect_url;
 	}
 
 	/**
-	 * The notice describing the purge the current request comes back from,
+	 * The notice describing the revalidation the current request comes back from,
 	 * if it comes back from one.
 	 *
 	 * @return array|null [ 'status' => 'success'|'error', 'message' => string ]
-	 *                    Null when the request is not the sendback of a purge.
+	 *                    Null when the request is not the sendback of one.
 	 */
-	public function get_purged_notice() {
-		if ( ! isset( $_GET['nextjs-revalidate-purged'] ) ) return null;
+	public function get_revalidated_notice() {
+		if ( ! isset( $_GET['nextjs-revalidate-revalidated'] ) ) return null;
 
-		$post_id = intval( $_GET['nextjs-revalidate-purged'] );
+		$post_id = intval( $_GET['nextjs-revalidate-revalidated'] );
 		$success = $post_id > 0;
 
 		return [
@@ -662,14 +690,14 @@ class Revalidate extends Base implements Hookable {
 	 * inside the editor, would otherwise report nothing at all. There the
 	 * notice is dispatched to `core/notices` from the editor script instead.
 	 *
-	 * @return array|null Same shape as `get_purged_notice()`.
+	 * @return array|null Same shape as `get_revalidated_notice()`.
 	 */
-	public function get_block_editor_purged_notice() {
-		return $this->is_block_editor_screen() ? $this->get_purged_notice() : null;
+	public function get_block_editor_revalidated_notice() {
+		return $this->is_block_editor_screen() ? $this->get_revalidated_notice() : null;
 	}
 
-	function purged_notice() {
-		$notice = $this->get_purged_notice();
+	function revalidated_notice() {
+		$notice = $this->get_revalidated_notice();
 		if ( ! is_null($notice) && ! $this->is_block_editor_screen() ) {
 			printf(
 				'<div class="notice notice-%s"><p>%s</p></div>',
@@ -678,16 +706,16 @@ class Revalidate extends Base implements Hookable {
 			);
 		}
 
-		if ( isset($_GET['nextjs-revalidate-bulk-purged']) ) {
+		if ( isset($_GET['nextjs-revalidate-bulk-revalidated']) ) {
 
-			$nb_purged = intval($_GET['nextjs-revalidate-bulk-purged']);
-			$success = $nb_purged > 0;
+			$nb_revalidated = intval($_GET['nextjs-revalidate-bulk-revalidated']);
+			$success = $nb_revalidated > 0;
 
 			printf(
 				'<div class="notice notice-%s"><p>%s</p></div>',
 				$success ? 'success' : 'error',
 				($success
-					? sprintf( _n( '%d post: the revalidation was sent to the front-end.', '%d posts: the revalidation was sent to the front-end.', $nb_purged, 'nextjs-revalidate' ), $nb_purged )
+					? sprintf( _n( '%d post: the revalidation was sent to the front-end.', '%d posts: the revalidation was sent to the front-end.', $nb_revalidated, 'nextjs-revalidate' ), $nb_revalidated )
 					: __( 'Unable to revalidate. Please try again or contact an administrator.', 'nextjs-revalidate' )
 				)
 			);
@@ -695,40 +723,24 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * Get the post permalink.
-	 *
-	 * If the post_id is a revision, we should get the permalink from the parent post_id
-	 * for instance when saving, the post_id is the revision id, but we want to purge the parent post permalink
-	 *
-	 * An uploaded file is not a Next.js route: attachments hold no page the
-	 * front-end could rebuild, so they have no permalink to purge.
+	 * Get the post permalink: the permalink of its page, or of its parent's
+	 * when the post is a revision — a save hands over the revision, and the
+	 * page is the parent's.
 	 *
 	 * @param int  $post_id         The post ID.
 	 * @param bool $check_if_public Optional. Whether to check if the post is public. Default true.
 	 *
-	 * @return string|false The post permalink. False if the post is not public.
+	 * @return string|false The post permalink. False if the post is not public,
+	 *                      or has no page — see `page_permalink()`.
 	 */
 	public function get_post_permalink( $post_id, $check_if_public = true ) {
 
-		if ( $check_if_public ) {
-			$is_public = $this->should_revalidate( $post_id );
-			if ( !$is_public ) return false;
-		}
+		if ( $check_if_public && ! $this->should_revalidate( $post_id ) ) return false;
 
-		if ( 'attachment' === get_post_type( $post_id ) ) return false;
+		$parent_post_id = wp_is_post_revision( $post_id );
+		$permalink      = $this->page_permalink( get_post( false !== $parent_post_id ? $parent_post_id : $post_id ) );
 
-		// If post_id is a revision, we should get the permalink from the parent post_id
-		$parent_post_id = wp_is_post_revision($post_id);
-		$post_id_for_permalink = ( false !== $parent_post_id
-			? $parent_post_id
-			: $post_id
-		);
-
-		$permalink = get_permalink( $post_id_for_permalink );
-
-		if ( $this->is_uploaded_file_url( $permalink ) ) return false;
-
-		return $permalink;
+		return $permalink ?? false;
 	}
 
 	/**
@@ -740,7 +752,7 @@ class Revalidate extends Base implements Hookable {
 	 * it no second axis either — `is_term_publicly_viewable()` is, in full, a
 	 * term-existence check plus this same question about its taxonomy. Asking it
 	 * once per taxonomy rather than once per term is the difference between one
-	 * call and tens of thousands of them on a purge all.
+	 * call and tens of thousands of them on a revalidate all.
 	 *
 	 * The axis is `is_taxonomy_viewable()`, which for a taxonomy is a bare
 	 * `publicly_queryable` with none of the `_builtin && public` fallback

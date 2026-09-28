@@ -5,6 +5,7 @@ namespace NextJsRevalidate\Integrations;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Change;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\Traits\WhenPluginsLoaded;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -39,6 +40,8 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  *                changes of this request, reached through `Base`.
  */
 class Polylang extends Base implements Hookable {
+	use WhenPluginsLoaded;
+
 
 	/**
 	 * The taxonomy Polylang's languages are terms of.
@@ -58,12 +61,7 @@ class Polylang extends Base implements Hookable {
 	 */
 	public function register_hooks(): void {
 
-		if ( did_action( 'plugins_loaded' ) ) {
-			$this->register_polylang_hooks();
-			return;
-		}
-
-		add_action( 'plugins_loaded', [$this, 'register_polylang_hooks'] );
+		$this->when_plugins_loaded( [$this, 'register_polylang_hooks'] );
 	}
 
 	/**

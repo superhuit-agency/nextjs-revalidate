@@ -130,7 +130,9 @@ class PostChangeTest extends PendingChangesTestCase {
 
 		wp_update_post( [ 'ID' => $post_id, 'post_status' => 'private' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, $this->uri_of( $post_id ) ) ] );
+		// Nobody is logged in here, so core hands the private post `?p=` —
+		// and its page is still where it was.
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, $uri ) ] );
 	}
 
 	/**

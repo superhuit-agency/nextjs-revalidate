@@ -81,7 +81,10 @@ class PostDeletionRevalidationTest extends PendingChangesTestCase {
 	 */
 	public function test_deleting_a_private_post_is_reported_gone() {
 		$post_id = $this->published_post( [ 'post_status' => 'private' ] );
-		$path    = $this->path_of( get_permalink( $post_id ) );
+
+		// Its page, and not the `?p=` core hands a private post when nobody who
+		// can read it is logged in, as nobody is here.
+		$path = '/' . get_post_field( 'post_name', $post_id ) . '/';
 
 		$this->reset_pending_changes();
 

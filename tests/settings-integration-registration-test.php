@@ -50,6 +50,7 @@ function did_action( $name ) {
 
 require_once __DIR__ . '/../include/Interfaces/Hookable.php';
 require_once __DIR__ . '/../include/Abstracts/Base.php';
+require_once __DIR__ . '/../include/Traits/WhenPluginsLoaded.php';
 require_once __DIR__ . '/../include/Integrations/Yoast.php';
 require_once __DIR__ . '/../include/Integrations/Polylang.php';
 

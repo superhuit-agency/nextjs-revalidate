@@ -78,7 +78,7 @@ class Assets implements Hookable {
 
 		wp_register_script( self::EDITOR_SCRIPT_HANDLE, $this->assets['editor']['js'], ['wp-data', 'wp-notices'], null, true );
 
-		$notice = NextJsRevalidate::init()->revalidate->get_block_editor_purged_notice();
+		$notice = NextJsRevalidate::init()->revalidate->get_block_editor_revalidated_notice();
 		if ( is_null($notice) ) return;
 
 		wp_localize_script( self::EDITOR_SCRIPT_HANDLE, 'nextjs_revalidate_notice', $notice );

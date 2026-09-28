@@ -7,6 +7,7 @@ use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\Traits\AdminBarMenu;
 use NextJsRevalidate\Traits\SendbackUrl;
 use WP_Admin_Bar;
+use WP_Error;
 
 /**
  * @property Revalidate     $revalidate
@@ -104,6 +105,16 @@ class RevalidateAll extends Base implements Hookable {
 			return;
 		}
 
+		if ( isset($_GET['nextjs-revalidate-revalidate-all-dropped']) ) {
+			if ( !current_user_can('edit_posts') && !current_user_can('manage_options') ) return;
+
+			printf(
+				'<div class="notice notice-warning"><p>%s</p></div>',
+				esc_html__( 'Revalidate all: nothing was sent, this site\'s nextjs_revalidate_change filter dropped it.', 'nextjs-revalidate' )
+			);
+			return;
+		}
+
 		if ( !isset($_GET['nextjs-revalidate-revalidate-all']) ) return;
 
 		// No page count: a revalidate all is one change, and which pages it
@@ -129,13 +140,14 @@ class RevalidateAll extends Base implements Hookable {
 			: 'all';
 
 		$reported = $this->revalidate_all( $type );
-		$sendback = add_query_arg(
-			( false === $reported
-				? [ 'nextjs-revalidate-revalidate-all-refused' => 1 ]
-				: [ 'nextjs-revalidate-revalidate-all' => 1 ]
-			),
-			$this->get_sendback_url()
-		);
+
+		// Only a change held for delivery was sent: a refusal and a change the
+		// site's own filter dropped each say so instead.
+		if ( is_wp_error( $reported ) )  $outcome = 'nextjs-revalidate-revalidate-all-refused';
+		elseif ( true !== $reported )    $outcome = 'nextjs-revalidate-revalidate-all-dropped';
+		else                             $outcome = 'nextjs-revalidate-revalidate-all';
+
+		$sendback = add_query_arg( [ $outcome => 1 ], $this->get_sendback_url() );
 
 		wp_safe_redirect( $sendback );
 		exit;
@@ -185,27 +197,22 @@ class RevalidateAll extends Base implements Hookable {
 	 *
 	 * @param string $type Optional. The post type to revalidate, or 'all' for
 	 *                     the whole site. Default 'all'.
-	 * @return bool True when the change was reported, false on a refusal — an
-	 *              unconfigured site, where nothing was reported because
-	 *              nothing reported could be delivered. A change the
-	 *              `nextjs_revalidate_change` filter then drops was still
-	 *              reported: dropping it is the site's decision, not a refusal.
+	 * @return true|false|WP_Error What `PendingChanges::report()` answers: true
+	 *                             when the change is held for delivery, false
+	 *                             when the `nextjs_revalidate_change` filter
+	 *                             dropped it, and the `not_configured` WP_Error
+	 *                             when an unconfigured site refused it.
 	 */
 	function revalidate_all( $type = 'all' ) {
-		if ( !$this->settings->is_configured() ) {
-			Logger::log(
-				sprintf( '⛔ Refused revalidate all (%s) — site not configured (missing: %s)', $type, implode(', ', $this->settings->missing_settings()) ),
-				__FILE__,
-				Logger::ERROR
-			);
-			return false;
-		}
+		// Refused before the taxonomies are read, and logged under its own
+		// name rather than as "a all change".
+		if ( !$this->settings->is_configured() ) return $this->pendingChanges->refuse( "revalidate all ($type)" );
 
 		$change = ( $type === 'all' )
 			? Change::all()
 			: Change::all( $type, array_values( $this->revalidatable_taxonomies( $type ) ) );
 
-		return !is_wp_error( $this->pendingChanges->report( $change ) );
+		return $this->pendingChanges->report( $change );
 	}
 
 	/**

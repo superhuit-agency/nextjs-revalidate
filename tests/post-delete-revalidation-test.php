@@ -124,6 +124,10 @@ function wp_make_link_relative( $url ) {
 	return (string) preg_replace( '|https?://[^/]+(/.*)|i', '$1', $url );
 }
 
+function wp_parse_url( $url, $component = -1 ) {
+	return -1 === $component ? parse_url( $url ) : parse_url( $url, $component );
+}
+
 class WP_Post {
 	public $ID;
 	public $post_type;

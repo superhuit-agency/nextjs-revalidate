@@ -419,7 +419,7 @@ foreach ( [ 'all', 'post' ] as $type ) {
 	$revalidate_all = njr_test_subject( false );
 	$answer = $revalidate_all->revalidate_all( $type );
 
-	njr_test_expect( "an unconfigured site refuses revalidate all ($type), answering false", false, $answer );
+	njr_test_expect( "an unconfigured site refuses revalidate all ($type), answering the refusal", 'not_configured', is_wp_error( $answer ) ? $answer->get_error_code() : $answer );
 	njr_test_expect( "and holds no change for it ($type)", [], njr_test_pending() );
 	njr_test_delivered();
 	njr_test_expect( "and asks the front-end nothing ($type)", [], $GLOBALS['njr_test_posts'] );

@@ -183,6 +183,15 @@ delivered in one v2 `POST`, and names no page.
 - [ ] **Click All.** Expect `= Revalidating (v2): {"subject":"all"}` in the
       console — no type, no taxonomies — and `✅ Revalidated 1 change (all)` in
       the log.
+- [ ] **Drop every change with the filter, then click Posts:**
+      ```sh
+      npx wp-env run cli -- bash -c 'mkdir -p wp-content/mu-plugins && cat > wp-content/mu-plugins/njr-runbook-drop.php <<PHP
+      <?php add_filter("nextjs_revalidate_change", "__return_false");
+      PHP'
+      ```
+      Expect the warning notice "Revalidate all: nothing was sent, this site's
+      nextjs_revalidate_change filter dropped it." and nothing in the console.
+      Then `npx wp-env run cli -- rm wp-content/mu-plugins/njr-runbook-drop.php`.
 - [ ] **Untick `page` in the settings, save, reopen the admin bar.** Expect the
       Pages item gone. Re-tick it afterwards.
 - [ ] **As a subscriber, open the admin bar.** Expect no Revalidate menu.

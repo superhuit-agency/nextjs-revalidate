@@ -2,19 +2,20 @@
 /**
  * A refusal and a success are different answers — RevalidateAll::revalidate_all().
  *
- * `revalidate_all()` reports one `all` change and answers `true`, except on an
- * **unconfigured site**, where it refuses and answers `false`. Its caller reads
- * that with `false === $reported` and sends the operator to a refusal notice
- * instead of a success notice, so the two answers have to stay distinguishable
+ * `revalidate_all()` answers what the pending changes answer a report: `true`
+ * for a change held, `false` for one the site's own `nextjs_revalidate_change`
+ * filter dropped, and the `not_configured` WP_Error on an **unconfigured site**,
+ * which refuses before anything is reported. Its caller sends the operator to a
+ * different notice for each, so the three answers have to stay distinguishable
  * by identity.
  *
  * Until v2 the success answer was a count, and `0` — a site with nothing
  * revalidatable — was the falsy answer that was not a refusal (#82). A change
- * has no count, but it keeps a falsy answer that is not a refusal: the
- * `nextjs_revalidate_change` filter dropping the change, which is the site's
- * own decision. This holds the distinction by a test rather than by a comment,
- * so the next person to "simplify" the branch away has to delete an
- * expectation to do it.
+ * has no count, but it keeps a falsy answer that is not a refusal: the filter
+ * dropping the change, which is the site's own decision — and which is not a
+ * revalidation sent either, so the operator is not told one was. This holds
+ * the distinction by a test rather than by a comment, so the next person to
+ * "simplify" the branch away has to delete an expectation to do it.
  *
  * Reachable by stubbing a handful of WordPress functions, so it is a standalone
  * script — ADR 0008's rule. What the change carries is
@@ -62,10 +63,10 @@ namespace {
 	$GLOBALS['njr_test_report_answer'] = true;
 
 	/**
-	 * Everything the plugin logged during the last call.
-	 * @var array
+	 * What the pending changes were asked to refuse, in order.
+	 * @var string[]
 	 */
-	$GLOBALS['njr_test_log'] = [];
+	$GLOBALS['njr_test_refused'] = [];
 
 	/**
 	 * Whether the fixture site holds both settings a revalidation cannot be
@@ -130,6 +131,12 @@ namespace {
 	 * The pending changes, reduced to what they were handed.
 	 */
 	class NJR_Test_PendingChanges {
+		public function refuse( string $what ) {
+			$GLOBALS['njr_test_refused'][] = $what;
+
+			return new WP_Error();
+		}
+
 		public function report( array $change ) {
 			$GLOBALS['njr_test_reported'][] = $change;
 
@@ -207,7 +214,7 @@ namespace {
 		$GLOBALS['njr_test_configured']    = $configured;
 		$GLOBALS['njr_test_report_answer'] = $answer;
 		$GLOBALS['njr_test_reported']      = [];
-		$GLOBALS['njr_test_log']           = [];
+		$GLOBALS['njr_test_refused']       = [];
 
 		return ( new NextJsRevalidate\RevalidateAll() )->revalidate_all( $type );
 	}
@@ -218,9 +225,9 @@ namespace {
 		$answer = njr_test_revalidate_all( false, $type );
 
 		njr_test_expect(
-			"an unconfigured site answers false to revalidate all ($type)",
-			false,
-			$answer
+			"an unconfigured site answers the refusal to revalidate all ($type)",
+			true,
+			$answer instanceof WP_Error
 		);
 		njr_test_expect(
 			"a refusal reports nothing ($type)",
@@ -228,9 +235,9 @@ namespace {
 			$GLOBALS['njr_test_reported']
 		);
 		njr_test_expect(
-			"the refusal says which settings are missing ($type)",
-			1,
-			count( preg_grep( '/^⛔ Refused revalidate all \(' . $type . '\) — site not configured \(missing: domain, secret\)$/u', $GLOBALS['njr_test_log'] ) )
+			"the refusal is the pending changes', under revalidate all's own name ($type)",
+			[ "revalidate all ($type)" ],
+			$GLOBALS['njr_test_refused']
 		);
 	}
 
@@ -243,29 +250,30 @@ namespace {
 		$answer
 	);
 	njr_test_expect(
-		'true is not a refusal — the caller sends the operator to the success notice',
-		false,
-		false === $answer
-	);
-	njr_test_expect(
 		'having reported exactly one change',
 		1,
 		count( $GLOBALS['njr_test_reported'] )
 	);
 	njr_test_expect(
-		'and nothing was logged, because nothing was refused',
+		'and refused nothing',
 		[],
-		$GLOBALS['njr_test_log']
+		$GLOBALS['njr_test_refused']
 	);
 
-	// A change the filter drops is the site's decision, and not a refusal: the
-	// operator is not told the site is unconfigured when it is not.
+	// A change the filter drops is the site's decision: not a refusal, so the
+	// operator is not told the site is unconfigured — and not sent either, so
+	// they are not told it was.
 	$answer = njr_test_revalidate_all( true, 'post', false );
 
 	njr_test_expect(
-		'a change the nextjs_revalidate_change filter dropped is not a refusal',
-		true,
+		'a change the nextjs_revalidate_change filter dropped answers false',
+		false,
 		$answer
+	);
+	njr_test_expect(
+		'which is not a refusal',
+		[],
+		$GLOBALS['njr_test_refused']
 	);
 
 	// However many posts the site holds, none is asked about.

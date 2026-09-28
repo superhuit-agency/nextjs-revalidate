@@ -3,6 +3,7 @@
 namespace NextJsRevalidate\Integrations;
 
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\Traits\WhenPluginsLoaded;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -28,6 +29,8 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * See `docs/adr/0037-a-settings-change-reports-what-every-page-renders.md`.
  */
 class Yoast implements Hookable {
+	use WhenPluginsLoaded;
+
 
 	/**
 	 * Yoast's options that hold site settings.
@@ -42,12 +45,7 @@ class Yoast implements Hookable {
 	 */
 	public function register_hooks(): void {
 
-		if ( did_action( 'plugins_loaded' ) ) {
-			$this->register_yoast_hooks();
-			return;
-		}
-
-		add_action( 'plugins_loaded', [$this, 'register_yoast_hooks'] );
+		$this->when_plugins_loaded( [$this, 'register_yoast_hooks'] );
 	}
 
 	/**

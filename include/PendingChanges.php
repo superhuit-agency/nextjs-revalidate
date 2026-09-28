@@ -68,6 +68,12 @@ class PendingChanges extends Base implements Hookable {
 	 */
 	private array $pending = [];
 
+	/**
+	 * Whether this request's changes have been delivered. A change reported
+	 * after that — later in `shutdown` — is held with nothing left to send it.
+	 */
+	private bool $delivered = false;
+
 	public function register_hooks(): void {
 		// `shutdown` runs after `exit()` too, so the redirect a theme switch or
 		// a row action ends in does not skip it.
@@ -102,15 +108,7 @@ class PendingChanges extends Base implements Hookable {
 
 		// A refusal rather than a failure: the front-end is asked nothing at
 		// all, and nothing about this change outlives this line.
-		if ( ! $this->settings->is_configured() ) {
-			Logger::log(
-				sprintf( '⛔ Refused a %s change — site not configured (missing: %s)', $subject, implode( ', ', $this->settings->missing_settings() ) ),
-				__FILE__,
-				Logger::ERROR
-			);
-
-			return $this->settings->not_configured_error();
-		}
+		if ( ! $this->settings->is_configured() ) return $this->refuse( "a $subject change" );
 
 		$filtered = $this->filtered( $change, $subject );
 		if ( false === $filtered ) return false;
@@ -126,6 +124,16 @@ class PendingChanges extends Base implements Hookable {
 			if ( empty( $this->pending[ $site_id ] ) ) unset( $this->pending[ $site_id ] );
 
 			return true;
+		}
+
+		// Held all the same, and still accepted (ADR 0010), but nothing will
+		// send it: said in the log, where whoever wrote so late will look.
+		if ( $this->delivered ) {
+			Logger::log(
+				sprintf( '⚠️ A %s change was reported after this request\'s changes were delivered — it will not be sent', $subject ),
+				__FILE__,
+				Logger::ERROR
+			);
 		}
 
 		$this->pending[ $site_id ][ $identity ] = $merged;
@@ -168,14 +176,24 @@ class PendingChanges extends Base implements Hookable {
 		$filtered = $this->filtered( $change, Change::is_change( $change ) ? $change['subject'] : '?' );
 		if ( false === $filtered ) return false;
 
-		return $this->send_front_end_changes(
-			$this->settings->endpoint_url(),
-			[
-				'version' => self::CONTRACT_VERSION,
-				'changes' => [ $filtered ],
-			],
-			self::REQUEST_TIMEOUT
+		return $this->post( [ $filtered ] );
+	}
+
+	/**
+	 * Refuse on behalf of an unconfigured site: log it, naming what was
+	 * refused, and answer the `not_configured` WP_Error.
+	 *
+	 * @param string $what What was refused, as the log line names it.
+	 * @return WP_Error
+	 */
+	public function refuse( string $what ) {
+		Logger::log(
+			sprintf( '⛔ Refused %s — site not configured (missing: %s)', $what, implode( ', ', $this->settings->missing_settings() ) ),
+			__FILE__,
+			Logger::ERROR
 		);
+
+		return $this->settings->not_configured_error();
 	}
 
 	/**
@@ -237,6 +255,8 @@ class PendingChanges extends Base implements Hookable {
 	 */
 	public function deliver() {
 
+		$this->delivered = true;
+
 		if ( empty( $this->pending ) ) return;
 
 		$this->close_request();
@@ -292,24 +312,9 @@ class PendingChanges extends Base implements Hookable {
 		// A site whose settings were cleared after its changes were produced:
 		// the same refusal `report()` gives, given later. The front-end is asked
 		// nothing, so the failure window is told nothing.
-		if ( ! $this->settings->is_configured() ) {
-			Logger::log(
-				sprintf( '⛔ Refused %s — site not configured (missing: %s)', $what, implode( ', ', $this->settings->missing_settings() ) ),
-				__FILE__,
-				Logger::ERROR
-			);
+		if ( ! $this->settings->is_configured() ) return $this->refuse( $what );
 
-			return $this->settings->not_configured_error();
-		}
-
-		$outcome = $this->send_front_end_changes(
-			$this->settings->endpoint_url(),
-			[
-				'version' => self::CONTRACT_VERSION,
-				'changes' => $changes,
-			],
-			self::REQUEST_TIMEOUT
-		);
+		$outcome = $this->post( $changes );
 
 		// One outcome however many changes the request carried: the front-end
 		// answered once, for all of them.
@@ -327,6 +332,24 @@ class PendingChanges extends Base implements Hookable {
 		}
 
 		return $outcome;
+	}
+
+	/**
+	 * `POST` the given changes to the current site's front-end, in the v2
+	 * request: what a delivery and a probe both send.
+	 *
+	 * @param array[] $changes
+	 * @return true|WP_Error What the front-end answered.
+	 */
+	private function post( array $changes ) {
+		return $this->send_front_end_changes(
+			$this->settings->endpoint_url(),
+			[
+				'version' => self::CONTRACT_VERSION,
+				'changes' => $changes,
+			],
+			self::REQUEST_TIMEOUT
+		);
 	}
 
 	/**

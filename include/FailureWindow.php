@@ -371,7 +371,7 @@ class FailureWindow extends Base implements Hookable {
 	 * condition, not an event, and there is nothing to acknowledge.
 	 *
 	 * @return array{status: string, message: string, actions: array<int, array{label: string, url: string}>}|null
-	 *         Same family as `Revalidate::get_block_editor_purged_notice()`.
+	 *         Same family as `Revalidate::get_block_editor_revalidated_notice()`.
 	 */
 	public function get_block_editor_degraded_notice() {
 

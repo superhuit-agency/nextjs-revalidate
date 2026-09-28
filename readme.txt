@@ -164,8 +164,9 @@ route. The full notes are in CHANGELOG.md on GitHub.
   and a JSON body `{ "version": 2, "changes": [ … ] }` describing what changed —
   a post (before and after), a redirect, a path, a menu, the templates, or a
   revalidate all. Which cache tags a change expires is the front-end's decision.
-  Any 2xx is a success, and the timeout is five seconds. See the README's
-  front-end contract and its reference route.
+  Any 2xx is a success, and the timeout is five seconds. A `uri` is always a
+  path, without a query string. See the README's front-end contract and its
+  reference route.
 * Removed: the FSE revalidate path and "Revalidate on FSE update" settings — the
   templates are reported on the one route like every other change — and the "On
   menu update" post-type switches — a menu save reports one menu change. Their

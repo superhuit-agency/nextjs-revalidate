@@ -5,6 +5,7 @@ namespace NextJsRevalidate\Integrations;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Change;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\Traits\WhenPluginsLoaded;
 use NextJsRevalidate\Logger;
 
 // Exit if accessed directly.
@@ -29,6 +30,8 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  *                changes of this request, reached through `Base`.
  */
 class Redirection extends Base implements Hookable {
+	use WhenPluginsLoaded;
+
 
 	/**
 	 * Register the integration's hooks.
@@ -49,12 +52,7 @@ class Redirection extends Base implements Hookable {
 	 */
 	public function register_hooks(): void {
 
-		if ( did_action( 'plugins_loaded' ) ) {
-			$this->register_redirect_hooks();
-			return;
-		}
-
-		add_action( 'plugins_loaded', [$this, 'register_redirect_hooks'] );
+		$this->when_plugins_loaded( [$this, 'register_redirect_hooks'] );
 	}
 
 	/**

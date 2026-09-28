@@ -107,9 +107,12 @@ Every field, and when it is `null`:
 | `all` | `type` | string | The post type revalidated. Absent — with `taxonomies` — for the whole site. |
 | `all` | `taxonomies` | string[] | The **revalidatable taxonomies** registered for `type`, whose term archives the front-end may hold. Possibly empty. Present exactly when `type` is. |
 
-- **A `uri`** is always the path from the domain root, with a leading slash —
-  what 1.x sent as `path`, and what WPGraphQL calls `uri`. It keeps the trailing
-  slash, or its lack of one, that WordPress's permalink or the caller gave it.
+- **A `uri`** is always the path from the domain root, with a leading slash:
+  the path of the URL, and nothing else — a domain or a query string is never
+  part of it. It keeps the trailing slash, or its lack of one, that WordPress's
+  permalink or the caller gave it. A site on plain permalinks, whose posts live
+  at `/?p=42`, reports `/` for each of them: a front-end telling posts apart by
+  `uri` needs pretty permalinks, and every post change carries its `id` too.
 - **A post's `before` and `after`** describe it *as the front-end sees it*: a
   post is on the front-end while its status is `publish` or `private`. Only
   one side is ever `null` — a change with both `null`, a draft saved as a draft,

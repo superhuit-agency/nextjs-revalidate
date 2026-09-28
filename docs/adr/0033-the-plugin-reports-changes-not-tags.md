@@ -40,7 +40,10 @@ Six subjects in v2.0:
 | `all` | `{}`, or `{ type, taxonomies }` | revalidate all, of the whole site or of one post type |
 
 `uri` is always the path from the domain root — what v1 sent as `path`, and what
-WPGraphQL calls `uri`.
+WPGraphQL calls `uri` — and only the path: a domain or a query string is never
+part of it, for a post as for a named path. v1 sent a post's permalink with its
+query string, so a post on plain permalinks, `/?p=42`, is now reported at `/`;
+one rule for every `uri` is worth more than a shape no Next.js route can serve.
 
 A **post**'s `before` and `after` describe it *as the front-end sees it*, and
 `null` means it is not there: `before` is `null` for a publish, `after` for a

@@ -178,7 +178,7 @@ class RevalidateAllTermsTest extends PendingChangesTestCase {
 		$answer = \NextJsRevalidate::init()->revalidateAll->revalidate_all( 'post' );
 		remove_filter( 'nextjs_revalidate_change', $capture );
 
-		$this->assertTrue( $answer, 'a configured site does not refuse revalidate all' );
+		$this->assertFalse( $answer, 'the capture drops the change, which a configured site does not refuse' );
 		$this->assertCount( 1, $this->reported, 'revalidate all reports exactly one change' );
 		$this->assertSame( 'all',  $this->reported[0]['subject'] );
 		$this->assertSame( 'post', $this->reported[0]['type'] );

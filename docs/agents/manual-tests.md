@@ -19,7 +19,7 @@ prevent.
 
 **A new step goes in the extended pass by default.** It belongs in the core pass
 only if its failure would mean the plugin does not work at all for an ordinary
-single site. If adding to the core pass takes it much past thirty-one steps, ask
+single site. If adding to the core pass takes it much past thirty-two steps, ask
 whether something else there has stopped earning its place.
 
 ## The runbook is a template

@@ -184,7 +184,7 @@ $expected_per_class = [
 		[ 'admin_init',           'register_bulk_actions',           10, 1 ],
 		[ 'admin_bar_menu',       'admin_top_bar_menu',             100, 1 ],
 		[ 'admin_init',           'revalidate_current_post_action',  10, 1 ],
-		[ 'admin_notices',        'purged_notice',                   10, 1 ],
+		[ 'admin_notices',        'revalidated_notice',                   10, 1 ],
 	],
 
 	Probe::class => [
