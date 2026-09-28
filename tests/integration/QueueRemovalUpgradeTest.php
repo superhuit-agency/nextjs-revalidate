@@ -65,11 +65,15 @@ class QueueRemovalUpgradeTest extends WP_UnitTestCase {
 		// The log first: its path is composed from an option deleted below.
 		$this->remove_log();
 
-		$wpdb->query( "DROP TABLE IF EXISTS `{$this->queue_table()}`" );
 		wp_unschedule_hook( Settings::LEGACY_QUEUE_CRON_HOOK_NAME );
 		delete_transient( Settings::LEGACY_QUEUE_RUNNING_TRANSIENT_NAME );
 
 		foreach ( self::OPTIONS as $option_name ) delete_option( $option_name );
+
+		// Last, because DDL commits: it makes the deletions above stick past
+		// the rollback, where a deletion after it would be rolled back — and
+		// leave this class's options to the next test.
+		$wpdb->query( "DROP TABLE IF EXISTS `{$this->queue_table()}`" );
 
 		parent::tear_down();
 	}
