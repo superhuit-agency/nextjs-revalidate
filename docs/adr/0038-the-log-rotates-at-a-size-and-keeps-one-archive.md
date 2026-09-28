@@ -41,8 +41,6 @@ look for a filter.
 
 **A Clear log button.** Rejected in the same session. Deleting on a click that
 can't be undone is a different decision from deleting by a predictable rule.
-If "start from an empty log" turns out to be a need, a manual action that
-*rotates* keeps the log it moves aside.
 
 ## Consequences
 
