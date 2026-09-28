@@ -58,3 +58,13 @@ naming them in its core — the Redirection precedent.
 **Name which setting changed.** Rejected for the reason ADR 0033 gives for
 templates: the front-end caches them as one dependency, and nothing reads the
 name. Additive later, under ADR 0033's rule 1.
+
+## Implementation note: Polylang writes its option after delivery
+
+Found while implementing #171. Polylang 3.7 and later hold their options in
+memory and write the `polylang` option on `shutdown` at priority 1000 — after
+the pending changes are delivered at priority 10 (ADR 0034). A change of default
+language made through Polylang is therefore reported from the
+`pll_update_default_lang` action it fires while the request is running; the
+option's own hook stays, for a direct write from WP-CLI or a migration. The
+decision above is unchanged: only a different `default_lang` reports.

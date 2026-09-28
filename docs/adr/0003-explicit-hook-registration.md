@@ -25,12 +25,12 @@ constructs them and calls `register_hooks()` on every one of them, in
 construction order. Constructing any class of this plugin now touches no global
 state.
 
-The Redirection integration implements the same interface but is called by name
-rather than through that loop: it asks a question the others do not — whether
-the plugin it integrates with is installed — and answers it after everything
-else has registered. Registering it last is the decision; implementing the
-interface is what keeps its signature from drifting away from the convention it
-is an exception to.
+The integrations — Redirection, and since #171 Yoast SEO and Polylang —
+implement the same interface but are called by name rather than through that
+loop: each asks a question the others do not — whether the plugin it integrates
+with is installed — and answers it after everything else has registered.
+Registering them last is the decision; implementing the interface is what keeps
+their signature from drifting away from the convention they are an exception to.
 
 **This is a convention, not a bug fix.** Nothing in the codebase needs a hookless
 instance today, and #24 retires the only historical caller. What it buys is that

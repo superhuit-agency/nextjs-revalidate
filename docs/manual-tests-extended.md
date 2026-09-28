@@ -380,24 +380,25 @@ anything reports one `= Revalidating (v2): {"subject":"settings"}` line, and
       save, not one per field.
 - [ ] **Save Changes again without changing anything.** Expect **no** request in
       the console.
-- [ ] **Settings → Permalinks → choose "Day and name", Save Changes, then put
-      back what it was.** Expect **no** `settings` change for either save: the
-      permalink structure moves paths, and is not a site setting.
+- [ ] **Settings → Permalinks → choose "Day and name", and Save Changes.**
+      Expect **no** `settings` change: the permalink structure moves paths, and
+      is not a site setting. Put back what it was before going on.
 - [ ] **Yoast SEO → Settings → General → Site basics → change the title
       separator, and Save changes.** Expect one `{"subject":"settings"}`
       request.
-- [ ] **Languages → Languages → add English, then add French.** Expect one
-      `{"subject":"settings"}` request for each.
+- [ ] **Languages → Languages → add English.** Expect one
+      `{"subject":"settings"}` request.
+- [ ] **Add French.** Expect one `{"subject":"settings"}` request.
 - [ ] **Click the star beside French**, making it the default language. Expect one
       `{"subject":"settings"}` request — Polylang writes its option after this
       plugin has delivered, so a missing request here means the change was
       reported too late to send.
 - [ ] **Languages → Settings → URL modifications → toggle "Hide URL language
       information for default language", and Save.** Expect **no** `settings`
-      change: that switch moves paths.
+      change: that switch moves paths. Toggle it back and Save.
 - [ ] **Delete both languages.** Expect one `{"subject":"settings"}` request for
-      each, then confirm the post's permalink carries no language prefix before
-      going on.
+      each deletion. Before going on, the post's permalink must carry no language
+      prefix again; if it does, a language is left behind.
 
 ## O. Uninstallation
 

@@ -75,21 +75,21 @@ class Polylang extends Base implements Hookable {
 
 		if ( ! defined( 'POLYLANG_VERSION' ) ) return;
 
-		add_action( 'created_' . self::LANGUAGE_TAXONOMY, [$this, 'on_language_change'] );
-		add_action( 'edited_' . self::LANGUAGE_TAXONOMY,  [$this, 'on_language_change'] );
-		add_action( 'delete_' . self::LANGUAGE_TAXONOMY,  [$this, 'on_language_change'] );
+		add_action( 'created_' . self::LANGUAGE_TAXONOMY, [$this, 'report_settings_change'] );
+		add_action( 'edited_' . self::LANGUAGE_TAXONOMY,  [$this, 'report_settings_change'] );
+		add_action( 'delete_' . self::LANGUAGE_TAXONOMY,  [$this, 'report_settings_change'] );
 
-		add_action( 'pll_update_default_lang', [$this, 'on_language_change'] );
+		add_action( 'pll_update_default_lang', [$this, 'report_settings_change'] );
 		add_action( 'update_option_' . self::OPTION, [$this, 'on_option_update'], 10, 2 );
 	}
 
 	/**
-	 * A language was created, edited or deleted, or the default language was
-	 * changed through Polylang.
+	 * Report that a site setting changed: a language was created, edited or
+	 * deleted, or the default language changed.
 	 *
 	 * @return void
 	 */
-	public function on_language_change() {
+	public function report_settings_change() {
 		$this->pendingChanges->report( Change::settings() );
 	}
 
@@ -104,7 +104,7 @@ class Polylang extends Base implements Hookable {
 	public function on_option_update( $old_value, $value ) {
 		if ( self::default_language( $old_value ) === self::default_language( $value ) ) return;
 
-		$this->on_language_change();
+		$this->report_settings_change();
 	}
 
 	/**
