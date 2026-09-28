@@ -340,9 +340,18 @@ created by the first line written rather than by switching the setting on — so
 a site that has never logged, its absence is the normal state and not a fault.
 Every log line the plugin can produce passes through that one setting; there is
 no second channel that logs regardless. Its path is composed rather than known in
-advance, and the settings screen is where an operator reads it.
+advance. The settings screen tells the operator where it is and, while logging is
+on, the **log viewer** shows its end.
 _Avoid_: Debug mode — the plugin has a setting that enables logging, not a mode
 it runs in.
+
+**Log viewer**:
+The read-only view of the end of the **log file**, on the settings screen's Debug
+tab, shown only while logging is switched on. It shows the file and never changes
+it: reading it writes nothing and removes nothing. With logging off, the screen
+still says where the log file is, and the viewer is not shown.
+_Avoid_: Debug log — suggests a mode; log console — suggests something that
+takes input.
 
 **Redaction**:
 Taking the secret out of a message the plugin did not write itself, at the moment
