@@ -239,7 +239,7 @@ The oracle here is the **revalidate server console**: an FSE change is a
       Expect one templates change per switch — every template changed at once.
 - [ ] **Save an ordinary post.** Expect a post change and **no** templates
       change: a post has not touched the snapshot.
-- [ ] **Save a navigation menu** (Appearance → Menus). Expect a `menu` change
+- [ ] **Save a classic menu** (Appearance → Menus). Expect a `menu` change
       and **no** templates change. Menu items are fetched at request time by
       the front-end and are deliberately not in the snapshot.
 - [ ] **Clear the secret, save, and edit a template part.** Expect
