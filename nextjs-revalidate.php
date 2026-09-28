@@ -38,12 +38,15 @@ use NextJsRevalidate\Change;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
+use NextJsRevalidate\Integrations\Polylang;
 use NextJsRevalidate\Integrations\Redirection;
+use NextJsRevalidate\Integrations\Yoast;
 use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Probe;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
+use NextJsRevalidate\SiteSettings;
 use NextJsRevalidate\Cron\ScheduledPurges;
 use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\RestApi;
@@ -104,8 +107,11 @@ require_once __DIR__ . '/vendor/autoload.php';
  * @property-read RevalidateAll   $revalidateAll
  * @property-read FseSnapshot     $fseSnapshot
  * @property-read BlockMenus      $blockMenus
+ * @property-read SiteSettings    $siteSettings
  * @property-read RestApi         $restApi
  * @property-read Redirection     $redirection
+ * @property-read Yoast           $yoast
+ * @property-read Polylang        $polylang
  */
 class NextJsRevalidate {
 
@@ -119,8 +125,11 @@ class NextJsRevalidate {
 	private RevalidateAll $revalidateAll;
 	private FseSnapshot $fseSnapshot;
 	private BlockMenus $blockMenus;
+	private SiteSettings $siteSettings;
 	private RestApi $restApi;
 	private Redirection $redirection;
+	private Yoast $yoast;
+	private Polylang $polylang;
 	private static NextJsRevalidate $instance;
 
 	/**
@@ -165,6 +174,7 @@ class NextJsRevalidate {
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
 		$this->fseSnapshot         = $this->hookable( new FseSnapshot() );
 		$this->blockMenus          = $this->hookable( new BlockMenus() );
+		$this->siteSettings        = $this->hookable( new SiteSettings() );
 		$this->restApi             = $this->hookable( new RestApi() );
 
 		foreach ( $this->hookables as $hookable ) $hookable->register_hooks();
@@ -174,6 +184,10 @@ class NextJsRevalidate {
 		// touches nothing. See docs/adr/0003-explicit-hook-registration.md.
 		$this->redirection         = new Redirection();
 		$this->redirection->register_hooks();
+		$this->yoast               = new Yoast();
+		$this->yoast->register_hooks();
+		$this->polylang            = new Polylang();
+		$this->polylang->register_hooks();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );

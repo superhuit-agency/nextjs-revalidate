@@ -60,6 +60,22 @@ if ( file_exists( $njr_redirection ) ) {
 	);
 }
 
+// Yoast SEO and Polylang, which `.wp-env.tests.json` installs for the site
+// setting integrations, loaded the same way and on the same terms. Neither has
+// tables this suite needs created: Yoast's site settings are options, and
+// Polylang's languages are terms.
+foreach ( [ 'wordpress-seo/wp-seo.php', 'polylang/polylang.php' ] as $njr_integrated_plugin ) {
+	$njr_integrated_plugin = dirname( $njr_plugin_dir ) . '/' . $njr_integrated_plugin;
+	if ( ! file_exists( $njr_integrated_plugin ) ) continue;
+
+	tests_add_filter(
+		'muplugins_loaded',
+		function () use ( $njr_integrated_plugin ) {
+			require_once $njr_integrated_plugin;
+		}
+	);
+}
+
 require $njr_tests_dir . '/includes/bootstrap.php';
 
 // Test cases and helpers autoload through composer's `autoload-dev`, so adding

@@ -64,7 +64,7 @@ with its own secret.
 
 ### The subjects
 
-Every change has a `subject`, and that subject's fields. v2.0 sends six:
+Every change has a `subject`, and that subject's fields. v2.0 sends seven:
 
 | Subject | Fields | Sent for |
 | --- | --- | --- |
@@ -73,6 +73,7 @@ Every change has a `subject`, and that subject's fields. v2.0 sends six:
 | `path` | `uri` | `nextjs_revalidate_path()`, the inbound REST routes, a due scheduled purge, the probe |
 | `menu` | `id`, `locations` | a classic menu saved; a block menu (`wp_navigation`) saved, trashed, restored or deleted |
 | `templates` | none | an FSE template or template part saved or deleted, a theme switched |
+| `settings` | none | a **site setting** added, changed or deleted — one change per request, however many were saved |
 | `all` | none, or `type` and `taxonomies` | revalidate all, of the whole site or of one post type |
 
 ```json
@@ -84,6 +85,7 @@ Every change has a `subject`, and that subject's fields. v2.0 sends six:
     { "subject": "path", "uri": "/feeds/events/" },
     { "subject": "menu", "id": 7, "locations": [ "primary" ] },
     { "subject": "templates" },
+    { "subject": "settings" },
     { "subject": "all", "type": "post", "taxonomies": [ "category", "post_tag" ] }
   ]
 }
@@ -118,6 +120,8 @@ Every field, and when it is `null`:
   current URI.
 - **`templates`** never names which template changed: the front-end holds the
   whole template structure as one value, the **FSE snapshot**.
+- **`settings`** never names which setting changed: it says something every
+  page renders changed. See [Site settings](#site-settings).
 - **`all`** is one change, never the pages it covers.
 
 ### Two rules
@@ -160,7 +164,8 @@ onto an example tag scheme and expires each tag with `revalidateTag( tag, 'max' 
 | `post` | `node:{id}` and `type:{type}`; and `uris` when `before.uri` and `after.uri` differ — a publish, an unpublish, a trash, a delete or a slug change |
 | `redirect`, `path` | `uris` |
 | `menu` | `menu:{id}`, whatever its locations |
-| `templates` | `options` |
+| `templates` | `templates` |
+| `settings` | `settings` |
 | `all` of the whole site | `content` |
 | `all` of one post type | `type:{type}`, `type:{taxonomy}` for each of its taxonomies, and `nodes` |
 
@@ -180,6 +185,34 @@ page.
 
 Menu changes do **not** report a `templates` change: a menu save reports a
 `menu` change of its own.
+
+### Site settings
+
+A **site setting** is a value held once for the whole site that the front-end
+renders as it is, on any page: the site title, the tagline, the date and time
+formats, SEO defaults, the language list. Saving any of them reports **one**
+`settings` change for the request, however many were saved, and the front-end
+decides what that expires — typically a tag every cached page carries.
+
+An option is a site setting when its name is on the list the
+[`nextjs_revalidate_site_setting_options`](#nextjs_revalidate_site_setting_options)
+filter returns. By default that is WordPress's own:
+
+`blogname`, `blogdescription`, `date_format`, `time_format`, `timezone_string`,
+`gmt_offset`, `home`, `site_icon`, `WPLANG`
+
+One on the list reports a change when it is added, updated to a different value,
+or deleted. Saving a value an option already holds reports nothing: WordPress
+fires no update for it.
+
+Options that move which content lives at which path — the permalink structure,
+the category and tag bases, the front page, the posts page, the posts per page —
+are **not** site settings, and report nothing here. Expiring what every page
+carries does not fix what they leave stale
+([ADR 0037](docs/adr/0037-a-settings-change-reports-what-every-page-renders.md)).
+
+The [Yoast SEO](#yoast-seo) and [Polylang](#polylang) integrations add their own
+site settings.
 
 ### Probing the front-end
 
@@ -592,6 +625,40 @@ revalidations with the
 [`nextjs_revalidate_should_revalidate_redirect`](#nextjs_revalidate_should_revalidate_redirect)
 filter, without deactivating the plugin or losing the revalidation of its posts.
 
+### Yoast SEO
+
+With [Yoast SEO](https://wordpress.org/plugins/wordpress-seo/) active, its title
+templates and schema defaults (`wpseo_titles`) and its social defaults
+(`wpseo_social`) are [site settings](#site-settings): saving either reports a
+`settings` change. They are added to the list through
+[`nextjs_revalidate_site_setting_options`](#nextjs_revalidate_site_setting_options),
+the same filter a site uses, so a site can remove them there too.
+
+`wpseo` is **not** added: nothing a front-end renders lives there, and Yoast
+writes it on its own — indexing progress, activation timestamps, notification
+state — so watching it would rebuild every page from Yoast's background work. A
+front-end that does read it adds it through the filter.
+
+### Polylang
+
+With [Polylang](https://wordpress.org/plugins/polylang/) active, its language
+list and default language are [site settings](#site-settings). A `settings`
+change is reported when:
+
+- a language is **added, edited or deleted** — a language is a term of
+  Polylang's `language` taxonomy, not an option, so no option list could catch
+  it;
+- the **default language** changes, from Polylang's Languages screen or by a
+  write of the `polylang` option whose `default_lang` differs.
+
+Nothing else in the `polylang` option reports a change. `hide_default`,
+`force_lang` and `rewrite` decide whether a language prefix is in the path at
+all, which moves pages between paths rather than changing what every page
+renders; `version` and the rest are Polylang's bookkeeping.
+
+Both integrations are supported, never required: with the plugin absent, nothing
+registers.
+
 ## Filters
 
 ### nextjs_revalidate_should_revalidate_redirect
@@ -704,6 +771,32 @@ add_filter( 'nextjs_revalidate_change', function( $change ) {
 | --- | --- | --- |
 | change | array | The change, with its `subject` and that subject's fields — a post's are `id`, `type`, `before` and `after` |
 
+### nextjs_revalidate_site_setting_options
+
+Filters which options are [site settings](#site-settings): values the front-end
+renders as they are, on any page, whose change — added, updated to a different
+value, or deleted — reports a `settings` change. Read every time an option
+changes, so a filter added late still counts.
+
+Add an option your front-end renders, or remove a default it does not. Do not
+add one that moves which content lives at which path, such as
+`permalink_structure`: expiring what every page carries does not fix what that
+leaves stale.
+
+#### Usage
+```php
+add_filter( 'nextjs_revalidate_site_setting_options', function( $option_names ) {
+	$option_names[] = 'my_theme_footer_text';
+	return array_diff( $option_names, [ 'time_format' ] );
+} );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| option_names | string[] | The site setting options: WordPress's defaults, and those the active integrations add |
+
 ### nextjs_revalidate_purge_action_permalink
 
 **Retired in 2.0.0, and no longer applied.** It filtered the permalink 1.x's
@@ -792,15 +885,16 @@ composer install
 npm run test:integration
 ```
 
-wp-env installs the Redirection plugin alongside this one, on the development
-site and on the test site, so the redirect integration can be exercised without
-assembling an install by hand. The suite's bootstrap loads it and creates its
-tables when it is there, and skips the tests that need it when it is not. The two
+wp-env installs the Redirection, Yoast SEO and Polylang plugins alongside this
+one, on the development site and on the test site, so the integrations can be
+exercised without assembling an install by hand. The suite's bootstrap loads each
+of them when it is there — and creates Redirection's tables — and skips the tests
+that need one when it is not. The two
 sites are two config files, `.wp-env.json` and `.wp-env.tests.json`, and wp-env
 has no way for one to extend the other: a plugin added to one has to be added to
 both.
 
-Neither config pins a Redirection version, so the suite runs against whatever
+Neither config pins a version of any of them, so the suite runs against whatever
 upstream ships — which is what makes it notice a change there
 ([ADR 0014](docs/adr/0014-redirect-changes-revalidate-the-source-path.md)). It
 also means an upstream release can turn the suite red: creating Redirection's

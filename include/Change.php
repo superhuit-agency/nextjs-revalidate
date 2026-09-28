@@ -20,6 +20,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * | `path`      | `uri`                                                   |
  * | `menu`      | `id`, `locations`                                       |
  * | `templates` | none                                                    |
+ * | `settings`  | none                                                    |
  * | `all`       | none, or `type` and `taxonomies`                        |
  *
  * An array rather than an object on purpose: the `nextjs_revalidate_change`
@@ -40,6 +41,7 @@ final class Change {
 	const PATH      = 'path';
 	const MENU      = 'menu';
 	const TEMPLATES = 'templates';
+	const SETTINGS  = 'settings';
 	const ALL       = 'all';
 
 	/**
@@ -142,6 +144,17 @@ final class Change {
 	}
 
 	/**
+	 * The site settings — whichever of them was saved, never naming which.
+	 *
+	 * See `docs/adr/0037-a-settings-change-reports-what-every-page-renders.md`.
+	 *
+	 * @return array
+	 */
+	public static function settings(): array {
+		return [ 'subject' => self::SETTINGS ];
+	}
+
+	/**
 	 * Revalidate all, of the whole site or of one post type and the
 	 * revalidatable taxonomies registered for it.
 	 *
@@ -177,9 +190,12 @@ final class Change {
 	 * are one change in the pending changes.
 	 *
 	 * A post is identified by its ID, because a post has a before and an
-	 * after, and two changes to it merge (`merge()`). Every other subject has
-	 * no sides to keep, so its identity is the whole change: two identical
-	 * changes collapse into one, and two that differ in anything are both kept.
+	 * after, and two changes to it merge (`merge()`). The site settings are
+	 * identified by their subject alone: every site setting a request saves is
+	 * the same change, even once a filter has reshaped some of them — the later
+	 * one is kept. Every other subject has no sides to keep, so its identity is
+	 * the whole change: two identical changes collapse into one, and two that
+	 * differ in anything are both kept.
 	 *
 	 * @param array $change
 	 * @return string
@@ -189,6 +205,8 @@ final class Change {
 		if ( self::POST === $change['subject'] && isset( $change['id'] ) && is_scalar( $change['id'] ) ) {
 			return self::POST . ':' . (string) $change['id'];
 		}
+
+		if ( self::SETTINGS === $change['subject'] ) return self::SETTINGS;
 
 		return (string) $change['subject'] . ':' . serialize( self::normalised( $change ) );
 	}

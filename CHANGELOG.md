@@ -33,7 +33,8 @@ Content-Type: application/json
 ```
 
 - **The secret travels in the `Authorization` header**, never in the URL.
-- **Six subjects** — `post`, `redirect`, `path`, `menu`, `templates` and `all` —
+- **Seven subjects** — `post`, `redirect`, `path`, `menu`, `templates`,
+  `settings` and `all` —
   each with the fields the README's
   [front-end contract](README.md#the-front-end-contract) lists. A post change
   carries where the post was before and where it is after, so a slug change now
@@ -132,6 +133,14 @@ its single revalidate URL split into a domain and a path in the same request.
   not viewable, and the post gate still declines it. A classic menu's change is
   unchanged. The README's reference route now tags a menu `menu:{id}` rather
   than `menu:{location}`, so one mapping covers both kinds.
+- **Added:** a site setting saved — the site title, the tagline, the date and
+  time formats, the timezone, the site address, the site icon, the site
+  language — reports one `settings` change per request. The
+  `nextjs_revalidate_site_setting_options` filter decides which options count.
+  New Yoast SEO and Polylang integrations add their SEO defaults, and their
+  language list and default language. 1.x reported none of these. The README's
+  reference route tags FSE templates `templates` and site settings `settings`,
+  where it tagged templates `options`.
 - **Changed:** the admin says **Revalidate** where it said **Purge** — the row
   action, the bulk action, the admin bar menu and its entries, and their
   notices, which now say that a revalidation was sent rather than counting pages
