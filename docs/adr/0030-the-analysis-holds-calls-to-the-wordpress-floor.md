@@ -156,6 +156,13 @@ maps. Parsing all of core on each analysis also costs more than the stubs, which
 already take most of the memory ADR 0020 pins. Worth doing if the plugin starts
 registering hooks often enough for the list to be a burden; three rows are not.
 
+> Superseded on the pin. `johnpbloch/wordpress-core` is no longer "pinned at 6.1
+> for the debugger's path mapping": it follows the tested release, now 7.1, and
+> moves with it
+> ([ADR 0036](0036-dependabot-fixes-every-vulnerability-and-bumps-only-what-ships.md)).
+> The `.vscode` paths stay the same. It still knows nothing newer than the
+> tested release, so the cost above stands.
+
 **A table in the ADR, checked by hand.** What this change started as. It holds
 the calls somebody remembered to write down, which is the failure it is meant to
 prevent.
