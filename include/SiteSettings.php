@@ -84,7 +84,14 @@ class SiteSettings extends Base implements Hookable {
 		 *
 		 * @param string[] $option_names The site setting options.
 		 */
-		$options = apply_filters( 'nextjs_revalidate_site_setting_options', self::DEFAULT_OPTIONS );
+		$filtered = apply_filters( 'nextjs_revalidate_site_setting_options', self::DEFAULT_OPTIONS );
+
+		// The docblock above is what a callback is given, not what it is held
+		// to return. One that returns something else must not fatal every
+		// option write on the site: it names no site setting instead.
+		/** @var mixed $options */
+		$options = $filtered;
+		if ( ! is_array( $options ) ) return false;
 
 		return in_array( $option, $options, true );
 	}

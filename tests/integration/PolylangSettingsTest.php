@@ -100,6 +100,21 @@ class PolylangSettingsTest extends PendingChangesTestCase {
 	}
 
 	/**
+	 * Before Polylang 3.7 the model wrote the option in the same request, so
+	 * both hooks fire; they are the same change.
+	 */
+	public function test_the_model_and_the_option_reporting_one_default_language_change_is_one_change() {
+		$this->add_language( 'en_US', 'en' );
+		$this->add_language( 'fr_FR', 'fr' );
+		$this->reset_pending_changes();
+
+		$this->model->languages->update_default( 'fr' );
+		update_option( 'polylang', array_merge( (array) get_option( 'polylang' ), [ 'default_lang' => 'fr' ] ) );
+
+		$this->assertPendingChanges( [ Change::settings() ] );
+	}
+
+	/**
 	 * @dataProvider keys_that_are_not_site_settings
 	 */
 	public function test_changing_another_key_of_the_option_reports_nothing( $key, $before, $after ) {

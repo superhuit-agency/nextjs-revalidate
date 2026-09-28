@@ -68,3 +68,10 @@ language made through Polylang is therefore reported from the
 `pll_update_default_lang` action it fires while the request is running; the
 option's own hook stays, for a direct write from WP-CLI or a migration. The
 decision above is unchanged: only a different `default_lang` reports.
+
+One upgrade path still reports. Some Polylang upgrades rewrite the language
+terms themselves (`install/upgrade.php`, e.g. the 3.9 flag migration), which
+fires the term hooks and reports one `settings` change on the upgrade request.
+That is accepted: it is one-off, the flags it rewrites are rendered, and it is
+one change — not a rebuild on every `version` bump, which is what watching the
+whole option would cost.

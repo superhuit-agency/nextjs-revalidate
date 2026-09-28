@@ -161,6 +161,14 @@ class SiteSettingsChangeTest extends PendingChangesTestCase {
 		$this->assertNoPendingChanges();
 	}
 
+	public function test_a_filter_that_returns_no_list_names_no_site_setting() {
+		add_filter( 'nextjs_revalidate_site_setting_options', '__return_null' );
+
+		update_option( 'blogname', 'A filter returned null' );
+
+		$this->assertNoPendingChanges();
+	}
+
 	// Through the pending changes
 	// ====
 
