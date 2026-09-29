@@ -38,6 +38,17 @@ published page.
 - [ ] **Put a trailing slash on the domain** — `http://host.docker.internal:8083/`
       — save, update a post. Expect a success, and the post change in the
       revalidate server console: a `//revalidate` would not have been served.
+- [ ] **Type the path with a trailing slash** — `/revalidate/` — save. Expect
+      the field to keep the slash. Update a post: expect `✅ Revalidated 1 change
+      (post)`.
+- [ ] **Set the path to `/trailing-slash`**, which the dev server answers with a
+      308 to `/revalidate/`, as a Next.js app with `trailingSlash: true` does.
+      Update a post. Expect `✅ Revalidated 1 change (post)`, and the post change
+      in the revalidate server console: the redirect was followed with the same
+      `POST`, body and secret.
+- [ ] **Set the path to `/moved-permanently`**, answered with a 301. Update a
+      post. Expect `❌ Failed to revalidate 1 change (post)` naming `http_301`,
+      and nothing in the console: a 301 is not followed.
 - [ ] **Set the domain to `ftp://host.docker.internal:8083` and save.** (The
       field is `type="url"`, so the browser itself stops a value with no scheme
       at all; `ftp://` gets past it.) Expect a single error notice on the

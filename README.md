@@ -144,7 +144,11 @@ The contract grows without breaking a front-end written against it:
 
 **Any 2xx is a success** — 200, 202 and 204 alike; the body is not read.
 Everything else is a **failure**, and so is a request the front-end did not
-answer within **five seconds**. Redirects are not followed: a 3xx is a failure.
+answer within **five seconds**. A 307 or a 308 to the same scheme, host and
+port is followed, with the same request, so a route served only at
+`/api/revalidate/` — `trailingSlash: true` — is reached; any other 3xx is a
+failure ([ADR 0039](docs/adr/0039-a-delivery-follows-a-redirect-that-keeps-the-request.md)).
+Type the path with its trailing slash to skip the extra round trip.
 A front-end should mark entries stale and answer; it should not rebuild pages
 before answering.
 

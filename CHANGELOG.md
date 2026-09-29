@@ -48,8 +48,14 @@ Content-Type: application/json
   `templates` change on the same route, not a request to a second endpoint.
 - **Revalidate all is one change**, and a menu save is one change, rather than a
   request per page.
-- **Any 2xx is a success**, where 1.x wanted a 200. A 3xx, a 4xx, a 5xx, or no
+- **Any 2xx is a success**, where 1.x wanted a 200. A 4xx, a 5xx, or no
   answer within **five seconds** — down from sixty — is a failure.
+- **Only a 307 or a 308 to the same origin is followed.** 1.x followed any
+  redirect, to anywhere; 2.0 follows one that keeps the method, the body and
+  the scheme, host and port, and records any other 3xx as a failure. A route
+  served only at `/api/revalidate/` — `trailingSlash: true` — is still reached,
+  and a path typed with its trailing slash now keeps it, which saves the round
+  trip.
 - **Changes are sent when the WordPress request that produced them ends**, in
   one request, or in several of up to 100 changes for a long one such as an
   import. Nothing waits for cron.
