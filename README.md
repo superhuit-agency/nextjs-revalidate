@@ -316,11 +316,14 @@ add_action( 'edit_terms', function( $term_id, $taxonomy ) {
 	}
 }, 10, 2 );
 
-add_action( 'edited_terms', function() {
+// `edited_term`, not `edited_terms`: only by then has core cleared the term's
+// cache, so the permalinks are built from the new slug.
+add_action( 'edited_term', function( $term_id, $tt_id, $taxonomy ) {
+	if ( 'interview_category' !== $taxonomy ) return;
 	foreach ( $GLOBALS['my_theme_before'] ?? [] as $post_id => $before ) {
 		nextjs_revalidate_post( $post_id, $before );
 	}
-} );
+}, 10, 3 );
 ```
 
 #### Arguments
@@ -499,7 +502,8 @@ it has after:
 
 By default these are the descendants of a post of a hierarchical type whose
 slug or parent the save changes; an edit reports the saved post alone. A post
-whose URI did not move is not reported. A post whose permalink a theme builds
+whose URI, order and parent did not move is not reported; one whose order alone
+moved is reported where it is, both sides its URI. A post whose permalink a theme builds
 from another post is added with the
 [`nextjs_revalidate_dependent_posts`](#nextjs_revalidate_dependent_posts) filter,
 and one built from a term is reported with
@@ -753,9 +757,10 @@ renders; `version` and the rest are Polylang's bookkeeping.
 With **synchronisation** on, Polylang copies a post's parent, order and date to
 its translations with direct SQL, and saves none of them: moving the French page
 under another parent moves the German page too. A post's translations are its
-[dependent posts](#dependent-posts), so each one whose URI moved is reported with
-the French page's own save — and when the save changes the parent, their
-descendants are too. A synchronised order, which moves no URI, is not reported.
+[dependent posts](#dependent-posts), so each one whose URI, order or parent moved
+is reported with the French page's own save — and when the save changes the
+parent, their descendants are too. A synchronised order moves no URI, and the
+translation is reported where it is, both sides its URI.
 
 Per-language options — acf-options-for-polylang's, or a theme's own
 `my_setting_{lang}` — cannot be listed ahead of time: add them to
@@ -885,8 +890,9 @@ add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_re
 ### nextjs_revalidate_dependent_posts
 
 Filters the posts a post's update may move without saving them: the posts whose
-permalink is built from its own. Each is reported after the update when its URI
-moved, and left alone when it did not — see [Dependent posts](#dependent-posts).
+permalink is built from its own. Each is reported after the update when its URI,
+order or parent moved, and left alone when none did — see
+[Dependent posts](#dependent-posts).
 
 The IDs it starts with are the post's descendants, when it is of a hierarchical
 type and the update changes its slug or its parent, and none otherwise. Asked on

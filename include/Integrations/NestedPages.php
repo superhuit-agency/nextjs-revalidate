@@ -65,7 +65,7 @@ class NestedPages extends Base implements Hookable {
 		// the tree before anything else hears of it.
 		add_action( self::SORT_ACTION, [$this, 'before_sort'], 1 );
 
-		add_action( 'nestedpages_posts_order_updated', [$this, 'on_posts_order_updated'], 10, 2 );
+		add_action( 'nestedpages_posts_order_updated', [$this, 'on_posts_order_updated'] );
 	}
 
 	/**
@@ -91,11 +91,10 @@ class NestedPages extends Base implements Hookable {
 	 * one the page had. By the end of a level, every page of it has been
 	 * written and cleared, and so has every page above it.
 	 *
-	 * @param mixed $posts  The level, as Nested Pages sorted it.
-	 * @param mixed $parent The parent of the level.
+	 * @param mixed $posts The level, as Nested Pages sorted it.
 	 * @return void
 	 */
-	public function on_posts_order_updated( $posts = [], $parent = 0 ) {
+	public function on_posts_order_updated( $posts = [] ) {
 		$this->revalidate->report_repositioned( self::post_ids( $posts, false ) );
 	}
 

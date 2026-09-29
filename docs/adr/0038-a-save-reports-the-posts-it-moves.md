@@ -25,7 +25,8 @@ somebody ran revalidate all.
 
 **A post whose page a save moves is a dependent post of that save, and is
 reported as a `post` change of its own**, from the URI it had to the one it has —
-only when the URI moved. Its `before` is read on `pre_post_update`, the last
+only when its URI, its order or its parent moved, the question a reorder is asked
+below. Its `before` is read on `pre_post_update`, the last
 moment the saved post's row still holds what it held: WordPress writes the row
 and clears its cache before any hook that follows the write, and a child's
 permalink is read off its parent's row. Its `after` is read when the saved
@@ -87,9 +88,9 @@ the documented way for a headless site to say otherwise.
 - The dependent posts' `before` costs a permalink per candidate on every update
   that names any — none, for an edit of a post with no translations and no
   theme callback.
-- A synchronised field that moves no URI — a translation's order — is not
-  reported. The listings of the translation's type are those of the saved
-  post's, which its own change covers.
+- A synchronised order is reported, where the translation is, as a reorder is.
+  A synchronised date that moves no URI is not: nothing but the URI, the order
+  and the parent is compared.
 - Nested Pages' and Simple Custom Post Order's request shapes are read, not
   declared by them. If one changes, the integration falls back to reporting each
   post the plugin's action names as it stands — the listings are still told, and

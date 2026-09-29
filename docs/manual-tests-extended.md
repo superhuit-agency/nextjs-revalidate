@@ -422,35 +422,37 @@ that the core pass runs without them; install them for this section:
 npx wp-env run cli wp plugin install wp-nested-pages simple-custom-post-order --activate
 ```
 
+Then, before the first step: two published pages with no parent, "About" and
+"Team"; Settings → SCPOrder with Posts ticked; and at least two published posts.
+
 The automated suite drives both plugins' AJAX handlers with the body their
 scripts are believed to send, and Polylang's synchronisation through its model.
 What only this section reaches is the body their screens really send, and
 Polylang's admin setting its synchronisation up. The oracle is the **revalidate
 server console**.
 
-- [ ] **Pages → add a published page "About", and a published page "Team" with
-      no parent.** Clear the console.
 - [ ] **Nested Pages → drag "Team" under "About", and wait for its "updated"
       message.** Expect one request carrying
       `{"subject":"post",…,"before":{"uri":"/team/"},"after":{"uri":"/about/team/"}}`.
 - [ ] **Drag "Team" back to the top level.** Expect one request carrying its
       change from `/about/team/` to `/team/`.
-- [ ] **Settings → SCPOrder → tick Posts, and Update.** Then **Posts → drag the
-      published post above or below another one.** Expect one request carrying a
-      `{"subject":"post",…}` change for each post whose place changed, both sides
-      its URI.
-- [ ] **Languages → add English and French. Languages → Settings →
-      Synchronization → tick "Page parent", and Save.** Then give "About" and
-      "Team" French translations, "À propos" and "Équipe".
+- [ ] **Posts → drag a published post above another one.** Expect one request
+      carrying a `{"subject":"post",…}` change for each post whose place
+      changed, both sides its URI.
+
+Then, for the last step: Polylang with English and French, Languages → Settings
+→ Synchronization with "Page parent" ticked, and French translations of "About"
+and "Team", "À propos" and "Équipe".
+
 - [ ] **Edit "Team" → Page Attributes → Parent: About → Update.** Expect one
       request carrying "Team"'s change **and** "Équipe"'s, from `/fr/equipe/` to
       `/fr/a-propos/equipe/` — Polylang moved the translation with direct SQL.
-- [ ] **Teardown.** Delete both languages, then deactivate and delete both
-      plugins:
 
-      ```sh
-      npx wp-env run cli wp plugin delete wp-nested-pages simple-custom-post-order --deactivate
-      ```
+Teardown: delete both languages, then deactivate and delete both plugins:
+
+```sh
+npx wp-env run cli wp plugin delete wp-nested-pages simple-custom-post-order --deactivate
+```
 
 ## P. Uninstallation
 
@@ -486,7 +488,7 @@ override file, never by editing `.wp-env.json`.
 
 ## R. Network activation sets up every site
 
-Precondition: P done, plugin **not** yet network-activated, at least two sites.
+Precondition: Q done, plugin **not** yet network-activated, at least two sites.
 
 - [ ] **Network Admin → Plugins → Network Activate "Next.js Revalidate".**
       Expect no error.
@@ -496,7 +498,7 @@ Precondition: P done, plugin **not** yet network-activated, at least two sites.
 
 ## S. A site created after activation
 
-Precondition: P done, plugin network-active.
+Precondition: Q done, plugin network-active.
 
 - [ ] **Network Admin → Sites → Add New**, slug `third`.
 - [ ] **Expect its settings defined** without anyone visiting the new site:
@@ -508,7 +510,7 @@ Precondition: P done, plugin network-active.
 
 ## T. Settings are per site
 
-Precondition: P done, main site configured, `second` not.
+Precondition: Q done, main site configured, `second` not.
 
 - [ ] **Configure `second`** with the same domain and secret, through its own
       Settings screen at `http://localhost:8080/second/wp-admin`.
@@ -527,7 +529,7 @@ Precondition: P done, main site configured, `second` not.
 
 ## U. An update migrates every site, without visiting any
 
-Precondition: Q done, plugin network-active, at least two sites. The update is
+Precondition: R done, plugin network-active, at least two sites. The update is
 faked rather than performed: what triggers the sweep is the swept version
 differing from the running one, so a Composer or git deploy that never runs
 WordPress's updater reaches this the same way a real update does.
@@ -572,7 +574,7 @@ WordPress's updater reaches this the same way a real update does.
 
 ## V. A large network declines rather than truncates
 
-Precondition: P done. This simulates a large network with a filter; it cannot be
+Precondition: Q done. This simulates a large network with a filter; it cannot be
 reached otherwise without ten thousand sites.
 
 - [ ] **Network-deactivate the plugin**, then install the filter:
@@ -593,7 +595,7 @@ reached otherwise without ten thousand sites.
 
 ## W. Network deactivation and uninstallation
 
-Precondition: P done, plugin network-active, all sites set up.
+Precondition: Q done, plugin network-active, all sites set up.
 
 - [ ] **Network Deactivate.** Expect the settings kept on **every** site, and the
       failure window cleared on every site.
@@ -715,7 +717,7 @@ with paths still waiting in it, which the upgrade to 2.0 drops.
 
 ## AB. Backfill from an older shape
 
-Precondition: Z done. This rewinds the ledger to fake a site that predates it.
+Precondition: AA done. This rewinds the ledger to fake a site that predates it.
 
 - [ ] **Rewind to a pre-1.5.0 shape**:
       ```sh
@@ -733,7 +735,7 @@ Precondition: Z done. This rewinds the ledger to fake a site that predates it.
 
 ## AC. Raise a real 1.7.0 site
 
-Precondition: AA done and `npm run stop` run. This replaces the upgraded 1.6.9
+Precondition: AB done and `npm run stop` run. This replaces the upgraded 1.6.9
 site with a new one.
 
 - [ ] **Confirm the release asset URL.** Open the v1.7.0 release on GitHub and
@@ -756,7 +758,7 @@ site with a new one.
 
 ## AD. A 1.7.0 site, with what v2 removed
 
-Precondition: AB done. `npm start` has seeded the domain, path, secret and logs,
+Precondition: AC done. `npm start` has seeded the domain, path, secret and logs,
 under the names 1.7.0 already reads.
 
 - [ ] **Publish a post and confirm 1.7.0 revalidates it.** Expect

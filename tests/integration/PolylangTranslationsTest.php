@@ -39,7 +39,7 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
 
 		$options = new \WP_Syntex\Polylang\Options\Options();
-		$options['sync'] = [ 'post_parent' ];
+		$options['sync'] = [ 'post_parent', 'menu_order' ];
 
 		$model = new \PLL_Admin_Model( $options );
 		$model->languages->set_ready();
@@ -102,6 +102,26 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 			Change::post( $child_de, 'page', '/alt/seite/kind/', '/neu/seite/kind/' ),
 			$this->pending_changes()->pending()
 		);
+	}
+
+	/**
+	 * A synchronised order moves no URI, but the translation's listings are
+	 * in another order all the same: it is reported where it is, as a
+	 * reordered post is.
+	 */
+	public function test_a_translation_whose_order_the_synchronisation_changed_is_reported() {
+		list( $page_fr, $page_de ) = $this->translated_pages( 'page-fr', 'seite' );
+
+		$this->reset_pending_changes();
+
+		wp_update_post( [ 'ID' => $page_fr, 'menu_order' => 5 ] );
+
+		$this->assertSame( 5, get_post( $page_de )->menu_order, 'Polylang did not synchronise the order.' );
+
+		$this->assertPendingChanges( [
+			Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/' ),
+			Change::post( $page_de, 'page', '/seite/', '/seite/' ),
+		] );
 	}
 
 	/**

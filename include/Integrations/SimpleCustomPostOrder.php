@@ -52,7 +52,7 @@ class SimpleCustomPostOrder extends Base implements Hookable {
 	 */
 	public function register_hooks(): void {
 
-		$this->when_plugins_loaded( [$this, 'register_scpo_hooks'] );
+		$this->when_plugins_loaded( [$this, 'register_simple_custom_post_order_hooks'] );
 	}
 
 	/**
@@ -61,7 +61,7 @@ class SimpleCustomPostOrder extends Base implements Hookable {
 	 *
 	 * @return void
 	 */
-	public function register_scpo_hooks() {
+	public function register_simple_custom_post_order_hooks() {
 
 		if ( ! defined( 'SCPORDER_VERSION' ) ) return;
 
@@ -129,6 +129,9 @@ class SimpleCustomPostOrder extends Base implements Hookable {
 	}
 
 	/**
+	 * Remember the posts this request's reorder is about, and where each
+	 * stands before the plugin writes it.
+	 *
 	 * @param int[] $post_ids
 	 * @return void
 	 */

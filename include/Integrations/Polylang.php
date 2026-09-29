@@ -40,8 +40,8 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * its translations with `$wpdb->update()`, on purpose, and never saves them:
  * moving the French page moves the German page, and only the French page is
  * saved. So a post's translations are among its **dependent posts** — each one
- * whose URI moved is reported with the French page's own save — and when the
- * save changes the parent, their descendants are too.
+ * whose URI, order or parent moved is reported with the French page's own save
+ * — and when the save changes the parent, their descendants are too.
  *
  * Supported, never required: when Polylang is not there, this registers no
  * hooks at all.

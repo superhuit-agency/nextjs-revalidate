@@ -244,7 +244,7 @@ $expected_of_the_root = [
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Yoast::register_yoast_hooks',          10,  1 ],
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Polylang::register_polylang_hooks',    10,  1 ],
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\NestedPages::register_nested_pages_hooks', 10, 1 ],
-	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\SimpleCustomPostOrder::register_scpo_hooks', 10, 1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\SimpleCustomPostOrder::register_simple_custom_post_order_hooks', 10, 1 ],
 	[ 'wp_initialize_site', 'NextJsRevalidate::setup_new_site',                                      100, 1 ],
 ];
 

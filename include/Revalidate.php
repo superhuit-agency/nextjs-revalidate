@@ -51,17 +51,17 @@ class Revalidate extends Base implements Hookable {
 	private array $saving = [];
 
 	/**
-	 * The **dependent posts** of the posts whose save is under way, with the
-	 * URI each had before that save: saving post ID => dependent post ID =>
-	 * URI, or null for one that had no page.
+	 * The **dependent posts** of the posts whose save is under way, with where
+	 * each stood before that save: saving post ID => dependent post ID => its
+	 * URI, or null for one that had no page, its order and its parent.
 	 *
 	 * Read on `pre_post_update`, the last moment the saved post's row still
 	 * holds what it held: WordPress writes it, and clears its cache, before any
 	 * hook that follows the write, and a child page's permalink is read off its
 	 * parent's row. Let go by that post's own `wp_after_insert_post`, which
-	 * reports each one whose URI moved.
+	 * reports each one that moved.
 	 *
-	 * @var array<int, array<int, string|null>>
+	 * @var array<int, array<int, array{uri: string|null, menu_order: int, post_parent: int}>>
 	 */
 	private array $dependents_before = [];
 
@@ -368,7 +368,8 @@ class Revalidate extends Base implements Hookable {
 
 		$before = [];
 		foreach ( $this->dependent_posts( $post, is_array( $data ) ? $data : [] ) as $dependent_id ) {
-			$before[ $dependent_id ] = $this->front_end_uri( get_post( $dependent_id ) );
+			$dependent = get_post( $dependent_id );
+			if ( $dependent instanceof WP_Post ) $before[ $dependent_id ] = self::position_of( $dependent, $this->front_end_uri( $dependent ) );
 		}
 
 		if ( empty( $before ) ) return;
@@ -406,8 +407,8 @@ class Revalidate extends Base implements Hookable {
 		 * Its descendants by default, when it is of a hierarchical type and the
 		 * update changes its slug or its parent. Add a post whose permalink a
 		 * `post_type_link` filter builds from this one — each is reported,
-		 * after the update, when its URI moved, and left alone when it did
-		 * not. Asked on every update, so a callback that names posts only when
+		 * after the update, when its URI, its order or its parent moved, and
+		 * left alone when none did. Asked on every update, so a callback that names posts only when
 		 * what their permalink is built from changes costs nothing on the
 		 * other saves.
 		 *
@@ -475,8 +476,13 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * A post's save has ended: report each of its dependent posts whose URI
-	 * moved, from the URI it had before the save to the one it has now.
+	 * A post's save has ended: report each of its dependent posts that moved,
+	 * from the URI it had before the save to the one it has now.
+	 *
+	 * Moved is what a reorder is asked, too: its URI, its order or its parent
+	 * differs. A translation whose order the synchronisation changed has kept
+	 * its URI, but its listings are in another order, and it is reported
+	 * where it is.
 	 *
 	 * @param int $post_id The post that was saved.
 	 * @return void
@@ -487,14 +493,17 @@ class Revalidate extends Base implements Hookable {
 		unset( $this->dependents_before[ $post_id ] );
 
 		foreach ( $dependents as $dependent_id => $before ) {
-			$after = $this->front_end_uri( get_post( $dependent_id ) );
+			$dependent = get_post( $dependent_id );
+			if ( ! $dependent instanceof WP_Post ) continue;
+
+			$after = $this->front_end_uri( $dependent );
 
 			// Named, and not moved: this save changed nothing about its page.
-			if ( $before === $after ) continue;
+			if ( self::position_of( $dependent, $after ) === $before ) continue;
 
 			if ( ! $this->should_revalidate( $dependent_id ) ) continue;
 
-			$change = $this->post_change( $dependent_id, $before, $after );
+			$change = $this->post_change( $dependent_id, $before['uri'], $after );
 			if ( is_null( $change ) ) continue;
 
 			$this->pendingChanges->report( $change );

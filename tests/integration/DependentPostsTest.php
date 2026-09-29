@@ -261,6 +261,37 @@ class DependentPostsTest extends PendingChangesTestCase {
 		$this->assertPendingChanges( [ Change::post( $post, 'post', '/old-category/a-post/', '/a-post/' ) ] );
 	}
 
+	/**
+	 * The README's recipe, as written: the permalinks read on `edit_terms`,
+	 * before the term changes, and reported on `edited_term`, once core has
+	 * cleared the term's cache — on `edited_terms` the term is still the old
+	 * one, and the post's `after` would be its `before`.
+	 */
+	public function test_the_api_reports_a_post_a_term_rename_moved_following_the_readme() {
+		$category = self::factory()->category->create( [ 'slug' => 'old-category' ] );
+		$post     = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'a-post', 'post_category' => [ $category ] ] );
+
+		add_filter( 'post_link', function ( $permalink, $post ) {
+			$terms = get_the_category( $post->ID );
+			return empty( $terms ) ? $permalink : home_url( '/' . $terms[0]->slug . '/' . $post->post_name . '/' );
+		}, 10, 2 );
+
+		$before = [];
+		add_action( 'edit_terms', function ( $term_id, $taxonomy ) use ( $category, $post, &$before ) {
+			if ( 'category' === $taxonomy && $category === $term_id ) $before[ $post ] = get_permalink( $post );
+		}, 10, 2 );
+		add_action( 'edited_term', function ( $term_id, $tt_id, $taxonomy ) use ( &$before ) {
+			if ( 'category' !== $taxonomy ) return;
+			foreach ( $before as $post_id => $url ) nextjs_revalidate_post( $post_id, $url );
+		}, 10, 3 );
+
+		$this->reset_pending_changes();
+
+		wp_update_term( $category, 'category', [ 'slug' => 'new-category' ] );
+
+		$this->assertPendingChanges( [ Change::post( $post, 'post', '/old-category/a-post/', '/new-category/a-post/' ) ] );
+	}
+
 	public function test_the_api_reports_a_post_as_it_stands_without_a_before() {
 		$post = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'a-post' ] );
 

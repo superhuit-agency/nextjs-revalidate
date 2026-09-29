@@ -137,10 +137,10 @@ ones are too.
 A post whose permalink is built from another post's, so that saving that other
 post can move its page without saving it: a child page, whose permalink is its
 parent's plus its own slug; a translation Polylang synchronises with direct SQL;
-a post a theme's `post_type_link` filter builds from another. Its URI is read
-before the save and after it, and it is reported as a `post` change of its own
-when the two differ — never when they do not, so an edit of a parent page does
-not walk its tree. Descendants by default, when the save changes a hierarchical
+a post a theme's `post_type_link` filter builds from another. Its URI, order and
+parent are read before the save and after it, and it is reported as a `post`
+change of its own when any of them differs — never when none does, so an edit of
+a parent page does not walk its tree. Descendants by default, when the save changes a hierarchical
 post's slug or parent; the site and an integration name the rest (ADR 0038).
 
 A post moved by a plugin's direct write, with no save at all — a Nested Pages
