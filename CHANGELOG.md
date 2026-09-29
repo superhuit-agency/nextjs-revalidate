@@ -146,6 +146,21 @@ its single revalidate URL split into a domain and a path in the same request.
   language list and default language. 1.x reported none of these. The README's
   reference route tags FSE templates `templates` and site settings `settings`,
   where it tagged templates `options`.
+- **Added:** a save that moves other posts' pages reports them too. Renaming or
+  moving a parent page reports every descendant whose URI moved, from the URI it
+  had to the one it has; the new `nextjs_revalidate_dependent_posts` filter adds
+  a post whose permalink a theme builds from another, and the new
+  `nextjs_revalidate_post( $post_id, $before_url )` reports one whose permalink
+  a term moved. With Polylang's synchronisation on, the translations it moves
+  with direct SQL are reported with the saved post
+  ([ADR 0038](docs/adr/0038-a-save-reports-the-posts-it-moves.md)).
+- **Added:** Nested Pages and Simple Custom Post Order integrations. A drag and
+  drop reports each post it reordered or, in Nested Pages, moved under another
+  parent — both write with direct SQL, and saved nothing a save hook could see.
+- **Added:** `site_logo` is a site setting, and so are Polylang's string
+  translations — the translated site title and tagline among them. An entry of
+  `nextjs_revalidate_site_setting_options` ending in `*` names every option
+  starting with it, for options stored once per language.
 - **Changed:** the admin says **Revalidate** where it said **Purge** — the row
   action, the bulk action, the admin bar menu and its entries, and their
   notices, which now say that a revalidation was sent rather than counting pages

@@ -405,11 +405,54 @@ anything reports one `= Revalidating (v2): {"subject":"settings"}` line, and
 - [ ] **Languages → Settings → URL modifications → toggle "Hide URL language
       information for default language", and Save.** Expect **no** `settings`
       change: that switch moves paths. Toggle it back and Save.
+- [ ] **Languages → Translations → translate the Site Title into French, and
+      Save Changes.** Expect one `{"subject":"settings"}` request: Polylang keeps
+      string translations in the language's term meta, not in an option.
 - [ ] **Delete both languages.** Expect one `{"subject":"settings"}` request for
       each deletion. Before going on, the post's permalink must carry no language
       prefix again; if it does, a language is left behind.
 
-## O. Uninstallation
+## O. Reorders, and synchronised translations
+
+Precondition: spine state, and Polylang with **no** language — section N's end
+state. Nested Pages and Simple Custom Post Order are not in `.wp-env.json`, so
+that the core pass runs without them; install them for this section:
+
+```sh
+npx wp-env run cli wp plugin install wp-nested-pages simple-custom-post-order --activate
+```
+
+The automated suite drives both plugins' AJAX handlers with the body their
+scripts are believed to send, and Polylang's synchronisation through its model.
+What only this section reaches is the body their screens really send, and
+Polylang's admin setting its synchronisation up. The oracle is the **revalidate
+server console**.
+
+- [ ] **Pages → add a published page "About", and a published page "Team" with
+      no parent.** Clear the console.
+- [ ] **Nested Pages → drag "Team" under "About", and wait for its "updated"
+      message.** Expect one request carrying
+      `{"subject":"post",…,"before":{"uri":"/team/"},"after":{"uri":"/about/team/"}}`.
+- [ ] **Drag "Team" back to the top level.** Expect one request carrying its
+      change from `/about/team/` to `/team/`.
+- [ ] **Settings → SCPOrder → tick Posts, and Update.** Then **Posts → drag the
+      published post above or below another one.** Expect one request carrying a
+      `{"subject":"post",…}` change for each post whose place changed, both sides
+      its URI.
+- [ ] **Languages → add English and French. Languages → Settings →
+      Synchronization → tick "Page parent", and Save.** Then give "About" and
+      "Team" French translations, "À propos" and "Équipe".
+- [ ] **Edit "Team" → Page Attributes → Parent: About → Update.** Expect one
+      request carrying "Team"'s change **and** "Équipe"'s, from `/fr/equipe/` to
+      `/fr/a-propos/equipe/` — Polylang moved the translation with direct SQL.
+- [ ] **Teardown.** Delete both languages, then deactivate and delete both
+      plugins:
+
+      ```sh
+      npx wp-env run cli wp plugin delete wp-nested-pages simple-custom-post-order --deactivate
+      ```
+
+## P. Uninstallation
 
 Run this last in Part 1 — it destroys the site's plugin data.
 
@@ -430,7 +473,7 @@ Run this last in Part 1 — it destroys the site's plugin data.
 Precondition: Part 1 finished and `npm run stop` run. This stack is raised by an
 override file, never by editing `.wp-env.json`.
 
-## P. Setup
+## Q. Setup
 
 - [ ] **`cp config/wp-env.multisite.json .wp-env.override.json`.**
 - [ ] **`npx wp-env destroy`** and confirm. The install has to be rebuilt as a
@@ -441,7 +484,7 @@ override file, never by editing `.wp-env.json`.
       only it. Create a second site:
       `npx wp-env run cli wp site create --slug=second --title="Second"`.
 
-## Q. Network activation sets up every site
+## R. Network activation sets up every site
 
 Precondition: P done, plugin **not** yet network-activated, at least two sites.
 
@@ -451,7 +494,7 @@ Precondition: P done, plugin **not** yet network-activated, at least two sites.
       `npx wp-env run cli wp option get nextjs_revalidate-db_version --url=localhost:8080/second`.
       Expect a version string, not "could not be found".
 
-## R. A site created after activation
+## S. A site created after activation
 
 Precondition: P done, plugin network-active.
 
@@ -463,7 +506,7 @@ Precondition: P done, plugin network-active.
 - [ ] **Load its wp-admin.** Expect the unconfigured notice — no domain, no
       secret. A newly created site starting unconfigured is by design.
 
-## S. Settings are per site
+## T. Settings are per site
 
 Precondition: P done, main site configured, `second` not.
 
@@ -482,7 +525,7 @@ Precondition: P done, main site configured, `second` not.
       notice on the main site and **not** on `second` — the failure window is per
       site. Restore the main site's secret.
 
-## T. An update migrates every site, without visiting any
+## U. An update migrates every site, without visiting any
 
 Precondition: Q done, plugin network-active, at least two sites. The update is
 faked rather than performed: what triggers the sweep is the swept version
@@ -527,7 +570,7 @@ WordPress's updater reaches this the same way a real update does.
       and reload wp-admin as a super admin. Expect the notice gone and the swept
       version stamped.
 
-## U. A large network declines rather than truncates
+## V. A large network declines rather than truncates
 
 Precondition: P done. This simulates a large network with a filter; it cannot be
 reached otherwise without ten thousand sites.
@@ -548,7 +591,7 @@ reached otherwise without ten thousand sites.
       Expect it to succeed — the refusal exists to leave that door open. Then
       `npx wp-env run cli -- rm wp-content/mu-plugins/njr-large-network.php`.
 
-## V. Network deactivation and uninstallation
+## W. Network deactivation and uninstallation
 
 Precondition: P done, plugin network-active, all sites set up.
 
@@ -563,7 +606,7 @@ Precondition: P done, plugin network-active, all sites set up.
       returns "could not be found". Left behind, a reinstall would read it and
       sweep nothing.
 
-## W. Teardown
+## X. Teardown
 
 - [ ] **`npm run stop`.**
 - [ ] **`rm .wp-env.override.json`.** Not optional: wp-env merges it over
@@ -582,7 +625,7 @@ at setup, which is precisely what the backfill exists to avoid needing — and
 1.7.0, the last release with a ledger of its own. Both hold a revalidation queue,
 with paths still waiting in it, which the upgrade to 2.0 drops.
 
-## X. Raise a real 1.6.9 site
+## Y. Raise a real 1.6.9 site
 
 - [ ] **Confirm the release asset URL.** Open the v1.6.9 release on GitHub and
       copy the zip's download URL. Do not assume the filename.
@@ -601,7 +644,7 @@ with paths still waiting in it, which the upgrade to 2.0 drops.
       screen shows **1.6.9**. If it shows anything else the working tree is still
       mounted and nothing below tests an upgrade. Activate it.
 
-## Y. A 1.6.9 site, configured the old way
+## Z. A 1.6.9 site, configured the old way
 
 - [ ] **Set the legacy single URL option** — the shape 1.6.9 stores:
       ```sh
@@ -630,7 +673,7 @@ with paths still waiting in it, which the upgrade to 2.0 drops.
       Expect `wp cron event list` to list `nextjs_revalidate-queue`. Do it last
       in this section, and stop the site next.
 
-## Z. The upgrade from 1.6.9
+## AA. The upgrade from 1.6.9
 
 - [ ] **`npm run stop`, `rm .wp-env.override.json`, `npm start`.** The working
       tree is now mounted into the same plugin directory over the same database.
@@ -670,7 +713,7 @@ with paths still waiting in it, which the upgrade to 2.0 drops.
       reports its templates like a new one, with no FSE switch to turn on — v2
       removed it.
 
-## AA. Backfill from an older shape
+## AB. Backfill from an older shape
 
 Precondition: Z done. This rewinds the ledger to fake a site that predates it.
 
@@ -688,7 +731,7 @@ Precondition: Z done. This rewinds the ledger to fake a site that predates it.
       ledger, load wp-admin. Expect the option deleted — 1.6.0 stopped using
       it — and the ledger stamped.
 
-## AB. Raise a real 1.7.0 site
+## AC. Raise a real 1.7.0 site
 
 Precondition: AA done and `npm run stop` run. This replaces the upgraded 1.6.9
 site with a new one.
@@ -711,7 +754,7 @@ site with a new one.
       purge & re-build the cached pages…". If it shows anything else the working
       tree is still mounted and nothing below tests an upgrade. Activate it.
 
-## AC. A 1.7.0 site, with what v2 removed
+## AD. A 1.7.0 site, with what v2 removed
 
 Precondition: AB done. `npm start` has seeded the domain, path, secret and logs,
 under the names 1.7.0 already reads.
@@ -738,7 +781,7 @@ under the names 1.7.0 already reads.
       Expect `wp cron event list` to list `nextjs_revalidate-queue`. Do it last
       in this section, and stop the site next.
 
-## AD. The upgrade from 1.7.0
+## AE. The upgrade from 1.7.0
 
 - [ ] **`npm run stop`, `rm .wp-env.override.json`, `npm start`.** Do **not**
       destroy. Confirm the Plugins screen lists **Next.js Revalidate** with the
@@ -770,7 +813,7 @@ under the names 1.7.0 already reads.
       which the dev server does not serve, so a templates change sent there
       shows nothing.
 
-## AE. Teardown
+## AF. Teardown
 
 - [ ] **`npm run stop`**, then **`ls .wp-env.override.json`** and expect it
       absent.
@@ -786,7 +829,7 @@ states it; what it cannot hold is core reading that number and declining the
 activation, which it does from 5.2 on (ADR 0028). Run this part when the floor
 moves.
 
-## AF. Raise a 5.5 site
+## AG. Raise a 5.5 site
 
 - [ ] **Write the override**, pinning core to the release just below the floor,
       a PHP it runs on, and only this plugin — Redirection's current release
@@ -803,7 +846,7 @@ moves.
 - [ ] **`npx wp-env destroy`**, then **`npm start`**, then confirm the release:
       `npx wp-env run cli wp core version` prints `5.5`, or a `5.5.x`.
 
-## AG. The activation is refused
+## AH. The activation is refused
 
 - [ ] **Plugins → Activate "Next.js Revalidate"**, deactivating it first if
       wp-env left it active. Expect a WordPress error page reading "Current
@@ -813,7 +856,7 @@ moves.
 - [ ] **Back to Plugins.** Expect the plugin listed as inactive, and no
       **Settings → Next.js Revalidate** entry.
 
-## AH. Teardown
+## AI. Teardown
 
 - [ ] **`npm run stop`**, then **`rm .wp-env.override.json`** — a leftover pins
       every later `wp-env start` to 5.5.

@@ -50,7 +50,32 @@ class Revalidate extends Base implements Hookable {
 	 */
 	private array $saving = [];
 
+	/**
+	 * The **dependent posts** of the posts whose save is under way, with the
+	 * URI each had before that save: saving post ID => dependent post ID =>
+	 * URI, or null for one that had no page.
+	 *
+	 * Read on `pre_post_update`, the last moment the saved post's row still
+	 * holds what it held: WordPress writes it, and clears its cache, before any
+	 * hook that follows the write, and a child page's permalink is read off its
+	 * parent's row. Let go by that post's own `wp_after_insert_post`, which
+	 * reports each one whose URI moved.
+	 *
+	 * @var array<int, array<int, string|null>>
+	 */
+	private array $dependents_before = [];
+
+	/**
+	 * The posts a plugin is about to reorder or reparent with direct SQL, as
+	 * each stood before: post ID => its URI, its order and its parent.
+	 *
+	 * @var array<int, array{uri: string|null, menu_order: int, post_parent: int}>
+	 */
+	private array $positions_before = [];
+
 	public function register_hooks(): void {
+		add_action( 'pre_post_update', [$this, 'on_pre_post_update'], 10, 2 );
+
 		// Ahead of core's `wp_save_post_revision`, at 10 on the same hook until
 		// WordPress 6.4 — see `$saving`.
 		add_action( 'post_updated', [$this, 'on_post_updated'], 1 );
@@ -283,6 +308,25 @@ class Revalidate extends Base implements Hookable {
 		// what reports the change.
 		else if ( isset( $this->saving[ (int) $revision_of ] ) ) return;
 
+		$this->report_post_save( $post_id, $post_before, $revision_of );
+
+		// After the post's own change, which the front-end reads first. Asked
+		// whether the saved post is revalidatable or not: a draft parent page
+		// has no page of its own, and its published children carry its slug.
+		if ( false === $revision_of ) $this->report_dependents( (int) $post_id );
+	}
+
+	/**
+	 * Report the post a save saved, as the front-end saw it before and as it
+	 * sees it after.
+	 *
+	 * @param int          $post_id     The post that was saved.
+	 * @param WP_Post|null $post_before The post as it was before the save, null for a new one.
+	 * @param int|false    $revision_of The post the saved one is a revision of, or false.
+	 * @return void
+	 */
+	private function report_post_save( $post_id, $post_before, $revision_of ) {
+
 		// Bail for a post that is not revalidatable
 		if ( ! $this->should_revalidate( $post_id, $post_before ) ) return;
 
@@ -304,6 +348,224 @@ class Revalidate extends Base implements Hookable {
 		if ( is_null($change) ) return;
 
 		$this->pendingChanges->report( $change );
+	}
+
+	/**
+	 * A post is about to be updated: read the URIs of its **dependent posts**
+	 * while the post's row still holds what it held — see `$dependents_before`.
+	 *
+	 * @param int   $post_id The post about to be updated.
+	 * @param mixed $data    The post's fields as they are about to be written.
+	 * @return void
+	 */
+	public function on_pre_post_update( $post_id, $data ) {
+
+		$post = get_post( $post_id );
+		if ( ! $post instanceof WP_Post ) return;
+
+		// A revision or an autosave moves nothing: no permalink is built from one.
+		if ( false !== wp_is_post_revision( $post ) || false !== wp_is_post_autosave( $post ) ) return;
+
+		$before = [];
+		foreach ( $this->dependent_posts( $post, is_array( $data ) ? $data : [] ) as $dependent_id ) {
+			$before[ $dependent_id ] = $this->front_end_uri( get_post( $dependent_id ) );
+		}
+
+		if ( empty( $before ) ) return;
+
+		// A post updated twice in one request — its save, then a second write
+		// from a plugin reacting to it — keeps the URIs read before the first.
+		$this->dependents_before[ $post->ID ] = ( $this->dependents_before[ $post->ID ] ?? [] ) + $before;
+	}
+
+	/**
+	 * The **dependent posts** of a post about to be updated: the posts whose
+	 * permalink is built from its own, so that this save may move them without
+	 * saving them.
+	 *
+	 * Its descendants, by default, when it is of a hierarchical type and the
+	 * save changes its slug or its parent — a child page's permalink is its
+	 * parent's, plus its own slug. The site, and an integration, add the rest
+	 * through the filter.
+	 *
+	 * @param WP_Post $post The post, as it is before the update.
+	 * @param array   $data The post's fields as they are about to be written.
+	 * @return int[] Post IDs, never the post's own.
+	 */
+	private function dependent_posts( WP_Post $post, array $data ) {
+
+		$moves = ( isset( $data['post_name'] ) && (string) $data['post_name'] !== $post->post_name )
+			|| ( isset( $data['post_parent'] ) && (int) $data['post_parent'] !== (int) $post->post_parent );
+
+		$post_ids = ( $moves && is_post_type_hierarchical( $post->post_type ) ) ? $this->descendants( $post->ID ) : [];
+
+		/**
+		 * Filters the posts a post's update may move without saving them: the
+		 * posts whose permalink is built from its own.
+		 *
+		 * Its descendants by default, when it is of a hierarchical type and the
+		 * update changes its slug or its parent. Add a post whose permalink a
+		 * `post_type_link` filter builds from this one — each is reported,
+		 * after the update, when its URI moved, and left alone when it did
+		 * not. Asked on every update, so a callback that names posts only when
+		 * what their permalink is built from changes costs nothing on the
+		 * other saves.
+		 *
+		 * @param int[]   $post_ids    The dependent post IDs.
+		 * @param int     $post_id     The ID of the post about to be updated.
+		 * @param WP_Post $post_before The post as it is before the update.
+		 * @param array   $data        The post's fields as they are about to be written.
+		 */
+		$filtered = apply_filters( 'nextjs_revalidate_dependent_posts', $post_ids, $post->ID, $post, $data );
+
+		// The docblock above is what a callback is given, not what it is held
+		// to return. One that returns something else names no post, and the
+		// save goes on.
+		/** @var mixed $post_ids */
+		$post_ids = $filtered;
+		if ( ! is_array( $post_ids ) ) return [];
+
+		$post_ids = array_filter( array_map( 'intval', $post_ids ) );
+
+		return array_values( array_diff( array_unique( $post_ids ), [ $post->ID ] ) );
+	}
+
+	/**
+	 * Every descendant of a post, parents before their children.
+	 *
+	 * Whatever their status: a draft page's published child still carries the
+	 * draft's slug. Read in one query of the post's type rather than a query
+	 * per level, and straight from the table so that no query filter — a
+	 * multilingual plugin's language, a private status some user cannot read —
+	 * narrows it.
+	 *
+	 * @param int $post_id The post ID.
+	 * @return int[]
+	 */
+	public function descendants( $post_id ) {
+		global $wpdb;
+
+		$post_type = get_post_type( $post_id );
+		if ( false === $post_type ) return [];
+
+		$rows = $wpdb->get_results( $wpdb->prepare(
+			"SELECT ID, post_parent FROM $wpdb->posts WHERE post_type = %s AND post_status <> 'auto-draft' AND post_parent <> 0 ORDER BY menu_order, ID",
+			$post_type
+		) );
+
+		$children = [];
+		foreach ( (array) $rows as $row ) $children[ (int) $row->post_parent ][] = (int) $row->ID;
+
+		$descendants = [];
+		$stack       = array_reverse( $children[ (int) $post_id ] ?? [] );
+
+		while ( ! empty( $stack ) ) {
+			$id = array_pop( $stack );
+
+			// A loop in the tree, which WordPress does not prevent a direct
+			// write from making, would otherwise never end.
+			if ( isset( $descendants[ $id ] ) || (int) $post_id === $id ) continue;
+
+			$descendants[ $id ] = $id;
+
+			foreach ( array_reverse( $children[ $id ] ?? [] ) as $child_id ) $stack[] = $child_id;
+		}
+
+		return array_values( $descendants );
+	}
+
+	/**
+	 * A post's save has ended: report each of its dependent posts whose URI
+	 * moved, from the URI it had before the save to the one it has now.
+	 *
+	 * @param int $post_id The post that was saved.
+	 * @return void
+	 */
+	private function report_dependents( $post_id ) {
+
+		$dependents = $this->dependents_before[ $post_id ] ?? [];
+		unset( $this->dependents_before[ $post_id ] );
+
+		foreach ( $dependents as $dependent_id => $before ) {
+			$after = $this->front_end_uri( get_post( $dependent_id ) );
+
+			// Named, and not moved: this save changed nothing about its page.
+			if ( $before === $after ) continue;
+
+			if ( ! $this->should_revalidate( $dependent_id ) ) continue;
+
+			$change = $this->post_change( $dependent_id, $before, $after );
+			if ( is_null( $change ) ) continue;
+
+			$this->pendingChanges->report( $change );
+		}
+	}
+
+	/**
+	 * Read where the given posts stand — their URI, their order and their
+	 * parent — before a plugin writes them without saving them.
+	 *
+	 * For an integration whose plugin reorders or reparents posts with direct
+	 * SQL, which no save hook sees: remembered here, and reported by
+	 * `report_repositioned()` once the plugin has written them. A post already
+	 * remembered keeps what was read first.
+	 *
+	 * @param int[] $post_ids
+	 * @return void
+	 */
+	public function remember_positions( array $post_ids ) {
+		foreach ( $post_ids as $post_id ) {
+			$post_id = (int) $post_id;
+			if ( isset( $this->positions_before[ $post_id ] ) ) continue;
+
+			$post = get_post( $post_id );
+			if ( ! $post instanceof WP_Post ) continue;
+
+			$this->positions_before[ $post_id ] = self::position_of( $post, $this->front_end_uri( $post ) );
+		}
+	}
+
+	/**
+	 * Report each of the given posts a plugin has reordered or reparented:
+	 * from the URI it had to the one it has, when its URI, its order or its
+	 * parent moved.
+	 *
+	 * An order is not in the change — nothing on the wire carries one — but
+	 * the listings of the post's type are in another order, so a reordered post
+	 * is reported where it is, on both sides. A post nothing remembered is
+	 * reported as it stands: the plugin said it wrote it, and whatever it had
+	 * before is not known.
+	 *
+	 * @param int[] $post_ids
+	 * @return void
+	 */
+	public function report_repositioned( array $post_ids ) {
+		foreach ( $post_ids as $post_id ) {
+			$post_id = (int) $post_id;
+
+			$before = $this->positions_before[ $post_id ] ?? null;
+			unset( $this->positions_before[ $post_id ] );
+
+			$post = get_post( $post_id );
+			if ( ! $post instanceof WP_Post ) continue;
+
+			if ( ! is_null( $before ) && self::position_of( $post, $this->front_end_uri( $post ) ) === $before ) continue;
+
+			// A post that had no page before a reorder has none after it: its
+			// status is not what was written. It is not reported either way.
+			$this->report_post_from( $post_id, is_null( $before ) ? null : $before['uri'] );
+		}
+	}
+
+	/**
+	 * Where a post stands, to tell whether a reorder moved it.
+	 *
+	 * @param WP_Post     $post
+	 * @param string|null $uri  Its URI.
+	 * @return array{uri: string|null, menu_order: int, post_parent: int}
+	 */
+	private static function position_of( WP_Post $post, ?string $uri ) {
+		return [ 'uri' => $uri, 'menu_order' => (int) $post->menu_order, 'post_parent' => (int) $post->post_parent ];
 	}
 
 	/**
@@ -508,9 +770,27 @@ class Revalidate extends Base implements Hookable {
 			);
 		}
 
+		return $this->report_post_from( $post_id, null );
+	}
+
+	/**
+	 * Report a post as it is now, from the URI it had before — what
+	 * `nextjs_revalidate_post()` does for a post whose permalink moved without
+	 * the post being saved.
+	 *
+	 * @param int         $post_id    The post ID.
+	 * @param string|null $before_uri The URI the post had, from the domain root,
+	 *                                or null for the one it has now — the post as
+	 *                                it stands, on both sides.
+	 * @return bool Whether the change joined the pending changes.
+	 */
+	public function report_post_from( $post_id, ?string $before_uri ) {
+
 		if ( ! $this->should_revalidate( $post_id ) ) return false;
 
-		$change = $this->standing_post_change( $post_id );
+		$after = $this->front_end_uri( get_post( $post_id ) );
+
+		$change = $this->post_change( $post_id, $before_uri ?? $after, $after );
 		if ( is_null($change) ) return false;
 
 		// No `is_configured()` guard here on purpose: the pending changes refuse

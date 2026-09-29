@@ -11,8 +11,9 @@ use NextJsRevalidate\Traits\WhenPluginsLoaded;
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
 
 /**
- * The Polylang integration: its language list and its default language are
- * site settings.
+ * The Polylang integration: its language list, its default language and its
+ * string translations are site settings, and a post's translations move with
+ * it.
  *
  * A language is a term of Polylang's `language` taxonomy rather than an
  * option, so no site setting option can catch it: creating, editing or
@@ -31,6 +32,17 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * catches a write made directly, from WP-CLI or a migration. When both fire
  * they are the same change.
  *
+ * A string translation — a translated site title or tagline, or any string
+ * registered with Polylang — is kept in its language term's meta rather than in
+ * an option, and saving one reports a `settings` change from that meta's hooks.
+ *
+ * With synchronisation on, Polylang copies a post's parent, order and date to
+ * its translations with `$wpdb->update()`, on purpose, and never saves them:
+ * moving the French page moves the German page, and only the French page is
+ * saved. So a post's translations are among its **dependent posts** — each one
+ * whose URI moved is reported with the French page's own save — and when the
+ * save changes the parent, their descendants are too.
+ *
  * Supported, never required: when Polylang is not there, this registers no
  * hooks at all.
  *
@@ -38,6 +50,8 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  *
  * @property-read \NextJsRevalidate\PendingChanges $pendingChanges The pending
  *                changes of this request, reached through `Base`.
+ * @property-read \NextJsRevalidate\Revalidate     $revalidate     The post changes,
+ *                reached through `Base`.
  */
 class Polylang extends Base implements Hookable {
 	use WhenPluginsLoaded;
@@ -52,6 +66,12 @@ class Polylang extends Base implements Hookable {
 	 * The option Polylang's settings are stored in.
 	 */
 	const OPTION = 'polylang';
+
+	/**
+	 * The language term meta Polylang keeps that language's string
+	 * translations in.
+	 */
+	const STRINGS_META_KEY = '_pll_strings_translations';
 
 	/**
 	 * Register the integration's hooks, once every plugin has declared itself
@@ -79,6 +99,12 @@ class Polylang extends Base implements Hookable {
 
 		add_action( 'pll_update_default_lang', [$this, 'report_settings_change'] );
 		add_action( 'update_option_' . self::OPTION, [$this, 'on_option_update'], 10, 2 );
+
+		add_action( 'added_term_meta',   [$this, 'on_term_meta_change'], 10, 3 );
+		add_action( 'updated_term_meta', [$this, 'on_term_meta_change'], 10, 3 );
+		add_action( 'deleted_term_meta', [$this, 'on_term_meta_change'], 10, 3 );
+
+		add_filter( 'nextjs_revalidate_dependent_posts', [$this, 'add_translations'], 10, 4 );
 	}
 
 	/**
@@ -103,6 +129,78 @@ class Polylang extends Base implements Hookable {
 		if ( self::default_language( $old_value ) === self::default_language( $value ) ) return;
 
 		$this->report_settings_change();
+	}
+
+	/**
+	 * A term meta was added, updated or deleted — which is a site setting
+	 * change only when it holds a language's string translations.
+	 *
+	 * @param mixed $meta_id   The meta's ID, or IDs for a delete.
+	 * @param mixed $object_id The term's ID.
+	 * @param mixed $meta_key  The meta's key.
+	 * @return void
+	 */
+	public function on_term_meta_change( $meta_id, $object_id, $meta_key ) {
+		if ( self::STRINGS_META_KEY !== $meta_key ) return;
+
+		$this->report_settings_change();
+	}
+
+	/**
+	 * Add a post's translations to the posts its update may move: the
+	 * synchronisation writes them without saving them.
+	 *
+	 * Every translation, whichever field the site synchronises: one whose URI
+	 * did not move is not reported, and reading a handful of permalinks is
+	 * cheaper than second-guessing Polylang's options. Their descendants only
+	 * when the update changes the parent, which is the one synchronised field
+	 * a child page's permalink is built from.
+	 *
+	 * @param mixed $post_ids    The dependent post IDs so far.
+	 * @param mixed $post_id     The ID of the post about to be updated.
+	 * @param mixed $post_before The post as it is before the update.
+	 * @param mixed $data        The post's fields as they are about to be written.
+	 * @return mixed
+	 */
+	public function add_translations( $post_ids, $post_id, $post_before, $data ) {
+
+		// Somebody else's filter returned something that is not a list; it is
+		// passed on rather than repaired.
+		if ( ! is_array( $post_ids ) ) return $post_ids;
+
+		$translations = array_diff( $this->translations( (int) $post_id ), [ (int) $post_id ] );
+		if ( empty( $translations ) ) return $post_ids;
+
+		$moves_parent = is_array( $data ) && isset( $data['post_parent'] )
+			&& $post_before instanceof \WP_Post
+			&& (int) $data['post_parent'] !== (int) $post_before->post_parent
+			&& is_post_type_hierarchical( $post_before->post_type );
+
+		foreach ( $translations as $translation_id ) {
+			$post_ids[] = $translation_id;
+
+			if ( $moves_parent ) {
+				foreach ( $this->revalidate->descendants( $translation_id ) as $descendant_id ) $post_ids[] = $descendant_id;
+			}
+		}
+
+		return $post_ids;
+	}
+
+	/**
+	 * The post's translations, as Polylang links them: the post's own ID among
+	 * them, or none for a post it has not set up — Polylang sets nothing up on a
+	 * site with no language.
+	 *
+	 * @param int $post_id
+	 * @return int[]
+	 */
+	private function translations( $post_id ) {
+		if ( ! function_exists( 'pll_get_post_translations' ) || empty( $GLOBALS['polylang'] ) ) return [];
+
+		$translations = pll_get_post_translations( $post_id );
+
+		return is_array( $translations ) ? array_map( 'intval', array_values( $translations ) ) : [];
 	}
 
 	/**

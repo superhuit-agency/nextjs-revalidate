@@ -13,7 +13,9 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  *
  * An option counts as a site setting when its name is on the list
  * `nextjs_revalidate_site_setting_options` returns — WordPress's own by
- * default, and whatever an integration or the site adds. One on the list
+ * default, and whatever an integration or the site adds — or starts with a
+ * prefix on it, written with a trailing `*`, for an option stored once per
+ * language whose languages cannot be listed ahead of time. One on the list
  * reports a `settings` change when it is added, updated to a different value,
  * or deleted; however many a request saves, the pending changes hold one.
  *
@@ -39,6 +41,9 @@ class SiteSettings extends Base implements Hookable {
 		'gmt_offset',
 		'home',
 		'site_icon',
+		// The core Site Logo block's, which core keeps in step with the theme's
+		// `custom_logo` mod.
+		'site_logo',
 		'WPLANG',
 	];
 
@@ -79,10 +84,12 @@ class SiteSettings extends Base implements Hookable {
 		 * as they are, on any page, whose change reports a `settings` change.
 		 *
 		 * Add an option the front-end renders; remove a default it does not.
-		 * Do not add one that moves which content lives at which path — see
-		 * ADR 0037.
+		 * An entry ending in `*` names every option starting with what comes
+		 * before it — `landbot_config_url_*` for `landbot_config_url_fr` and
+		 * `landbot_config_url_de`. Do not add one that moves which content
+		 * lives at which path — see ADR 0037.
 		 *
-		 * @param string[] $option_names The site setting options.
+		 * @param string[] $option_names The site setting options, and prefixes.
 		 */
 		$filtered = apply_filters( 'nextjs_revalidate_site_setting_options', self::DEFAULT_OPTIONS );
 
@@ -93,6 +100,21 @@ class SiteSettings extends Base implements Hookable {
 		$options = $filtered;
 		if ( ! is_array( $options ) ) return false;
 
-		return in_array( $option, $options, true );
+		if ( in_array( $option, $options, true ) ) return true;
+
+		foreach ( $options as $entry ) {
+			if ( ! is_string( $entry ) || '*' !== substr( $entry, -1 ) ) continue;
+
+			$prefix = substr( $entry, 0, -1 );
+
+			// A bare `*` would name every option on the site — the cron array
+			// and every transient among them — and report a settings change
+			// from nearly every request. It names none.
+			if ( '' === $prefix ) continue;
+
+			if ( 0 === strpos( $option, $prefix ) ) return true;
+		}
+
+		return false;
 	}
 }

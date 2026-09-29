@@ -193,6 +193,15 @@ route. The full notes are in CHANGELOG.md on GitHub.
   do Yoast SEO's SEO defaults and Polylang's languages when those plugins are
   active. The `nextjs_revalidate_site_setting_options` filter decides which
   options count. 1.x reported none of these.
+* Added: renaming or moving a parent page reports every descendant whose URI
+  moved, and Polylang's synchronised translations with it. The
+  `nextjs_revalidate_dependent_posts` filter adds a post whose permalink a theme
+  builds from another, and `nextjs_revalidate_post()` reports one a term moved.
+* Added: Nested Pages and Simple Custom Post Order integrations. A drag and drop
+  reports each post it reordered or moved under another parent.
+* Added: the site logo and Polylang's string translations are site settings, and
+  `nextjs_revalidate_site_setting_options` takes a prefix ending in `*` for
+  options stored once per language.
 * Changed: the admin says "Revalidate" where it said "Purge", in English and in
   French, and the plugin is named Next.js Revalidate.
 = 1.7.0 =
