@@ -1,23 +1,25 @@
 <?php
 /**
- * A refusal and an empty site are different answers — RevalidateAll::revalidate_all().
+ * A refusal and a success are different answers — RevalidateAll::revalidate_all().
  *
- * `revalidate_all()` answers with a count, except on an **unconfigured site**,
- * where it refuses and answers `false`. Its caller reads that with
- * `false === $nb_added` and sends the operator to a refusal notice instead of a
- * count, so the two answers have to stay distinguishable by identity: `0` is a
- * site that had nothing revalidatable to enqueue, and it is not a refusal.
+ * `revalidate_all()` answers what the pending changes answer a report: `true`
+ * for a change held, `false` for one the site's own `nextjs_revalidate_change`
+ * filter dropped, and the `not_configured` WP_Error on an **unconfigured site**,
+ * which refuses before anything is reported. Its caller sends the operator to a
+ * different notice for each, so the three answers have to stay distinguishable
+ * by identity.
  *
- * The method was annotated `@return int` while returning `false`, which made
- * PHPStan call that refusal branch dead code — a live branch reported as
- * unreachable, because the docblock lied rather than because the code was
- * wrong (#82). The annotation is now `int|false`; this is the same claim, held
- * by a test rather than by a comment, so the next person to "simplify" the
- * branch away has to delete an expectation to do it.
+ * Until v2 the success answer was a count, and `0` — a site with nothing
+ * revalidatable — was the falsy answer that was not a refusal (#82). A change
+ * has no count, but it keeps a falsy answer that is not a refusal: the filter
+ * dropping the change, which is the site's own decision — and which is not a
+ * revalidation sent either, so the operator is not told one was. This holds
+ * the distinction by a test rather than by a comment, so the next person to
+ * "simplify" the branch away has to delete an expectation to do it.
  *
  * Reachable by stubbing a handful of WordPress functions, so it is a standalone
- * script — ADR 0008's rule. What the queue then does with the permalinks is
- * `tests/integration/RevalidateAllTermsTest.php`'s, against a real one.
+ * script — ADR 0008's rule. What the change carries is
+ * `tests/revalidate-all-change-test.php`'s, through the real pending changes.
  *
  * Run with `npm run test:php`, or `php tests/revalidate-all-refusal-test.php`.
  */
@@ -48,16 +50,23 @@ namespace {
 	define( 'ABSPATH', __DIR__ . '/' );
 
 	/**
-	 * The permalinks the queue was handed, in order.
+	 * The changes the pending changes were handed, in order.
 	 * @var array
 	 */
-	$GLOBALS['njr_test_enqueued'] = [];
+	$GLOBALS['njr_test_reported'] = [];
 
 	/**
-	 * Everything the plugin logged during the last call.
-	 * @var array
+	 * What the pending changes answer a report with: `true` for a change held,
+	 * `false` for one the `nextjs_revalidate_change` filter dropped.
+	 * @var mixed
 	 */
-	$GLOBALS['njr_test_log'] = [];
+	$GLOBALS['njr_test_report_answer'] = true;
+
+	/**
+	 * What the pending changes were asked to refuse, in order.
+	 * @var string[]
+	 */
+	$GLOBALS['njr_test_refused'] = [];
 
 	/**
 	 * Whether the fixture site holds both settings a revalidation cannot be
@@ -67,39 +76,30 @@ namespace {
 	$GLOBALS['njr_test_configured'] = true;
 
 	/**
-	 * The fixture site's posts, post type => post ids.
+	 * Every post-shaped question the site was asked. Revalidate all asks none.
 	 * @var array
 	 */
-	$GLOBALS['njr_test_posts'] = [];
-
-	/**
-	 * The fixture site's taxonomies, name => term ids.
-	 * @var array
-	 */
-	$GLOBALS['njr_test_terms'] = [];
+	$GLOBALS['njr_test_post_queries'] = [];
 
 	// WordPress stubs
 	// ====
 
+	class WP_Error {}
+
 	function add_action( $name, $callback, $priority = 10, $accepted_args = 1 ) {}
 	function add_filter( $name, $callback, $priority = 10, $accepted_args = 1 ) {}
 
+	function is_wp_error( $thing ) {
+		return $thing instanceof WP_Error;
+	}
+
 	function get_posts( $args = [] ) {
-		return $GLOBALS['njr_test_posts'][ $args['post_type'] ] ?? [];
+		$GLOBALS['njr_test_post_queries'][] = $args;
+		return [];
 	}
 
 	function get_taxonomies( $args = [] ) {
-		$taxonomies = array_keys( $GLOBALS['njr_test_terms'] );
-
-		return array_combine( $taxonomies, $taxonomies );
-	}
-
-	function get_terms( $args = [] ) {
-		return $GLOBALS['njr_test_terms'][ $args['taxonomy'] ] ?? [];
-	}
-
-	function get_term_link( $term_id ) {
-		return "https://example.test/term/$term_id/";
+		return [ 'category' => 'category' ];
 	}
 
 	/**
@@ -116,46 +116,40 @@ namespace {
 	}
 
 	/**
-	 * `Revalidate`, reduced to the three questions revalidate-all puts to it:
-	 * which post types it offers, the permalink of a post, and whether a
-	 * taxonomy's terms are candidates. Each has a test of its own —
-	 * `tests/offered-post-types-test.php`, `tests/revalidatable-post-test.php`
-	 * and `tests/revalidatable-taxonomy-test.php` — and nothing here has an
-	 * opinion about any of them.
+	 * `Revalidate`, reduced to the one question revalidate all puts to it:
+	 * whether a taxonomy's archives are candidates. That has a test of its
+	 * own — `tests/revalidatable-taxonomy-test.php` — and nothing here has an
+	 * opinion about it.
 	 */
 	class NJR_Test_Revalidate {
-		public function offered_post_types() {
-			$types = array_keys( $GLOBALS['njr_test_posts'] );
-
-			return array_combine( $types, $types );
-		}
-
-		public function get_post_permalink( $post_id ) {
-			return "https://example.test/post/$post_id/";
-		}
-
 		public function should_revalidate_taxonomy( $taxonomy ) {
 			return true;
 		}
 	}
 
 	/**
-	 * The revalidation queue, reduced to what it was handed.
+	 * The pending changes, reduced to what they were handed.
 	 */
-	class NJR_Test_Queue {
-		public function add_item( $permalink, $priority = 10 ) {
-			$GLOBALS['njr_test_enqueued'][] = $permalink;
+	class NJR_Test_PendingChanges {
+		public function refuse( string $what ) {
+			$GLOBALS['njr_test_refused'][] = $what;
 
-			return 1;
+			return new WP_Error();
+		}
+
+		public function report( array $change ) {
+			$GLOBALS['njr_test_reported'][] = $change;
+
+			return $GLOBALS['njr_test_report_answer'];
 		}
 	}
 
 	// The plugin singleton, reduced to the three collaborators `Abstracts\Base`
-	// forwards to it.
+	// forwards to it that revalidate all reaches.
 	class NextJsRevalidate {
 		public $settings;
 		public $revalidate;
-		public $queue;
+		public $pendingChanges;
 
 		private static $instance;
 
@@ -165,9 +159,9 @@ namespace {
 		}
 
 		private function __construct() {
-			$this->settings   = new NJR_Test_Settings();
-			$this->revalidate = new NJR_Test_Revalidate();
-			$this->queue      = new NJR_Test_Queue();
+			$this->settings       = new NJR_Test_Settings();
+			$this->revalidate     = new NJR_Test_Revalidate();
+			$this->pendingChanges = new NJR_Test_PendingChanges();
 		}
 	}
 
@@ -178,6 +172,7 @@ namespace {
 	require_once __DIR__ . '/../include/Abstracts/Base.php';
 	require_once __DIR__ . '/../include/Traits/AdminBarMenu.php';
 	require_once __DIR__ . '/../include/Traits/SendbackUrl.php';
+	require_once __DIR__ . '/../include/Change.php';
 	require_once __DIR__ . '/../include/RevalidateAll.php';
 
 	// The expectations
@@ -208,85 +203,84 @@ namespace {
 	}
 
 	/**
-	 * Run revalidate-all against a fixture site.
+	 * Run revalidate all against a fixture site.
 	 *
-	 * @param bool  $configured Whether the site holds the two settings.
-	 * @param array $posts      post type => post ids.
-	 * @param array $terms      taxonomy => term ids.
+	 * @param bool   $configured Whether the site holds the two settings.
+	 * @param string $type       The post type, or 'all'.
+	 * @param mixed  $answer     What the pending changes answer the report with.
 	 * @return mixed What `revalidate_all()` answered.
 	 */
-	function njr_test_revalidate_all( $configured, array $posts = [], array $terms = [] ) {
-		$GLOBALS['njr_test_configured'] = $configured;
-		$GLOBALS['njr_test_posts']      = $posts;
-		$GLOBALS['njr_test_terms']      = $terms;
-		$GLOBALS['njr_test_enqueued']   = [];
-		$GLOBALS['njr_test_log']        = [];
+	function njr_test_revalidate_all( $configured, $type = 'all', $answer = true ) {
+		$GLOBALS['njr_test_configured']    = $configured;
+		$GLOBALS['njr_test_report_answer'] = $answer;
+		$GLOBALS['njr_test_reported']      = [];
+		$GLOBALS['njr_test_refused']       = [];
 
-		return ( new NextJsRevalidate\RevalidateAll() )->revalidate_all();
+		return ( new NextJsRevalidate\RevalidateAll() )->revalidate_all( $type );
 	}
 
-	// An unconfigured site refuses: nothing is enqueued, because nothing it
-	// accepted could be delivered.
-	$answer = njr_test_revalidate_all( false, [ 'post' => [ 1, 2 ] ], [ 'category' => [ 7 ] ] );
+	// An unconfigured site refuses: nothing is reported, because nothing it
+	// reported could be delivered.
+	foreach ( [ 'all', 'post' ] as $type ) {
+		$answer = njr_test_revalidate_all( false, $type );
 
-	njr_test_expect(
-		'an unconfigured site answers false, not a count',
-		false,
-		$answer
-	);
-	njr_test_expect(
-		'the refusal branch the caller reads with `false === $nb_added` is live',
-		true,
-		false === $answer
-	);
-	njr_test_expect(
-		'a refusal enqueues nothing, however much the site holds',
-		[],
-		$GLOBALS['njr_test_enqueued']
-	);
-	njr_test_expect(
-		'the refusal says which settings are missing',
-		1,
-		count( preg_grep( '/not configured \(missing: domain, secret\)/', $GLOBALS['njr_test_log'] ) )
-	);
+		njr_test_expect(
+			"an unconfigured site answers the refusal to revalidate all ($type)",
+			true,
+			$answer instanceof WP_Error
+		);
+		njr_test_expect(
+			"a refusal reports nothing ($type)",
+			[],
+			$GLOBALS['njr_test_reported']
+		);
+		njr_test_expect(
+			"the refusal is the pending changes', under revalidate all's own name ($type)",
+			[ "revalidate all ($type)" ],
+			$GLOBALS['njr_test_refused']
+		);
+	}
 
-	// A configured site with nothing to revalidate answers zero. Falsy, and not
-	// a refusal — the distinction the caller's `===` exists to make.
+	// A configured site reports one change and answers true.
 	$answer = njr_test_revalidate_all( true );
 
 	njr_test_expect(
-		'a configured site with nothing revalidatable answers 0',
-		0,
-		$answer
-	);
-	njr_test_expect(
-		'0 is not a refusal',
-		false,
-		false === $answer
-	);
-	njr_test_expect(
-		'and nothing was logged, because nothing was refused',
-		[],
-		$GLOBALS['njr_test_log']
-	);
-
-	// A configured site answers with the number of nodes it enqueued — posts of
-	// every type, then the terms of every revalidatable taxonomy.
-	$answer = njr_test_revalidate_all(
+		'a configured site answers true',
 		true,
-		[ 'post' => [ 1, 2 ], 'page' => [ 3 ] ],
-		[ 'category' => [ 7, 8 ] ]
-	);
-
-	njr_test_expect(
-		'a configured site answers with the number of nodes it enqueued',
-		5,
 		$answer
 	);
 	njr_test_expect(
-		'which is the count of what actually reached the queue',
-		5,
-		count( $GLOBALS['njr_test_enqueued'] )
+		'having reported exactly one change',
+		1,
+		count( $GLOBALS['njr_test_reported'] )
+	);
+	njr_test_expect(
+		'and refused nothing',
+		[],
+		$GLOBALS['njr_test_refused']
+	);
+
+	// A change the filter drops is the site's decision: not a refusal, so the
+	// operator is not told the site is unconfigured — and not sent either, so
+	// they are not told it was.
+	$answer = njr_test_revalidate_all( true, 'post', false );
+
+	njr_test_expect(
+		'a change the nextjs_revalidate_change filter dropped answers false',
+		false,
+		$answer
+	);
+	njr_test_expect(
+		'which is not a refusal',
+		[],
+		$GLOBALS['njr_test_refused']
+	);
+
+	// However many posts the site holds, none is asked about.
+	njr_test_expect(
+		'revalidate all queries no post, of the whole site or of one type',
+		[],
+		$GLOBALS['njr_test_post_queries']
 	);
 
 	printf( "\n%d failure(s)\n", $failures );

@@ -110,3 +110,12 @@ scheme is not `http` or `https` is left in place, like one with no host. The
 guard is unchanged, so such a URL is parsed again on every `admin_init`; it writes
 nothing and raises nothing, and the site stays unconfigured — loudly, per
 ADR-0015 — until the operator types a domain.
+
+## Amended for v2: one path
+
+Built in #156, under ADR 0034. The second endpoint this record was opened for
+is gone: the FSE snapshot reports a `templates` change to the same route as
+every other change, so its path setting and its `/api/revalidate-fse` default
+went with it. The split of a domain from a path stands, with one path, composed
+by `Settings::endpoint_url()`. The reasons above for not storing a full URL
+still hold for one endpoint — the migration and the composition are unchanged.

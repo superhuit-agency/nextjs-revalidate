@@ -6,7 +6,7 @@
  * Two things are asserted, and they are the two halves of ADR-0003:
  *
  *  1. **Constructing a Hookable touches no global state.** Every one of the
- *     ten classes is constructed with the recorder watching, and the recorder
+ *     twelve classes is constructed with the recorder watching, and the recorder
  *     stays empty. This is the property the whole convention exists for: an
  *     instance can be obtained for a single method call without paying for the
  *     hooks.
@@ -108,26 +108,31 @@ require_once __DIR__ . '/../include/I18n.php';
 require_once __DIR__ . '/../include/Assets.php';
 require_once __DIR__ . '/../include/Settings.php';
 require_once __DIR__ . '/../include/FailureWindow.php';
+require_once __DIR__ . '/../include/Change.php';
+require_once __DIR__ . '/../include/PendingChanges.php';
 require_once __DIR__ . '/../include/Revalidate.php';
 require_once __DIR__ . '/../include/Probe.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
-require_once __DIR__ . '/../include/RevalidateQueue.php';
+require_once __DIR__ . '/../include/BlockMenus.php';
+require_once __DIR__ . '/../include/SiteSettings.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\Assets;
+use NextJsRevalidate\BlockMenus;
 use NextJsRevalidate\Cron\ScheduledPurges;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Probe;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\RevalidateAll;
-use NextJsRevalidate\RevalidateQueue;
 use NextJsRevalidate\Settings;
+use NextJsRevalidate\SiteSettings;
 
 // The expectations
 // ====
@@ -146,7 +151,6 @@ $expected_per_class = [
 
 	Assets::class => [
 		[ 'init',                  'register_assets',          10, 1 ],
-		[ 'admin_enqueue_scripts', 'enqueue_admin_assets',     10, 1 ],
 		[ 'admin_enqueue_scripts', 'enqueue_editor_assets',    10, 1 ],
 		[ 'admin_enqueue_scripts', 'enqueue_settings_assets',  10, 1 ],
 	],
@@ -166,7 +170,12 @@ $expected_per_class = [
 		[ 'admin_enqueue_scripts', 'enqueue_editor_notice',  11, 1 ],
 	],
 
+	PendingChanges::class => [
+		[ 'shutdown', 'deliver', 10, 1 ],
+	],
+
 	Revalidate::class => [
+		[ 'post_updated',         'on_post_updated',                  1, 1 ],
 		[ 'wp_after_insert_post', 'on_post_save',                    99, 4 ],
 		[ 'before_delete_post',   'on_post_delete',                  10, 1 ],
 		[ 'page_row_actions',     'add_revalidate_row_action',       20, 2 ],
@@ -175,7 +184,7 @@ $expected_per_class = [
 		[ 'admin_init',           'register_bulk_actions',           10, 1 ],
 		[ 'admin_bar_menu',       'admin_top_bar_menu',             100, 1 ],
 		[ 'admin_init',           'revalidate_current_post_action',  10, 1 ],
-		[ 'admin_notices',        'purged_notice',                   10, 1 ],
+		[ 'admin_notices',        'revalidated_notice',                   10, 1 ],
 	],
 
 	Probe::class => [
@@ -191,7 +200,7 @@ $expected_per_class = [
 		[ 'admin_bar_menu',      'admin_top_bar_menu',                100, 1 ],
 		[ 'admin_notices',       'revalidated_notice',                 10, 1 ],
 		[ 'admin_init',          'revalidate_all_pages_action',        10, 1 ],
-		[ 'wp_update_nav_menu',  'revalidate_all_after_menu_update',   10, 1 ],
+		[ 'wp_update_nav_menu',  'on_menu_update',                     10, 1 ],
 	],
 
 	FseSnapshot::class => [
@@ -201,11 +210,15 @@ $expected_per_class = [
 		[ 'switch_theme',               'on_theme_switch',  10, 1 ],
 	],
 
-	RevalidateQueue::class => [
-		[ 'admin_init',                     'action_reset_queue',  10, 1 ],
-		[ 'admin_init',                     'ajax_queue_progress', 10, 1 ],
-		[ 'admin_notices',                  'admin_queue_notice',  10, 1 ],
-		[ RevalidateQueue::CRON_HOOK_NAME,  'run_cron',            10, 1 ],
+	BlockMenus::class => [
+		[ 'save_post_wp_navigation', 'on_block_menu_save', 10, 2 ],
+		[ 'deleted_post',            'on_post_delete',     10, 2 ],
+	],
+
+	SiteSettings::class => [
+		[ 'added_option',   'on_option_change', 10, 1 ],
+		[ 'updated_option', 'on_option_change', 10, 1 ],
+		[ 'deleted_option', 'on_option_change', 10, 1 ],
 	],
 
 	RestApi::class => [
@@ -223,10 +236,12 @@ $expected_per_class = [
  * @var array
  */
 $expected_of_the_root = [
-	// The integration registers after the Hookables, and defers the question of
-	// whether Redirection is installed to `plugins_loaded` — which, in this
-	// script, has not fired.
+	// The integrations register after the Hookables, and defer the question of
+	// whether the plugin each integrates with is installed to `plugins_loaded`
+	// — which, in this script, has not fired.
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Redirection::register_redirect_hooks', 10,  1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Yoast::register_yoast_hooks',          10,  1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Polylang::register_polylang_hooks',    10,  1 ],
 	[ 'wp_initialize_site', 'NextJsRevalidate::setup_new_site',                                      100, 1 ],
 ];
 

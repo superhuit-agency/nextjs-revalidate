@@ -1,9 +1,10 @@
 # Manual tests — the core pass
 
-Thirty-six checks on a single site. This is the pass to run before a release,
+Thirty-two checks on a single site. This is the pass to run before a release,
 and after any change worth the ten minutes.
 
-It is not everything. The network stack, the upgrade-from-1.6.9 stack, and the
+It is not everything. The network stack, the upgraded stacks (from 1.6.9 and
+from 1.7), and the
 groups this one leaves out — endpoint composition, the probe,
 revalidatable-post edges, row and bulk actions, the admin bar, revalidate all,
 menu save, FSE update, scheduled purges, the log file, the French translation,
@@ -30,15 +31,7 @@ The **spine** establishes the state every group after it assumes.
 | --- | --- |
 | Revalidate server console | the terminal running `npm start` |
 | Log file | `npx wp-env run cli -- tail -n 30 <path>`, where `<path>` is the one printed under **Enable logs** on the Debug tab. It differs per site, so read it there rather than typing it from memory |
-| Queue table | `npx wp-env run cli wp db query "SELECT * FROM wp_revalidate_queue"` |
 | The screen | wp-admin at http://localhost:8080/wp-admin |
-
-**Cron does not run on a quiet site.** WordPress fires cron on page loads, so
-after an action that enqueues, either load a page or force it:
-
-```sh
-npx wp-env run cli wp cron event run nextjs_revalidate-queue
-```
 
 ---
 
@@ -64,22 +57,19 @@ Precondition: nothing running.
 
 Precondition: section 1 done.
 
-- [ ] **Plugins → deactivate, then activate "Next.js revalidate".** Expect no
+- [ ] **Plugins → deactivate, then activate "Next.js Revalidate".** Expect no
       error and no white screen.
-- [ ] **Confirm the queue table exists**:
-      `npx wp-env run cli wp db query "SHOW TABLES LIKE 'wp_revalidate_queue'"`.
-      Expect one row.
-- [ ] **Settings → Next.js revalidate.** Expect seven tabs — **Next.js API**,
-      **Allow purge all**, **On menu update**, **On FSE update**, **Debug**,
-      **Queue**, **Probe** — with a count badge on Queue. Click each: expect one
-      panel visible at a time, Probe included, though it is a form of its own.
-      (All seven stacked means a broken `settings.js`.)
+- [ ] **Settings → Next.js Revalidate.** Expect four tabs — **Next.js API**,
+      **Allow revalidate all**, **Debug**, **Probe** — and no **Queue**, **On
+      FSE update** or **On menu update** tab: v2 removed all three. Click each:
+      expect one panel visible at a time, Probe included, though it is a form of
+      its own. (All four stacked means a broken `settings.js`.)
 - [ ] **On Next.js API, confirm the seeded values**: domain
-      `http://host.docker.internal:8083`, revalidate path `/revalidate`, FSE
-      revalidate path empty but showing a `/api/revalidate-fse` placeholder,
-      secret `my-super-secret`. On Debug, confirm "enable logs" is on, and note
+      `http://host.docker.internal:8083`, revalidate path `/revalidate`, secret
+      `my-super-secret` — and no FSE revalidate path field: there is one
+      endpoint from v2. On Debug, confirm "enable logs" is on, and note
       the log path printed beneath it — the **Log file** oracle reads it.
-- [ ] **On Allow purge all, tick `post` and `page`, save.** Expect the
+- [ ] **On Allow revalidate all, tick `post` and `page`, save.** Expect the
       settings-saved notice and both still ticked after the reload.
 - [ ] **Publish a post "Runbook post" and a page "Runbook page".** Expect
       permalinks of the shape `http://localhost:8080/runbook-post/`. A `?p=123`
@@ -87,72 +77,65 @@ Precondition: section 1 done.
       mislead.
 
 > **State after the spine**, assumed by every section below: a configured site,
-> logs on, purge-all allowed for `post` and `page`, one published post and one
+> logs on, revalidate all allowed for `post` and `page`, one published post and one
 > published page.
 
 ## 3. Saving a post
 
 Precondition: spine state.
 
+A post save is a **post change**, delivered when the save's request ends —
+there is nothing to wait for. The console prints each change as it was sent;
+`N` below is the post's ID.
+
 - [ ] **Edit "Runbook post", change a word, Update.** Expect
-      `= Revalidating: /runbook-post/` in the revalidate server console within a
-      minute, or immediately after forcing the cron.
-- [ ] **Check the log.** Expect a line of the shape
-      `#12: ✅ Revalidated in 0.04s http://localhost:8080/runbook-post/ (priority: 10)`
-      — the queue holds the permalink, and the front-end is asked for the path.
-- [ ] **Move it to Draft.** Expect a revalidation of `/runbook-post/` — the path
-      it held while published is the one the front-end still has cached.
-- [ ] **Move it to Trash, then restore and republish.** Expect a revalidation
-      each time.
+      `= Revalidating (v2): {"subject":"post","id":N,"type":"post","before":{"uri":"/runbook-post/"},"after":{"uri":"/runbook-post/"}}`
+      in the revalidate server console straight away — one line, two equal
+      sides.
+- [ ] **Check the log.** Expect a line ending `✅ Revalidated 1 change (post)`.
+- [ ] **Move it to Draft.** Expect `"before":{"uri":"/runbook-post/"},"after":null`
+      — the path it held while published is the one the front-end still has
+      cached, and it has no page now.
+- [ ] **Publish it again.** Expect `"before":null,"after":{"uri":"/runbook-post/"}`.
+- [ ] **Move it to Trash.** Expect `"before":{"uri":"/runbook-post/"},"after":null`
+      — never the `__trashed` name the post takes on the way in. **Restore it,
+      then publish it.** Expect nothing on the restore — a restored post comes
+      back a draft — and `"before":null` on the publish.
 
-## 4. The queue
-
-Precondition: spine state.
-
-- [ ] **Admin bar → Next.js revalidate → All**, then open Settings → Next.js
-      revalidate → Queue. Expect the badge to show a non-zero count matching the
-      table, and a notice "Purging caches. Please wait… " with a "View purge
-      caches queue" link.
-- [ ] **Load admin pages until it drains.** Expect the badge to fall to zero, the
-      table to empty, and one console line per path with no duplicates.
-- [ ] **Update the same post twice before the cron runs.** Expect **one** queue
-      row for that permalink, not two.
-- [ ] **Queue a batch, then use the reset control on the Queue tab.** Expect the
-      notice "Queue correctly resetted." and an empty table.
-
-## 5. The unconfigured site refuses
+## 4. The unconfigured site refuses
 
 Precondition: spine state. This section clears settings and restores them at the
 end — do not stop halfway.
 
 - [ ] **Clear the secret, save.** Expect a warning notice at the top of every
-      admin screen: "Next.js revalidate is not configured for this site — its
+      admin screen: "Next.js Revalidate is not configured for this site — its
       secret is missing. Content is still saved, but every revalidation is
-      refused…", with a "Configure Next.js revalidate" link, and no link while
+      refused…", with a "Configure Next.js Revalidate" link, and no link while
       you are on the settings screen itself.
 - [ ] **Clear the revalidate domain too, save.** Expect the notice to now read
       "its revalidate domain and secret are missing".
-- [ ] **Update "Runbook post".** Expect **nothing** in the console and **no new
-      queue row** — the revalidation was refused at enqueue, not queued and
-      dropped later. Then admin bar → Next.js revalidate → All: expect an error
-      notice "Revalidate all: nothing was queued, this site is not configured."
+- [ ] **Update "Runbook post".** Expect **nothing** in the console, and
+      `⛔ Refused a post change — site not configured (missing: domain, secret)`
+      in the log — the change was refused when it was produced, not held and
+      dropped later. Then admin bar → Revalidate → All: expect an error notice
+      "Revalidate all: nothing was sent, this site is not configured."
 - [ ] **Restore the domain and secret, save.** Expect the notice gone from every
       screen and a post save to revalidate again.
 
-## 6. Degraded revalidation
+## 5. Degraded revalidation
 
 Precondition: spine state. This section deliberately breaks the secret and
 repairs it at the end.
 
-- [ ] **Set the secret to `wrong-secret`, save, then update a post three times,
-      forcing the cron after each.** The site is still *configured*, so these are
-      attempted and rejected — failures, not refusals. Expect three
-      `❌ Failed to revalidate … http_401: The front-end answered 401.` lines in
-      the log.
+- [ ] **Set the secret to `wrong-secret`, save, then update a post three times.**
+      The site is still *configured*, so these are attempted and rejected —
+      failures, not refusals. Expect three
+      `❌ Failed to revalidate 1 change (post) — http_401: The front-end answered 401.`
+      lines in the log, one per save.
 - [ ] **Load any classic admin screen.** Expect an error notice: "Next.js
       revalidate is not keeping this site up to date — 3 of the last 10
       revalidations failed…", naming the most recent error as "the front-end
-      rejected the secret", with a "Check the Next.js revalidate settings" link.
+      rejected the secret", with a "Check the Next.js Revalidate settings" link.
 - [ ] **Open the block editor.** Expect the same warning as a block editor
       notice, and expect it **not** to be dismissible — it is a condition, not an
       acknowledgement.
@@ -165,46 +148,51 @@ repairs it at the end.
       outcomes are failures — recovery is a live property, not a flag anyone
       clears.
 
-## 7. The Redirection integration
+## 6. The Redirection integration
 
 Precondition: spine state, Redirection active (installed from `.wp-env.json`).
 Complete its setup wizard once if prompted.
 
+The oracle is the **revalidate server console**: a redirect is reported as a
+**redirect change**, delivered in one v2 request once the save has answered, so
+each revalidation below is a line like
+`= Revalidating (v2): {"subject":"redirect","uri":"/old-path/"}`.
+
 - [ ] **Tools → Redirection → add a redirect** from `/old-path/` to
-      `/runbook-post/`, enabled. Expect a revalidation of `/old-path/` — the
-      **source**, not the target. The front-end's cached 404 for that path is
-      what is now wrong.
+      `/runbook-post/`, enabled. Expect
+      `{"subject":"redirect","uri":"/old-path/"}` in the console — the
+      **source**, not the target, and a `redirect` change rather than a `path`
+      one. The front-end's cached 404 for that path is what is now wrong.
 - [ ] **Edit it, changing the source to `/older-path/`.** Expect **one**
-      revalidation, of `/older-path/`, and none of `/old-path/`. Redirection
+      redirect change, for `/older-path/`, and none for `/old-path/`. Redirection
       5.9.0 and later hand over only the redirect's id on an edit, so nothing
       carries the source it had — `/old-path/` keeps redirecting on the
       front-end until its cache entry expires. That is the recorded limit in
       `docs/adr/0014-redirect-changes-revalidate-the-source-path.md`, not a
-      regression; a second revalidation here means upstream started passing
-      the previous state again.
-- [ ] **Disable it, enable it, then delete it.** Expect a revalidation of its
-      source each time.
+      regression; a second redirect change here means upstream started
+      passing the previous state again.
+- [ ] **Disable it, enable it, then delete it.** Expect a redirect change for
+      its source each time, one v2 request per action.
 - [ ] **Add a regex redirect** (tick "Regex", source `^/blog/(.*)`). Expect **no**
-      revalidation, and a log line saying it was skipped because "its source is a
-      regular expression, which names no single path".
+      request in the console, and a log line saying it was skipped because
+      "its source is a regular expression, which names no single path".
 
-## 8. Deactivation
+## 7. Deactivation
 
-Precondition: spine state, with items queued.
+Precondition: spine state.
 
 - [ ] **Deactivate the plugin, then check the crons**:
       `npx wp-env run cli wp cron event list`. Expect no
-      `nextjs_revalidate-queue` and no `nextjs-revalidate-scheduled_purges`.
-- [ ] **Expect the settings and the queue table kept**:
-      `wp option get nextjs_revalidate-domain` still returns its value, and
-      `SHOW TABLES LIKE 'wp_revalidate_queue'` still returns a row. Deactivation
-      is not uninstallation.
+      `nextjs-revalidate-scheduled_purges`.
+- [ ] **Expect the settings kept**:
+      `wp option get nextjs_revalidate-domain` still returns its value.
+      Deactivation is not uninstallation.
 - [ ] **Expect the failure window cleared**:
       `wp option get nextjs_revalidate-failure_window`. Expect "could not be
-      found" — the one exception, for the reason in section 6. Then reactivate
+      found" — the one exception, for the reason in section 5. Then reactivate
       and expect the crons rescheduled and the settings intact.
 
-## 9. Teardown
+## 8. Teardown
 
 - [ ] **`npm run stop`**, and Ctrl-C the revalidate dev server.
 - [ ] **`git status`.** Expect a clean tree: no `.wp-env.override.json`, no edits

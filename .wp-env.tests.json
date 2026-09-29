@@ -2,7 +2,9 @@
 	"core": "WordPress/WordPress#7.1.2",
 	"plugins": [
 		".",
-		"https://downloads.wordpress.org/plugin/redirection.zip"
+		"https://downloads.wordpress.org/plugin/redirection.zip",
+		"https://downloads.wordpress.org/plugin/wordpress-seo.zip",
+		"https://downloads.wordpress.org/plugin/polylang.zip"
 	],
 	"port": 8888,
 	"testsEnvironment": false,

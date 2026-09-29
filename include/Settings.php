@@ -14,19 +14,14 @@ use NextJsRevalidate\Interfaces\Hookable;
  *
  * @property string $domain                  The scheme, host and port of the front-end.
  * @property string $endpoint_path           The revalidate route, or '' for the default.
- * @property string $fse_endpoint_path       The FSE revalidate route, or '' for the default.
  * @property string $secret                  The shared secret every request carries, read trimmed.
  * @property array  $allow_revalidate_all    Post types offering "revalidate all", keyed by name.
- * @property array  $revalidate_on_menu_save Post types revalidated on a menu update, keyed by name.
- * @property string $revalidate_on_fse_save  Whether an FSE change invalidates the snapshot — 'on' or '' (a row saved before 1.7.0 may hold 'off').
  * @property array  $debug                   Debug switches, keyed by name.
  *
  * The plugin's own objects are reached through the same `__get()`, off the
  * base class rather than off the table below.
  *
- * @property RevalidateQueue $queue      The queue, read for the pending count this page shows, and
- *                                      asked to migrate its own table alongside the options.
- * @property Revalidate      $revalidate The gate, asked which post types this page offers switches for.
+ * @property Revalidate $revalidate The gate, asked which post types this page offers switches for.
  */
 class Settings extends Base implements Hookable {
 
@@ -36,12 +31,46 @@ class Settings extends Base implements Hookable {
 
 	const SETTINGS_DOMAIN_NAME = 'nextjs_revalidate-domain';
 	const SETTINGS_ENDPOINT_PATH_NAME = 'nextjs_revalidate-endpoint_path';
-	const SETTINGS_FSE_ENDPOINT_PATH_NAME = 'nextjs_revalidate-fse_endpoint_path';
 	const SETTINGS_SECRET_NAME = 'nextjs_revalidate-secret';
 	const SETTINGS_ALLOW_REVALIDATE_ALL_NAME = 'nextjs_revalidate-allow_revalidate_all';
-	const SETTINGS_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
-	const SETTINGS_REVALIDATE_ON_FSE_SAVE = 'nextjs_revalidate-revalidate-on-fse-save';
 	const SETTINGS_DEBUG = 'nextjs_revalidate-debug';
+
+	/**
+	 * The two settings v2 removed with the FSE snapshot's own endpoint (ADR 0034):
+	 * its endpoint path, and the switch that gated it. No longer in the table
+	 * below, so nothing reads, registers or seeds them; named only so that an
+	 * uninstall takes a row a site still holds, and so the upgrade can delete it.
+	 */
+	const LEGACY_FSE_ENDPOINT_PATH_NAME = 'nextjs_revalidate-fse_endpoint_path';
+	const LEGACY_REVALIDATE_ON_FSE_SAVE = 'nextjs_revalidate-revalidate-on-fse-save';
+
+	/**
+	 * The per-post-type "revalidate on menu save" switches, which v2 removed
+	 * when a menu save became one `menu` change (ADR 0033): they existed only to
+	 * bound the cost of a revalidate all per menu save. Named, like the two
+	 * above, only so that an uninstall takes the row and the upgrade can delete it.
+	 */
+	const LEGACY_REVALIDATE_ON_MENU_SAVE = 'nextjs_revalidate-revalidate-on-menu-save';
+
+	/**
+	 * The three settings above: what v2 removed, for the uninstall and the
+	 * upgrade to delete alike.
+	 */
+	const REMOVED_BY_V2 = [
+		self::LEGACY_FSE_ENDPOINT_PATH_NAME,
+		self::LEGACY_REVALIDATE_ON_FSE_SAVE,
+		self::LEGACY_REVALIDATE_ON_MENU_SAVE,
+	];
+
+	/**
+	 * What v1's revalidation queue kept on a site, which v2 removed with the
+	 * queue itself (ADR 0034): its table, after the site's prefix; the cron
+	 * hook that drained it; and the transient counting the drains running.
+	 * Named only so the upgrade can find and drop them.
+	 */
+	const LEGACY_QUEUE_TABLE_NAME = 'revalidate_queue';
+	const LEGACY_QUEUE_CRON_HOOK_NAME = 'nextjs_revalidate-queue';
+	const LEGACY_QUEUE_RUNNING_TRANSIENT_NAME = 'nextjs_revalidate-running_queue';
 
 	/**
 	 * The settings this plugin reads, declared once.
@@ -61,24 +90,20 @@ class Settings extends Base implements Hookable {
 	private const OPTIONS = [
 		'domain'                  => [ 'name' => self::SETTINGS_DOMAIN_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_domain'        ] ],
 		'endpoint_path'           => [ 'name' => self::SETTINGS_ENDPOINT_PATH_NAME,        'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
-		'fse_endpoint_path'       => [ 'name' => self::SETTINGS_FSE_ENDPOINT_PATH_NAME,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_path'          ] ],
 		'secret'                  => [ 'name' => self::SETTINGS_SECRET_NAME,               'empty' => '', 'sanitize' => [ self::class, 'sanitize_secret'        ], 'read' => [ self::class, 'sanitize_secret' ] ],
 		'allow_revalidate_all'    => [ 'name' => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME, 'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
-		'revalidate_on_menu_save' => [ 'name' => self::SETTINGS_REVALIDATE_ON_MENU_SAVE,   'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
-		'revalidate_on_fse_save'  => [ 'name' => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,    'empty' => '', 'sanitize' => [ self::class, 'sanitize_single_switch' ] ],
 		'debug'                   => [ 'name' => self::SETTINGS_DEBUG,                     'empty' => [], 'sanitize' => [ self::class, 'sanitize_switch_set'    ] ],
 	];
 
 	/**
-	 * The path each endpoint is reached at on a Next.js app that has not been
+	 * The path the endpoint is reached at on a Next.js app that has not been
 	 * told otherwise.
 	 *
 	 * A default rather than a seeded value: an empty path field means "whatever
 	 * this release ships", so an app that renames its route later is a one-field
-	 * edit, and a standard install never has to look at these at all.
+	 * edit, and a standard install never has to look at it at all.
 	 */
 	const DEFAULT_ENDPOINT_PATH = '/api/revalidate';
-	const DEFAULT_FSE_ENDPOINT_PATH = '/api/revalidate-fse';
 
 	/**
 	 * The single, fully-qualified revalidate URL this plugin stored until 1.7.0.
@@ -197,8 +222,8 @@ class Settings extends Base implements Hookable {
 	 */
 	public function add_page() {
 		add_options_page(
-			__( 'Next.js revalidate settings', 'nextjs-revalidate'),
-			__( 'Next.js revalidate', 'nextjs-revalidate' ),
+			__( 'Next.js Revalidate settings', 'nextjs-revalidate'),
+			__( 'Next.js Revalidate', 'nextjs-revalidate' ),
 			'manage_options',
 			self::PAGE_NAME,
 			[$this, 'render_page']
@@ -210,16 +235,10 @@ class Settings extends Base implements Hookable {
 	 */
 	public function render_page() {
 
-		$queue = $this->queue->get_queue();
-		$nb_in_queue = count($queue);
-
 		$sections = [
 			[ 'id' => 'api',            'title' => __('Next.js API', 'nextjs-revalidate')     ],
-			[ 'id' => 'allow_all_opts', 'title' => __('Allow purge all', 'nextjs-revalidate') ],
-			[ 'id' => 'on_menu_save',   'title' => __('On menu update', 'nextjs-revalidate')  ],
-			[ 'id' => 'on_fse_save',    'title' => __('On FSE update', 'nextjs-revalidate')   ],
+			[ 'id' => 'allow_all_opts', 'title' => __('Allow revalidate all', 'nextjs-revalidate') ],
 			[ 'id' => 'debug',          'title' => __('Debug', 'nextjs-revalidate')           ],
-			[ 'id' => 'queue',          'title' => __('Queue', 'nextjs-revalidate') . sprintf('<span class="badge">%s</span>', $nb_in_queue) ],
 			[ 'id' => 'probe',          'title' => __('Probe', 'nextjs-revalidate')          ],
 		];
 		?>
@@ -248,32 +267,9 @@ class Settings extends Base implements Hookable {
 					settings_fields( self::SETTINGS_GROUP );
 					// Prints all registered section for this page
 					do_settings_sections( self::PAGE_NAME );
-					?>
-					<section id="tab-panel--queue" role="tabpanel" tabindex="-1" aria-labelledby="tab-queue" aria-hidden="true">
-						<h2><?php _e('Purge queue', 'nextjs-revalidate'); ?></h2>
-						<p>
-							<strong><?php printf( _n( '%d URL waiting to be purged', '%d URLs waiting to be purged', $nb_in_queue, 'nextjs-revalidate'), $nb_in_queue ); ?></strong>
-							<?php if ( $nb_in_queue > 0 ) submit_button( "Reset queue (stop purging URLs in the queue)", 'secondary', 'revalidate_reset_queue', false ); ?>
-						</p>
-						<table>
-							<thead>
-								<th><?php _e('Id', 'nextjs-revalidate'); ?></th>
-								<th><?php _e('Priority', 'nextjs-revalidate'); ?></th>
-								<th><?php _e('URL', 'nextjs-revalidate'); ?></th>
-							</thead>
-							<tbody>
-								<?php foreach ($queue as $item): ?>
-								<tr>
-									<td><?php echo $item->id; ?></td>
-									<td><?php echo $item->priority; ?></td>
-									<td><?php echo $item->permalink; ?></td>
-								</tr>
-								<?php endforeach; ?>
-							</tbody>
-						</table>
-					</section>
 
-					<?php submit_button(); ?>
+					submit_button();
+				?>
 			</form>
 			<?php
 				// Its own form, beside the settings one rather than inside it:
@@ -321,42 +317,18 @@ class Settings extends Base implements Hookable {
 			'nextjs-revalidate-section'
 		);
 
-		// The paths are optional, and the placeholder is how an operator knows
+		// The path is optional, and the placeholder is how an operator knows
 		// it: a field left empty is the default shown in it, not a blank.
-		$path_field = function ( $option_name, $value, $default, $help ) {
-			printf(
-				'<input type="text" id="%1$s" name="%1$s" value="%2$s" placeholder="%3$s" class="regular-text code" /><p class="description">%4$s</p>',
-				$option_name,
-				esc_attr( $value ),
-				esc_attr( $default ),
-				esc_html( $help )
-			);
-		};
-
 		add_settings_field(
 			'nextjs_path',
 			__('Revalidate path', 'nextjs-revalidate'),
-			function ($args) use ( $path_field ) {
-				$path_field(
+			function ($args) {
+				printf(
+					'<input type="text" id="%1$s" name="%1$s" value="%2$s" placeholder="%3$s" class="regular-text code" /><p class="description">%4$s</p>',
 					self::SETTINGS_ENDPOINT_PATH_NAME,
-					$this->endpoint_path,
-					self::DEFAULT_ENDPOINT_PATH,
-					__('Optional. The route that revalidates a single path on the front-end. Leave empty for the default.', 'nextjs-revalidate')
-				);
-			},
-			self::PAGE_NAME,
-			'nextjs-revalidate-section'
-		);
-
-		add_settings_field(
-			'nextjs_fse_path',
-			__('FSE revalidate path', 'nextjs-revalidate'),
-			function ($args) use ( $path_field ) {
-				$path_field(
-					self::SETTINGS_FSE_ENDPOINT_PATH_NAME,
-					$this->fse_endpoint_path,
-					self::DEFAULT_FSE_ENDPOINT_PATH,
-					__('Optional. The route that invalidates the front-end’s FSE template snapshot. Leave empty for the default.', 'nextjs-revalidate')
+					esc_attr( $this->endpoint_path ),
+					esc_attr( self::DEFAULT_ENDPOINT_PATH ),
+					esc_html__('Optional. The route every revalidation is sent to on the front-end. Leave empty for the default.', 'nextjs-revalidate')
 				);
 			},
 			self::PAGE_NAME,
@@ -381,9 +353,9 @@ class Settings extends Base implements Hookable {
 		// Revalidate All section settings
 		add_settings_section(
 			'nextjs-revalidate-section-allow_revalidate_all',
-			__('Allow purge all options', 'nextjs-revalidate'),
+			__('Allow revalidate all options', 'nextjs-revalidate'),
 			function() {
-				printf( '<p>%s</p>', __('Define which post type has the option to have all posts purged in the admin bar.', 'nextjs-revalidate') );
+				printf( '<p>%s</p>', __('Define which post types offer a revalidate all in the admin bar.', 'nextjs-revalidate') );
 			},
 			self::PAGE_NAME,
 			[
@@ -429,92 +401,6 @@ class Settings extends Base implements Hookable {
 				'id'        => $id,
 				'name'      => self::SETTINGS_ALLOW_REVALIDATE_ALL_NAME.'[all]',
 				'checked'   => $this->allow_revalidate_all['all'] ?? false,
-				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
-			]
-		);
-
-
-		// On menu save section settings
-		add_settings_section(
-			'nextjs-revalidate-section-revalidate-on-menu-save',
-			__('On menu update options', 'nextjs-revalidate'),
-			function() {
-				printf( '<p>%s</p>', __('Define which post type will be revalidated when updating a menu.', 'nextjs-revalidate') );
-			},
-			self::PAGE_NAME,
-			[
-				'before_section' => '<section aria-hidden="true" id="tab-panel--on_menu_save" role="tabpanel" tabindex="-1" aria-labelledby="tab-on_menu_save">',
-				'after_section'  => '</section>',
-			]
-		);
-
-		foreach ($post_types as $post_type) {
-			$post_type_object = get_post_type_object( $post_type );
-			$id = "revalidate-on-menu-save-$post_type";
-			add_settings_field(
-				$id,
-				$post_type_object->labels->name,
-				'Kuuak\WordPressSettingFields\Fields::switch',
-				self::PAGE_NAME,
-				'nextjs-revalidate-section-revalidate-on-menu-save',
-				[
-					'label_for' => $id,
-					'id'        => $id,
-					'name'      => self::SETTINGS_REVALIDATE_ON_MENU_SAVE."[$post_type]",
-					'checked'   => $this->revalidate_on_menu_save[$post_type] ?? false,
-				]
-			);
-		}
-		$id = "revalidate-on-menu-save-all";
-		add_settings_field(
-			$id,
-			__('All post types', 'nextjs-revalidate'),
-			'Kuuak\WordPressSettingFields\Fields::switch',
-			self::PAGE_NAME,
-			'nextjs-revalidate-section-revalidate-on-menu-save',
-			[
-				'label_for' => $id,
-				'id'        => $id,
-				'name'      => self::SETTINGS_REVALIDATE_ON_MENU_SAVE.'[all]',
-				'checked'   => $this->revalidate_on_menu_save['all'] ?? false,
-				'help'      => __('Warning: according to the number of post types & posts for each post type this action can be very slow.', 'nextjs-revalidate'),
-			]
-		);
-
-
-		// On FSE save section settings
-		//
-		// One switch, and deliberately not the per-post-type shape of the
-		// section above: that shape exists because "revalidate all" has to
-		// enumerate post types in order to enqueue a URL for each. Here the
-		// front-end is told once that its snapshot is stale and rebuilds its
-		// pages itself, so a post type is not a choice anybody could make.
-		add_settings_section(
-			'nextjs-revalidate-section-revalidate-on-fse-save',
-			__('On FSE update options', 'nextjs-revalidate'),
-			function() {
-				printf( '<p>%s</p>', __('Editing a template or a template part in the site editor changes every page at once. The front-end is told, in one request, that its template snapshot is stale.', 'nextjs-revalidate') );
-			},
-			self::PAGE_NAME,
-			[
-				'before_section' => '<section aria-hidden="true" id="tab-panel--on_fse_save" role="tabpanel" tabindex="-1" aria-labelledby="tab-on_fse_save">',
-				'after_section'  => '</section>',
-			]
-		);
-
-		$id = "revalidate-on-fse-save";
-		add_settings_field(
-			$id,
-			__('Revalidate on FSE update', 'nextjs-revalidate'),
-			'Kuuak\WordPressSettingFields\Fields::switch',
-			self::PAGE_NAME,
-			'nextjs-revalidate-section-revalidate-on-fse-save',
-			[
-				'label_for' => $id,
-				'id'        => $id,
-				'name'      => self::SETTINGS_REVALIDATE_ON_FSE_SAVE,
-				'checked'   => $this->revalidates_on_fse_save(),
-				'help'      => __('On for a new install, off for a site upgraded from an earlier release. Leave it off until the front-end serves the FSE revalidate endpoint — otherwise every template save asks it for a route it does not have.', 'nextjs-revalidate'),
 			]
 		);
 
@@ -683,31 +569,6 @@ class Settings extends Base implements Hookable {
 	}
 
 	/**
-	 * A single switch, as it is stored: `'on'`, or the empty value.
-	 *
-	 * On exactly when `revalidates_on_fse_save()` would read the value as on.
-	 *
-	 * @param mixed $value What was submitted.
-	 * @return string What is stored.
-	 */
-	public static function sanitize_single_switch( $value ) {
-		return self::reads_as_on( $value ) ? 'on' : '';
-	}
-
-	/**
-	 * Whether a switch's value says on: `on`, `1`, `yes` or `true`, in any case
-	 * and with any whitespace around it.
-	 *
-	 * @param mixed $value
-	 * @return bool
-	 */
-	private static function reads_as_on( $value ) {
-		if ( ! is_scalar($value) ) return false;
-
-		return filter_var( trim( (string) $value ), FILTER_VALIDATE_BOOLEAN );
-	}
-
-	/**
 	 * A scalar value cut at its first `?` or `#`, then trimmed.
 	 *
 	 * A rule rather than ADR 0017's construction on purpose: a typed value has
@@ -734,6 +595,10 @@ class Settings extends Base implements Hookable {
 			delete_option( $setting['name'] );
 		}
 
+		// The settings v2 removed, on a site whose upgrade has not yet
+		// deleted them.
+		foreach ( self::REMOVED_BY_V2 as $option_name ) delete_option( $option_name );
+
 		// The URL the settings above were split out of, on a site upgraded
 		// before it was ever visited in the admin: the migration that consumes
 		// it may not have run, and it is this site's data either way.
@@ -753,113 +618,26 @@ class Settings extends Base implements Hookable {
 	 * Register every setting of the site currently being served,
 	 * holding its empty value until an operator supplies one.
 	 *
-	 * The FSE gate is the one exception, and the only setting this plugin
-	 * seeds with a value rather than an empty one: a **new** install starts
-	 * invalidating the snapshot, and an existing site does not. The difference
-	 * cannot be a migration gated on a version — every site predating the
-	 * ledger is backfilled to the release that introduces it, so a 1.7.0 gate
-	 * would never fire for anybody (see `backfill_db_version()`) — and it
-	 * cannot be a reading of the empty value either, because a site upgrading
-	 * into 1.7.0 and a site that has just switched the gate off store the same
-	 * empty row.
-	 *
-	 * So it is decided here, once, on evidence about the site: a site holding
-	 * none of this plugin's rows has never run it, and only that site is seeded
-	 * `on`. An existing site — reached by an upgrade, a reactivation, or a
-	 * network sweep — holds rows already and keeps its empty value, which reads
-	 * as off. Its operator switches the gate on when the front-end serves the
-	 * endpoint.
+	 * Until v2 the FSE gate was the one exception, seeded `on` for a new
+	 * install only. It went with the FSE snapshot's own endpoint (ADR 0034),
+	 * and every setting now starts empty.
 	 *
 	 * @return void
 	 */
 	public function define_settings() {
-
-		// Read before the loop below writes any of them.
-		$is_new_install = ! $this->holds_any_data();
-
 		foreach ( self::OPTIONS as $setting ) {
 			add_option( $setting['name'], $setting['empty'] );
 		}
-
-		// `update_option`, not `add_option`: the loop has just created the row.
-		if ( $is_new_install ) update_option( self::SETTINGS_REVALIDATE_ON_FSE_SAVE, 'on' );
 	}
 
 	/**
-	 * Whether this site holds any row this plugin has ever written.
+	 * The **endpoint URL**: the site's domain and its endpoint path, composed at
+	 * the moment a revalidation is sent. Every revalidation goes to it.
 	 *
-	 * Rows rather than values: `define_settings()` creates every setting at
-	 * setup holding its empty value, so a site that was set up and never
-	 * configured still answers true here — which is the point. What this
-	 * separates is "has this plugin ever run on this site", not "has anybody
-	 * configured it".
-	 *
-	 * The legacy URL and the ledger are in the list because a site old enough
-	 * to hold one of them is the very site this exists to recognise, and
-	 * uninstallation removes all three sets — so a reinstall is a new install,
-	 * which is what an operator who deleted the plugin's data would expect.
-	 *
-	 * @return bool
-	 */
-	private function holds_any_data() {
-
-		foreach ( self::OPTIONS as $setting ) {
-			if ( self::option_exists( $setting['name'] ) ) return true;
-		}
-
-		return self::option_exists( self::LEGACY_URL_OPTION_NAME )
-			|| self::option_exists( self::DB_VERSION_OPTION_NAME );
-	}
-
-	/**
-	 * The URL a revalidation is sent to.
-	 *
-	 * @return string Empty on a site holding no domain.
-	 */
-	public function revalidate_endpoint_url() {
-		return $this->endpoint_url( $this->endpoint_path, self::DEFAULT_ENDPOINT_PATH );
-	}
-
-	/**
-	 * The URL an FSE snapshot invalidation is sent to.
-	 *
-	 * @return string Empty on a site holding no domain.
-	 */
-	public function fse_endpoint_url() {
-		return $this->endpoint_url( $this->fse_endpoint_path, self::DEFAULT_FSE_ENDPOINT_PATH );
-	}
-
-	/**
-	 * Whether a template or template part change invalidates the FSE snapshot.
-	 *
-	 * The **empty value** means off, as it does for every other setting in the
-	 * table: only a row saying `on` in as many words invalidates. Which is what
-	 * makes this safe to ship to sites that already exist — their Next.js app
-	 * may not serve the FSE endpoint yet, and a site that has never had an
-	 * opinion about a setting must not start making requests it cannot answer.
-	 *
-	 * A *new* install is the one that starts on, and it says so in the row:
-	 * `define_settings()` seeds an explicit `on` for a site holding none of
-	 * this plugin's data. So "on by default" is a decision taken once, at
-	 * setup, on evidence about the site — not a reading of absence.
-	 *
-	 * @return bool
-	 */
-	public function revalidates_on_fse_save() {
-
-		// `on`, `1`, `yes` and `true` answer true; the empty value, `off` and
-		// anything no version of this plugin ever wrote answer false. An
-		// unchecked switch submits nothing at all, which WordPress stores as an
-		// empty row — so switching this off needs no hidden field to carry it.
-		return self::reads_as_on( $this->revalidate_on_fse_save );
-	}
-
-	/**
-	 * Compose one endpoint from the site's domain and a path.
-	 *
-	 * The two halves are stored separately because the front-end serves several
-	 * endpoints on one app, and deriving the second by string surgery on the
-	 * first breaks the moment a route is named anything but the default.
+	 * The two halves are stored separately so that a route named anything but
+	 * the default is one field to edit rather than something derived from the
+	 * domain by string surgery (ADR 0017). There is one path from v2; v1 kept
+	 * a second for the FSE snapshot.
 	 *
 	 * Exactly one slash joins them, whichever way the operator typed each half.
 	 * A path holding nothing but slashes is a field left empty rather than a
@@ -872,20 +650,17 @@ class Settings extends Base implements Hookable {
 	 *
 	 * Both halves are trimmed first. Both are trimmed on save as well, but a row
 	 * stored before that was not, and a domain pasted in with a trailing space
-	 * composes a URL `wp_remote_get()` rejects — a revalidation that fails for a
+	 * composes a URL the transport rejects — a revalidation that fails for a
 	 * reason nothing on screen names. Trimming here covers those rows.
 	 *
-	 * @param string $path    The path the operator supplied, possibly empty.
-	 * @param string $default The path to use when they supplied none.
-	 *
-	 * @return string
+	 * @return string Empty on a site holding no domain.
 	 */
-	private function endpoint_url( $path, $default ) {
+	public function endpoint_url() {
 		$domain = untrailingslashit( trim( (string) $this->domain ) );
 		if ( empty($domain) ) return '';
 
-		$path = untrailingslashit( trim( (string) $path ) );
-		if ( empty($path) ) $path = $default;
+		$path = untrailingslashit( trim( (string) $this->endpoint_path ) );
+		if ( empty($path) ) $path = self::DEFAULT_ENDPOINT_PATH;
 
 		return $domain . '/' . ltrim( $path, '/' );
 	}
@@ -894,7 +669,7 @@ class Settings extends Base implements Hookable {
 	 * The settings a revalidation cannot be delivered without,
 	 * which the site has no value for.
 	 *
-	 * The paths are deliberately not among them: each falls back to a default,
+	 * The path is deliberately not among them: it falls back to a default,
 	 * so a standard install configures a domain and a secret and nothing else.
 	 *
 	 * A field holding nothing but whitespace is a field nobody filled in. It has
@@ -929,19 +704,19 @@ class Settings extends Base implements Hookable {
 	/**
 	 * The refusal an unconfigured site answers every revalidation with.
 	 *
-	 * Declared once because it is raised from two places — `add_item()` refuses
-	 * at enqueue time, `purge()` guards the delivery it is unreachable from —
-	 * and a refusal that reads differently depending on which guard caught it
-	 * is a refusal an operator has to learn twice. The code is the contract:
-	 * `RestApi::process_items` reports it per item, and the drain branches on it
-	 * to write ⛔ rather than ❌.
+	 * Declared once because it is raised from more than one place — the pending
+	 * changes refuse a change when it is reported, and again at delivery for a
+	 * site whose settings were cleared in between — and a refusal that reads
+	 * differently depending on which guard caught it is a refusal an operator
+	 * has to learn twice. The code is the contract: `RestApi::process_items`
+	 * reports it per item, and a probe branches on it.
 	 *
 	 * @return \WP_Error Always `not_configured`.
 	 */
 	public function not_configured_error() {
 		return new \WP_Error(
 			'not_configured',
-			__( 'Next.js revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
+			__( 'Next.js Revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated.', 'nextjs-revalidate' )
 		);
 	}
 
@@ -993,7 +768,7 @@ class Settings extends Base implements Hookable {
 		$message = esc_html(
 			sprintf(
 				/* translators: %s: which of the two required settings are missing. */
-				__( 'Next.js revalidate is not configured for this site — %s. Content is still saved, but every revalidation is refused: the front-end is never asked to rebuild its pages.', 'nextjs-revalidate' ),
+				__( 'Next.js Revalidate is not configured for this site — %s. Content is still saved, but every revalidation is refused: the front-end is never asked to rebuild its pages.', 'nextjs-revalidate' ),
 				$what
 			)
 		);
@@ -1004,7 +779,7 @@ class Settings extends Base implements Hookable {
 			$message .= sprintf(
 				' <a href="%s">%s</a>',
 				esc_url( admin_url( 'options-general.php?page=' . self::PAGE_NAME ) ),
-				esc_html__( 'Configure Next.js revalidate', 'nextjs-revalidate' )
+				esc_html__( 'Configure Next.js Revalidate', 'nextjs-revalidate' )
 			);
 		}
 		else if ( !$can_configure ) {
@@ -1050,7 +825,7 @@ class Settings extends Base implements Hookable {
 			esc_html(
 				sprintf(
 					/* translators: %s: number of sites on the network. */
-					__( 'Next.js revalidate cannot migrate the %s sites of this network in a single request, and it does not migrate some of them and leave the rest running new code over old data. Open the admin of each site once instead — a site migrates itself the first time somebody does.', 'nextjs-revalidate' ),
+					__( 'Next.js Revalidate cannot migrate the %s sites of this network in a single request, and it does not migrate some of them and leave the rest running new code over old data. Open the admin of each site once instead — a site migrates itself the first time somebody does.', 'nextjs-revalidate' ),
 					number_format_i18n( get_blog_count() )
 				)
 			)
@@ -1059,8 +834,8 @@ class Settings extends Base implements Hookable {
 
 	/**
 	 * Migrate this site's data to the shape the running code expects — its
-	 * options, and everything else this plugin keeps per site: the log file's
-	 * location, and the queue table's own columns and keys.
+	 * options, and everything else this plugin keeps or once kept per site: the
+	 * log file's location, and the revalidation queue's table.
 	 *
 	 * Each migration is gated on the site's DB version — read from the
 	 * migration ledger, never from the plugin version, which is always the
@@ -1108,14 +883,15 @@ class Settings extends Base implements Hookable {
 		// name (ADR-0024). Guarded on the data for the same reason as above.
 		Logger::migrate_legacy_log();
 
-		// The queue's unique key moved off the `permalink` TEXT column and onto
-		// a hash of it (ADR-0029), so the dedup the queue depends on exists on
-		// standard MySQL and not only on MariaDB. Guarded on the data for the
-		// same reason as the two above, and it is also where a site whose
-		// `CREATE TABLE` MySQL refused gets a queue table at all — unless an
-		// enqueue got there first, which runs the same migration when its write
-		// fails on a table not yet in this shape.
-		$this->queue->migrate_table();
+		// 2.0.0 — the revalidation queue is gone (ADR 0034), and so are the
+		// three settings v2 removed. Guarded on the data for the same reason as
+		// the two above, and with the same force: a 1.6.9 site upgrading
+		// straight to 2.0 holds no ledger and no fingerprint, so it is
+		// backfilled to the running release, and a `< 2.0.0` gate would never
+		// fire for it. After the first run there is nothing left for either to
+		// find, and a re-run costs a table lookup and three option reads.
+		$this->drop_revalidation_queue();
+		$this->delete_removed_settings();
 
 		// Stamp the ledger, so none of the above is eligible to run again.
 		// A site whose data was migrated by newer code than is running now
@@ -1134,8 +910,9 @@ class Settings extends Base implements Hookable {
 	 * data, and `register_activation_hook` does not fire on an update at all,
 	 * so nothing else closes the gap. It is not dormant inertia either — cron
 	 * on a site is triggered by *front-end* traffic, so a subsite with visitors
-	 * and no admin visitors drains its queue and reads its revalidate domain
-	 * and secret out of unmigrated options for as long as nobody logs in.
+	 * and no admin visitors reports its scheduled purges with a revalidate
+	 * domain and secret read out of unmigrated options for as long as nobody
+	 * logs in.
 	 *
 	 * The trigger is a version *comparison* and not an update *event*, on
 	 * purpose: Composer, git and manual zip deploys all replace the plugin's
@@ -1192,11 +969,9 @@ class Settings extends Base implements Hookable {
 		// happens to live on a network: each site reaches `migrate_db()` on its
 		// own `admin_init` exactly as a single install does, and sweeping from
 		// the one site that has it would write this plugin's rows into sites it
-		// has never run on. Those rows are not inert — `holds_any_data()` reads
-		// one as proof the plugin has run here, so a site later activated for
-		// the first time would be taken for an existing one and lose the
-		// settings `define_settings()` seeds only a new install. The same test
-		// guards `setup_new_site()`, for the same reason.
+		// has never run on — a migration ledger among them, stamped for data the
+		// site does not hold. The same test guards `setup_new_site()`, for the
+		// same reason.
 		if ( !NextJsRevalidate::is_network_active() ) return false;
 
 		$swept = get_site_option( self::SWEPT_VERSION_OPTION_NAME );
@@ -1275,6 +1050,65 @@ class Settings extends Base implements Hookable {
 		if ( $path !== '' ) update_option( self::SETTINGS_ENDPOINT_PATH_NAME, $path );
 
 		delete_option( self::LEGACY_URL_OPTION_NAME );
+	}
+
+	/**
+	 * Drop the revalidation queue v1 kept: its table, the rows still waiting in
+	 * it, its drain cron and the drain's running count.
+	 *
+	 * The rows are dropped rather than converted, and counted in the log so an
+	 * operator can see what went. v2 ships in lockstep with a front-end deploy,
+	 * and no Next.js cache survives a deploy — the build ID is part of every
+	 * key — so every path still queued is already fresh on the new front-end.
+	 * Converting them would send changes to a front-end that has just been
+	 * rebuilt, thousands of them if a revalidate all was mid-flight (ADR 0034).
+	 *
+	 * Guarded on the table itself, so it runs once per site whatever the
+	 * ledger says, and finds nothing to do afterwards. The cron is looked for
+	 * on its own rather than only beside a table: a 1.7 site whose
+	 * `CREATE TABLE` standard MySQL refused (#121) had no table and could
+	 * still hold a scheduled drain.
+	 *
+	 * @return void
+	 */
+	private function drop_revalidation_queue() {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::LEGACY_QUEUE_TABLE_NAME;
+
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) === $table ) {
+			$pending = (int) $wpdb->get_var( "SELECT COUNT(*) FROM `$table`" );
+
+			$wpdb->query( "DROP TABLE IF EXISTS `$table`" );
+
+			Logger::log(
+				sprintf( '🗑️ Upgraded to 2.0: dropped the revalidation queue, and the %d path(s) still waiting in it', $pending ),
+				__FILE__
+			);
+
+			delete_transient( self::LEGACY_QUEUE_RUNNING_TRANSIENT_NAME );
+		}
+
+		if ( false !== wp_next_scheduled( self::LEGACY_QUEUE_CRON_HOOK_NAME ) ) wp_unschedule_hook( self::LEGACY_QUEUE_CRON_HOOK_NAME );
+	}
+
+	/**
+	 * Delete the rows of the three settings v2 removed, where a site still
+	 * holds them: the FSE snapshot's endpoint path and its on/off switch, which
+	 * went with the separate endpoint (ADR 0034), and the per-post-type
+	 * "revalidate on menu save" switches, which went when a menu save became
+	 * one `menu` change (ADR 0033).
+	 *
+	 * Nothing reads them any more, so this is tidiness with a reason: a row
+	 * left behind is a setting an operator can no longer see or change, and
+	 * would come back to life if a later release ever reused the name.
+	 *
+	 * @return void
+	 */
+	private function delete_removed_settings() {
+		foreach ( self::REMOVED_BY_V2 as $option_name ) {
+			if ( self::option_exists( $option_name ) ) delete_option( $option_name );
+		}
 	}
 
 	/**

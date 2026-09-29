@@ -7,12 +7,6 @@ parameters:
 			path: include/Assets.php
 
 		-
-			message: '#^Unreachable statement \- code above always terminates\.$#'
-			identifier: deadCode.unreachable
-			count: 1
-			path: include/RevalidateQueue.php
-
-		-
 			message: '#^Parameter \#3 \$callback of function add_settings_section expects callable\(\)\: mixed, null given\.$#'
 			identifier: argument.type
 			count: 1

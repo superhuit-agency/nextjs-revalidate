@@ -1,6 +1,6 @@
 <?php
 /**
- * Offered post type — Revalidate::offered_post_types(), and the three
+ * Offered post type — Revalidate::offered_post_types(), and the two
  * selections that ask it.
  *
  * The plugin has no test framework and no WordPress to boot, so this is a
@@ -35,12 +35,6 @@ $GLOBALS['njr_test_post_types'] = [];
  * @var array
  */
 $GLOBALS['njr_test_filters'] = [];
-
-/**
- * The post types `get_posts()` has been asked for, in order.
- * @var string[]
- */
-$GLOBALS['njr_test_queried_post_types'] = [];
 
 // WordPress stubs
 // ====
@@ -127,34 +121,18 @@ function is_post_type_viewable( $post_type ) {
 	return $post_type->publicly_queryable || ( $post_type->_builtin && $post_type->public );
 }
 
-function get_posts( $args = [] ) {
-	$GLOBALS['njr_test_queried_post_types'][] = $args['post_type'];
-
-	return [];
-}
-
-function get_taxonomies( $args = [], $output = 'names' ) {
-	return [];
-}
-
-// The plugin, reduced to the collaborators these three selections ask it for.
+// The plugin, reduced to the collaborators these selections ask it for.
 // ====
 
 class NextJsRevalidate_Test_Settings {
 	public $allow_revalidate_all = [];
-	public $revalidate_on_menu_save = [];
 
 	public function is_configured() { return true; }
-}
-
-class NextJsRevalidate_Test_Queue {
-	public function add_item( $permalink, $priority = 10 ) { return true; }
 }
 
 class NextJsRevalidate {
 	public $revalidate;
 	public $settings;
-	public $queue;
 
 	private static $instance;
 
@@ -235,7 +213,6 @@ $settings = new NextJsRevalidate_Test_Settings();
 
 NextJsRevalidate::init()->revalidate = $revalidate;
 NextJsRevalidate::init()->settings   = $settings;
-NextJsRevalidate::init()->queue      = new NextJsRevalidate_Test_Queue();
 
 // What is offered
 // ====
@@ -270,27 +247,6 @@ njr_test_expect(
 	$bulk_action_screens
 );
 
-// Revalidate all
-// ====
-
-$GLOBALS['njr_test_queried_post_types'] = [];
-$revalidate_all->revalidate_all();
-
-njr_test_expect(
-	'revalidate all walks the offered post types',
-	array_values( $offered ),
-	$GLOBALS['njr_test_queried_post_types']
-);
-
-$GLOBALS['njr_test_queried_post_types'] = [];
-$revalidate_all->revalidate_all( 'editor_note' );
-
-njr_test_expect(
-	'a named post type is walked whatever this plugin would have offered',
-	[ 'editor_note' ],
-	$GLOBALS['njr_test_queried_post_types']
-);
-
 // The admin bar entries, and the toggles behind them
 // ====
 
@@ -313,27 +269,6 @@ njr_test_expect(
 	'a revalidate all entry is offered for every ticked post type this plugin offers',
 	[ 'nextjs-revalidate', 'nextjs-revalidate-all-post', 'nextjs-revalidate-all-all' ],
 	array_keys( $admin_bar->nodes )
-);
-
-// The menu update switches
-// ====
-
-$settings->revalidate_on_menu_save = [
-	'post'          => 'on',
-	'page'          => 'off',
-	'headless_doc'  => 'on',
-	// Ticked while the settings page still offered it: not shown, so not acted on.
-	'editor_note'   => 'on',
-	'gone_for_good' => 'on',
-];
-
-$GLOBALS['njr_test_queried_post_types'] = [];
-$revalidate_all->revalidate_all_after_menu_update( 1 );
-
-njr_test_expect(
-	'a menu update walks only the ticked post types this plugin offers',
-	[ 'post', 'headless_doc' ],
-	$GLOBALS['njr_test_queried_post_types']
 );
 
 printf( "\n%d failure(s)\n", $failures );

@@ -27,11 +27,12 @@ trait SendbackUrl {
 				'untrashed',
 				'deleted',
 				'ids',
-				'nextjs-revalidate-purged',
-				'nextjs-revalidate-bulk-purged',
+				'nextjs-revalidate-revalidated',
+				'nextjs-revalidate-bulk-revalidated',
 				'nextjs-revalidate-type',
 				'nextjs-revalidate-revalidate-all',
-				'nextjs-revalidate-queue-resetted',
+				'nextjs-revalidate-revalidate-all-refused',
+				'nextjs-revalidate-revalidate-all-dropped',
 			],
 			$sendback
 		);

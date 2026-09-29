@@ -120,3 +120,27 @@ nothing reasons from this.
 **The outcome is an admin notice**, rather than something rendered inside the
 probe panel. It is what every other outcome in this plugin is rendered as, and
 it is legible whichever tab the settings screen happens to open on.
+
+## Amended for v2: a path change, in the v2 request
+
+Built in #158, under ADR 0033 and ADR 0034. A probe now reports a **path**
+change — `{ "subject": "path", "uri": … }`, the `uri` read from
+`home_url( $path )` — through `PendingChanges::deliver_probe()`, which sends it
+in the same v2 `POST` every change travels in, to the same endpoint, through the
+same `nextjs_revalidate_change` filter and within the same five-second timeout.
+That is this record's "maximally faithful" rule carried over: the probe still
+builds no request of its own. What differs from an ordinary delivery is exactly
+what this record decided — it is sent there and then, on its own, rather than
+joining the request's pending changes, and its outcome is handed back to be
+shown and never passed to `FailureWindow::record()`.
+
+**The sixty seconds, and the ninety, are gone.** A probe waited as long as the
+queue's drain did because it was the drain's request; it is now the pending
+changes' request, which waits five. So `Probe::TIME_LIMIT` and its best-effort
+`set_time_limit()` went with the timeout they made room for, and the cost this
+record named — a probe that fatals rather than answers inside a 30-second
+`max_execution_time` — went with them.
+
+A change the site's own filter drops sends nothing, and the operator is told so
+by name: a probe that silently answered nothing would be the "I don't know"
+this surface exists to replace.

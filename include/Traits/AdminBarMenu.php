@@ -9,9 +9,9 @@ trait AdminBarMenu {
 	/**
 	 * Add the plugin menu to the admin top bar, unless it is already there.
 	 *
-	 * The "Purge caches" menu holds both the purge all entries and the purge
-	 * of the post being edited. Either of them may be the only one displayed,
-	 * so both add the menu and the first one to run wins.
+	 * The "Revalidate" menu holds both the revalidate all entries and the
+	 * revalidation of the post being edited. Either of them may be the only
+	 * one displayed, so both add the menu and the first one to run wins.
 	 *
 	 * @param WP_Admin_Bar $admin_bar
 	 * @return void
@@ -21,7 +21,7 @@ trait AdminBarMenu {
 
 		$admin_bar->add_menu( [
 			'id'     => 'nextjs-revalidate',
-			'title'  => _x( 'Purge caches', 'Admin top bar menu', 'nextjs-revalidate'),
+			'title'  => _x( 'Revalidate', 'Admin top bar menu', 'nextjs-revalidate'),
 			'meta'   => [
 				'class' => "nextjs-revalidate",
 			]

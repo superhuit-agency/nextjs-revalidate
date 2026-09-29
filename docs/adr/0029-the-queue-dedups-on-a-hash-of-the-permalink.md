@@ -1,5 +1,12 @@
 # The queue dedups on a hash of the permalink, because a TEXT column cannot be keyed portably
 
+> **Status: superseded by [ADR 0034](0034-changes-are-delivered-when-the-request-ends.md).**
+> v2 removed the revalidation queue and its table (#160), so there is no
+> permalink left to key, portably or otherwise. The upgrade to 2.0 drops the
+> table from every site that still holds one, whichever key it was carrying.
+> `tests/queue-schema-portability-test.php` went with the schema it held. Kept as
+> the record of why the table had the shape a 1.7 site's upgrade finds.
+
 Decided while fixing #121.
 
 `RevalidateQueue::create_table()` declared the queue as:

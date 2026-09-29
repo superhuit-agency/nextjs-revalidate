@@ -5,7 +5,7 @@
  * anything this plugin has to say there has to be dispatched to `core/notices`
  * instead. Two things do:
  *
- *  - the purge sendback, which answers an action the reader has just taken,
+ *  - the revalidation sendback, which answers an action the reader has just taken,
  *    and drops its query arg so a reload does not repeat it;
  *  - degraded revalidation, which is a condition the reader has not been told
  *    about at all — no query arg to drop, and nothing to acknowledge, so it is
@@ -14,8 +14,8 @@
 
 export {};
 
-const PURGED_ARG = "nextjs-revalidate-purged";
-const PURGED_NOTICE_ID = "nextjs-revalidate-purged-notice";
+const REVALIDATED_ARG = "nextjs-revalidate-revalidated";
+const REVALIDATED_NOTICE_ID = "nextjs-revalidate-revalidated-notice";
 const DEGRADED_NOTICE_ID = "nextjs-revalidate-degraded-notice";
 
 type Notices = {
@@ -26,24 +26,24 @@ type Notices = {
 	) => void;
 };
 
-function dropPurgedArg() {
+function dropRevalidatedArg() {
 	const url = new URL(window.location.href);
-	if (!url.searchParams.has(PURGED_ARG)) return;
+	if (!url.searchParams.has(REVALIDATED_ARG)) return;
 
-	url.searchParams.delete(PURGED_ARG);
+	url.searchParams.delete(REVALIDATED_ARG);
 	window.history.replaceState({}, "", url.toString());
 }
 
-function showPurgedNotice(notices: Notices) {
+function showRevalidatedNotice(notices: Notices) {
 	const notice = window.nextjs_revalidate_notice;
 	if (!notice?.message) return;
 
 	notices.createNotice(notice.status, notice.message, {
-		id: PURGED_NOTICE_ID,
+		id: REVALIDATED_NOTICE_ID,
 		isDismissible: true,
 	});
 
-	dropPurgedArg();
+	dropRevalidatedArg();
 }
 
 function showDegradedNotice(notices: Notices) {
@@ -61,7 +61,7 @@ function init() {
 	const notices = window.wp?.data?.dispatch("core/notices");
 	if (!notices) return;
 
-	showPurgedNotice(notices);
+	showRevalidatedNotice(notices);
 	showDegradedNotice(notices);
 }
 
