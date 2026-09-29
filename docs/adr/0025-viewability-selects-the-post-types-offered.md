@@ -116,3 +116,13 @@ of every list screen a configured site renders, whatever the post's type or
 status, and the gate answers when it is clicked. It is the same shape of
 inconsistency, over a post rather than over a post type, and #53 does not name
 it — it is left as it was rather than fixed in passing.
+
+---
+
+## Revisited for #180: "exposed in GraphQL" as the test
+
+#180 asked whether a headless site's test should be "exposed in GraphQL" rather
+than viewability, for revalidate all's taxonomies. Not adopted: the reasons above,
+and ADR 0022's, still hold, and `nextjs_revalidate_should_revalidate_taxonomy`
+and `is_post_type_viewable` remain the documented way for a headless site to say
+otherwise. The README now says so where a headless taxonomy goes missing.

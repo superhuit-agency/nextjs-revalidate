@@ -4,7 +4,9 @@
 		".",
 		"https://downloads.wordpress.org/plugin/redirection.zip",
 		"https://downloads.wordpress.org/plugin/wordpress-seo.zip",
-		"https://downloads.wordpress.org/plugin/polylang.zip"
+		"https://downloads.wordpress.org/plugin/polylang.zip",
+		"https://downloads.wordpress.org/plugin/wp-nested-pages.zip",
+		"https://downloads.wordpress.org/plugin/simple-custom-post-order.zip"
 	],
 	"port": 8888,
 	"testsEnvironment": false,

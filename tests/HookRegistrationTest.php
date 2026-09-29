@@ -175,6 +175,7 @@ $expected_per_class = [
 	],
 
 	Revalidate::class => [
+		[ 'pre_post_update',      'on_pre_post_update',              10, 2 ],
 		[ 'post_updated',         'on_post_updated',                  1, 1 ],
 		[ 'wp_after_insert_post', 'on_post_save',                    99, 4 ],
 		[ 'before_delete_post',   'on_post_delete',                  10, 1 ],
@@ -242,6 +243,8 @@ $expected_of_the_root = [
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Redirection::register_redirect_hooks', 10,  1 ],
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Yoast::register_yoast_hooks',          10,  1 ],
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Polylang::register_polylang_hooks',    10,  1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\NestedPages::register_nested_pages_hooks', 10, 1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\SimpleCustomPostOrder::register_simple_custom_post_order_hooks', 10, 1 ],
 	[ 'wp_initialize_site', 'NextJsRevalidate::setup_new_site',                                      100, 1 ],
 ];
 

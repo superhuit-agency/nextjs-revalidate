@@ -39,6 +39,12 @@ app.post('/revalidate', express.json(), (req, res) => {
 	}
 });
 
+// A front-end whose route moved, as a Next.js app with `trailingSlash: true`
+// answers the bare path: a 308 keeps the request and is followed, a 301 does
+// not and is a failure (ADR 0039). Both name a path, as Next.js does.
+app.post('/trailing-slash', (req, res) => res.redirect(308, '/revalidate/'));
+app.post('/moved-permanently', (req, res) => res.redirect(301, '/revalidate/'));
+
 app.listen(port, () => {
 	console.log(`Revalidate dev server is running on port ${port}`);
 });

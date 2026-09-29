@@ -176,8 +176,8 @@ and a site with no FSE templates is unaffected by every line of this.
 
 **Verifying it end to end needs the other half.** Nothing in this repository can
 prove that the front-end's snapshot actually refreshed — that is a Next.js app,
-on a staging host, and the acceptance criterion naming tipee.ch is a manual check
-against that stack. What this repo can prove stops at "exactly one request went
+on a staging host, and the acceptance criterion naming a client site is a manual
+check against that stack. What this repo can prove stops at "exactly one request went
 to the FSE endpoint, with the secret, when a template was saved".
 
 ## Amended for v2: a `templates` change, on the one endpoint

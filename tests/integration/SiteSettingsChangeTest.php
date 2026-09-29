@@ -83,8 +83,22 @@ class SiteSettingsChangeTest extends PendingChangesTestCase {
 			'gmt_offset'      => [ 'gmt_offset', 2 ],
 			'home'            => [ 'home', 'http://example.org/elsewhere' ],
 			'site_icon'       => [ 'site_icon', 42 ],
+			'site_logo'       => [ 'site_logo', 42 ],
 			'WPLANG'          => [ 'WPLANG', 'fr_FR' ],
 		];
+	}
+
+	/**
+	 * A classic theme's logo is its `custom_logo` mod, set from the
+	 * Customizer. The mod is not a site setting — it lives in the theme's mods
+	 * option, beside everything else the theme stores — but core copies it
+	 * into `site_logo` as it is set, and that is.
+	 */
+	public function test_setting_the_theme_s_custom_logo_reports_a_change() {
+		set_theme_mod( 'custom_logo', 42 );
+
+		$this->assertSame( 42, (int) get_option( 'site_logo' ), 'Core did not copy the mod into site_logo.' );
+		$this->assertPendingChanges( [ Change::settings() ] );
 	}
 
 	/**
@@ -149,6 +163,58 @@ class SiteSettingsChangeTest extends PendingChangesTestCase {
 		update_option( 'njr_footer_text', '© Somebody' );
 
 		$this->assertPendingChanges( [ Change::settings() ] );
+	}
+
+	/**
+	 * An option stored once per language — `landbot_config_url_fr`,
+	 * `landbot_config_url_de` — is named by the prefix they share, because the
+	 * languages cannot be listed ahead of time.
+	 */
+	public function test_a_site_can_add_every_option_sharing_a_prefix() {
+		add_filter( 'nextjs_revalidate_site_setting_options', function ( $options ) {
+			$options[] = 'landbot_config_url_*';
+			return $options;
+		} );
+
+		update_option( 'landbot_config_url_fr', 'https://landbot.test/fr' );
+
+		$this->assertPendingChanges( [ Change::settings() ] );
+	}
+
+	/**
+	 * @dataProvider options_a_prefix_does_not_name
+	 */
+	public function test_a_prefix_names_only_the_options_that_start_with_it( $option ) {
+		add_filter( 'nextjs_revalidate_site_setting_options', function ( $options ) {
+			$options[] = 'landbot_config_url_*';
+			return $options;
+		} );
+
+		update_option( $option, 'https://landbot.test/fr' );
+
+		$this->assertNoPendingChanges();
+	}
+
+	public function options_a_prefix_does_not_name() {
+		return [
+			'the prefix without its separator' => [ 'landbot_config_url' ],
+			'the prefix, not at the start'     => [ 'old_landbot_config_url_fr' ],
+		];
+	}
+
+	/**
+	 * A bare `*` would make every option on the site a site setting — the
+	 * cron array and every transient among them — and report a settings
+	 * change from nearly every request. It names no option instead.
+	 */
+	public function test_a_bare_asterisk_names_no_option() {
+		add_filter( 'nextjs_revalidate_site_setting_options', function ( $options ) {
+			return [ '*' ];
+		} );
+
+		update_option( 'njr_anything', 'at all' );
+
+		$this->assertNoPendingChanges();
 	}
 
 	public function test_a_site_can_remove_a_default_from_the_list() {
