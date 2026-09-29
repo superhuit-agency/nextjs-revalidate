@@ -140,8 +140,10 @@ parent's plus its own slug; a translation Polylang synchronises with direct SQL;
 a post a theme's `post_type_link` filter builds from another. Its URI, order and
 parent are read before the save and after it, and it is reported as a `post`
 change of its own when any of them differs — never when none does, so an edit of
-a parent page does not walk its tree. Descendants by default, when the save changes a hierarchical
-post's slug or parent; the site and an integration name the rest (ADR 0038).
+a parent page does not walk its tree. Descendants by default, when the save
+changes a hierarchical post's slug or parent; the site and an integration name
+the rest (ADR 0038). A translation Polylang synchronises is also reported where
+it stands on every save, since Polylang may have written any field of it.
 
 A post moved by a plugin's direct write, with no save at all — a Nested Pages
 drag and drop — is not a dependent post: nothing was saved for it to depend on.

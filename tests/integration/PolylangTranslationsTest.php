@@ -8,7 +8,9 @@
  * the translation's row with `$wpdb->update()`, on purpose, and never saves it,
  * so nothing but the French page's own save knows the German page moved (#180).
  * The translations are that save's dependent posts, and each one whose URI moved
- * is reported, with its descendants.
+ * is reported from the URI it had, with its descendants. With anything
+ * synchronised, every save reports the translations where they stand, since
+ * Polylang may have written any synchronised field of theirs.
  *
  * Driven through Polylang's own post handling and synchronisation, over its
  * model, as its admin screens drive them.
@@ -125,10 +127,30 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 	}
 
 	/**
-	 * An edit moves no translation, and none is reported.
+	 * An edit moves no translation, but Polylang may have copied any field
+	 * the site synchronises — a date, a custom field, a featured image — to
+	 * it: each translation is reported where it stands.
 	 */
-	public function test_editing_a_translated_page_reports_only_that_page() {
+	public function test_editing_a_translated_page_reports_its_translations_where_they_stand() {
+		list( $page_fr, $page_de ) = $this->translated_pages( 'page-fr', 'seite' );
+
+		$this->reset_pending_changes();
+
+		wp_update_post( [ 'ID' => $page_fr, 'post_content' => 'Modifié.' ] );
+
+		$this->assertPendingChanges( [
+			Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/' ),
+			Change::post( $page_de, 'page', '/seite/', '/seite/' ),
+		] );
+	}
+
+	/**
+	 * With nothing synchronised, Polylang writes no translation, and none is
+	 * reported.
+	 */
+	public function test_editing_a_translated_page_without_synchronisation_reports_only_that_page() {
 		list( $page_fr ) = $this->translated_pages( 'page-fr', 'seite' );
+		$this->polylang->options['sync'] = [];
 
 		$this->reset_pending_changes();
 

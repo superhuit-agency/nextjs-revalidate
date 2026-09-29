@@ -99,22 +99,22 @@ require_once __DIR__ . '/vendor/autoload.php';
  * `phpstan-baseline.neon` used to carry. Read, never written — the composition
  * root is the only thing that assigns them.
  *
- * @property-read Assets          $assets
- * @property-read Revalidate      $revalidate
- * @property-read Probe           $probe
- * @property-read Settings        $settings
- * @property-read FailureWindow   $failureWindow
- * @property-read PendingChanges  $pendingChanges
- * @property-read ScheduledPurges $cronScheduledPurges
- * @property-read RevalidateAll   $revalidateAll
- * @property-read FseSnapshot     $fseSnapshot
- * @property-read BlockMenus      $blockMenus
- * @property-read SiteSettings    $siteSettings
- * @property-read RestApi         $restApi
- * @property-read Redirection     $redirection
- * @property-read Yoast           $yoast
- * @property-read Polylang        $polylang
- * @property-read NestedPages     $nestedPages
+ * @property-read Assets                $assets
+ * @property-read Revalidate            $revalidate
+ * @property-read Probe                 $probe
+ * @property-read Settings              $settings
+ * @property-read FailureWindow         $failureWindow
+ * @property-read PendingChanges        $pendingChanges
+ * @property-read ScheduledPurges       $cronScheduledPurges
+ * @property-read RevalidateAll         $revalidateAll
+ * @property-read FseSnapshot           $fseSnapshot
+ * @property-read BlockMenus            $blockMenus
+ * @property-read SiteSettings          $siteSettings
+ * @property-read RestApi               $restApi
+ * @property-read Redirection           $redirection
+ * @property-read Yoast                 $yoast
+ * @property-read Polylang              $polylang
+ * @property-read NestedPages           $nestedPages
  * @property-read SimpleCustomPostOrder $simpleCustomPostOrder
  */
 class NextJsRevalidate {
@@ -188,13 +188,13 @@ class NextJsRevalidate {
 		// An integration registers its hooks explicitly, and only once it can
 		// see whether the plugin it integrates with is there — constructing it
 		// touches nothing. See docs/adr/0003-explicit-hook-registration.md.
-		$this->redirection         = new Redirection();
+		$this->redirection           = new Redirection();
 		$this->redirection->register_hooks();
-		$this->yoast               = new Yoast();
+		$this->yoast                 = new Yoast();
 		$this->yoast->register_hooks();
-		$this->polylang            = new Polylang();
+		$this->polylang              = new Polylang();
 		$this->polylang->register_hooks();
-		$this->nestedPages         = new NestedPages();
+		$this->nestedPages           = new NestedPages();
 		$this->nestedPages->register_hooks();
 		$this->simpleCustomPostOrder = new SimpleCustomPostOrder();
 		$this->simpleCustomPostOrder->register_hooks();

@@ -78,7 +78,7 @@ whole option would cost.
 
 ## Amended for #180: the logo, prefixes, and Polylang's strings
 
-Found porting tipee.ch's front-end to Cache Components. Three gaps, and none of
+Found porting a site's front-end to Cache Components. Three gaps, and none of
 them changes the decision above:
 
 - **`site_logo` is on the built-in list**, beside `site_icon`. The core Site Logo

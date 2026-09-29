@@ -5,6 +5,7 @@ namespace NextJsRevalidate\Integrations;
 use NextJsRevalidate\Abstracts\Base;
 use NextJsRevalidate\Change;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Traits\WhenPluginsLoaded;
 
 // Exit if accessed directly.
@@ -36,12 +37,16 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * registered with Polylang — is kept in its language term's meta rather than in
  * an option, and saving one reports a `settings` change from that meta's hooks.
  *
- * With synchronisation on, Polylang copies a post's parent, order and date to
- * its translations with `$wpdb->update()`, on purpose, and never saves them:
- * moving the French page moves the German page, and only the French page is
- * saved. So a post's translations are among its **dependent posts** — each one
- * whose URI, order or parent moved is reported with the French page's own save
- * — and when the save changes the parent, their descendants are too.
+ * With synchronisation on, Polylang copies what the site chose — the parent,
+ * the order, the date, custom fields, the featured image, terms and so on — to
+ * a post's translations with `$wpdb->update()` and the meta and term APIs, on
+ * purpose, and never saves them: editing the French page edits the German
+ * page, and only the French page is saved. So every save of a post reports its
+ * translations too, where each stands, whichever field the site synchronises
+ * and whether or not it changed: comparing them all is Polylang's business,
+ * and a site has a handful of languages. A post's translations are also among
+ * its **dependent posts**, so that one whose URI moved is reported from the
+ * URI it had — and when the save changes the parent, their descendants are.
  *
  * Supported, never required: when Polylang is not there, this registers no
  * hooks at all.
@@ -105,6 +110,11 @@ class Polylang extends Base implements Hookable {
 		add_action( 'deleted_term_meta', [$this, 'on_term_meta_change'], 10, 3 );
 
 		add_filter( 'nextjs_revalidate_dependent_posts', [$this, 'add_translations'], 10, 4 );
+
+		// After `Revalidate`'s own, at 99, which reports a translation whose URI
+		// moved from the URI it had: the pending changes keep the first
+		// `before`, so this report, where it stands, has to come second.
+		add_action( 'wp_after_insert_post', [$this, 'report_synchronised_translations'], 100 );
 	}
 
 	/**
@@ -171,9 +181,9 @@ class Polylang extends Base implements Hookable {
 		$translations = array_diff( $this->translations( (int) $post_id ), [ (int) $post_id ] );
 		if ( empty( $translations ) ) return $post_ids;
 
-		$moves_parent = is_array( $data ) && isset( $data['post_parent'] )
+		$moves_parent = is_array( $data )
 			&& $post_before instanceof \WP_Post
-			&& (int) $data['post_parent'] !== (int) $post_before->post_parent
+			&& Revalidate::update_changes( $post_before, $data, 'post_parent' )
 			&& is_post_type_hierarchical( $post_before->post_type );
 
 		foreach ( $translations as $translation_id ) {
@@ -185,6 +195,25 @@ class Polylang extends Base implements Hookable {
 		}
 
 		return $post_ids;
+	}
+
+	/**
+	 * A post was saved: report its translations where they stand, when the
+	 * site has Polylang synchronise anything — see the class docblock.
+	 *
+	 * @param int $post_id The post that was saved.
+	 * @return void
+	 */
+	public function report_synchronised_translations( $post_id ) {
+
+		if ( empty( $this->synchronised_fields() ) ) return;
+
+		// A revision or an autosave is synchronised to nothing.
+		if ( false !== wp_is_post_revision( $post_id ) || false !== wp_is_post_autosave( $post_id ) ) return;
+
+		foreach ( array_diff( $this->translations( (int) $post_id ), [ (int) $post_id ] ) as $translation_id ) {
+			$this->revalidate->report_post_from( $translation_id, null );
+		}
 	}
 
 	/**
@@ -201,6 +230,24 @@ class Polylang extends Base implements Hookable {
 		$translations = pll_get_post_translations( $post_id );
 
 		return is_array( $translations ) ? array_map( 'intval', array_values( $translations ) ) : [];
+	}
+
+	/**
+	 * The fields the site has Polylang synchronise between translations.
+	 *
+	 * Read off the running Polylang rather than the `polylang` option, which
+	 * Polylang 3.7 and later hold in memory — see the class docblock. Its
+	 * options are an array before 3.7, an `ArrayAccess` since.
+	 *
+	 * @return array The `sync` list, empty when there is none.
+	 */
+	private function synchronised_fields() {
+		$options = is_object( $GLOBALS['polylang'] ?? null ) ? ( $GLOBALS['polylang']->options ?? null ) : null;
+		if ( ! is_array( $options ) && ! $options instanceof \ArrayAccess ) return [];
+
+		$sync = $options['sync'] ?? null;
+
+		return is_array( $sync ) ? $sync : [];
 	}
 
 	/**

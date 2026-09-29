@@ -26,6 +26,14 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 		// The post types it sorts are the site's choice, and it sorts none
 		// until one is made.
 		update_option( 'scporder_options', [ 'objects' => [ 'post' ], 'tags' => [] ] );
+
+		$this->reset_log();
+	}
+
+	public function tear_down() {
+		$this->reset_log();
+
+		parent::tear_down();
 	}
 
 	/**
@@ -95,6 +103,49 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 		$this->assertNoPendingChanges();
 	}
 
+	/**
+	 * The plugin's action says a reorder happened, not which posts. Should
+	 * its request no longer be read the way it is sent, the posts are not
+	 * known: each type it orders is reported whole, and the log says why.
+	 */
+	public function test_a_reorder_whose_request_was_not_read_reports_every_ordered_type_whole() {
+		$this->enable_logs();
+		$this->published( 'post', 'first', 0, 1 );
+
+		$this->reset_pending_changes();
+
+		// A body sent under a name this integration does not read — which
+		// today's plugin refuses, and a future one might write from.
+		$this->ajax( 'update-menu-order', [
+			'nonce'    => wp_create_nonce( 'scporder_nonce_action' ),
+			'order_v2' => 'post[]=1',
+		] );
+		do_action( 'scp_update_menu_order' );
+
+		$this->assertSame( [ [ 'all', 'post' ] ], $this->subjects_and_types() );
+		$this->assertStringContainsString( 'Simple Custom Post Order reordered posts', $this->log() );
+	}
+
+	/**
+	 * A type the plugin starts ordering has every listing in another order,
+	 * and so has one it stops ordering — its "reset order" among them.
+	 */
+	public function test_a_type_added_to_or_taken_out_of_the_ordered_ones_is_reported_whole() {
+		$this->reset_pending_changes();
+
+		update_option( 'scporder_options', [ 'objects' => [ 'page' ], 'tags' => [] ] );
+
+		$this->assertEqualSets( [ [ 'all', 'post' ], [ 'all', 'page' ] ], $this->subjects_and_types() );
+	}
+
+	public function test_saving_the_settings_with_the_same_types_reports_nothing() {
+		$this->reset_pending_changes();
+
+		update_option( 'scporder_options', [ 'objects' => [ 'post' ], 'tags' => [ 'category' ] ] );
+
+		$this->assertNoPendingChanges();
+	}
+
 	// Fixtures
 	// ====
 
@@ -110,5 +161,16 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 		return implode( '&', array_map( function ( $post_id ) {
 			return "post[]=$post_id";
 		}, $post_ids ) );
+	}
+
+	/**
+	 * Each pending change's subject and type.
+	 *
+	 * @return array[]
+	 */
+	private function subjects_and_types() {
+		return array_map( function ( $change ) {
+			return [ $change['subject'], $change['type'] ?? null ];
+		}, $this->pending_changes()->pending() );
 	}
 }

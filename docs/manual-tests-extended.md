@@ -439,6 +439,9 @@ server console**.
 - [ ] **Posts → drag a published post above another one.** Expect one request
       carrying a `{"subject":"post",…}` change for each post whose place
       changed, both sides its URI.
+- [ ] **Settings → SCPOrder → untick Posts → Update.** Expect one request
+      carrying `{"subject":"all","type":"post",…}`.
+- [ ] **Tick Posts again → Update.** Expect the same request again.
 
 Then, for the last step: Polylang with English and French, Languages → Settings
 → Synchronization with "Page parent" ticked, and French translations of "About"
@@ -447,6 +450,9 @@ and "Team", "À propos" and "Équipe".
 - [ ] **Edit "Team" → Page Attributes → Parent: About → Update.** Expect one
       request carrying "Team"'s change **and** "Équipe"'s, from `/fr/equipe/` to
       `/fr/a-propos/equipe/` — Polylang moved the translation with direct SQL.
+- [ ] **Edit "Team"'s content → Update.** Expect one request carrying "Team"'s
+      change **and** "Équipe"'s, both sides `/fr/a-propos/equipe/` — anything
+      synchronised, and a save reports its translations where they stand.
 
 Teardown: delete both languages, then deactivate and delete both plugins:
 

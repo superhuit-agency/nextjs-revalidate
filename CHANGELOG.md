@@ -151,12 +151,14 @@ its single revalidate URL split into a domain and a path in the same request.
   had to the one it has; the new `nextjs_revalidate_dependent_posts` filter adds
   a post whose permalink a theme builds from another, and the new
   `nextjs_revalidate_post( $post_id, $before_url )` reports one whose permalink
-  a term moved. With Polylang's synchronisation on, the translations it moves
-  with direct SQL are reported with the saved post
+  a term moved. With Polylang's synchronisation on, every save reports the
+  post's translations too, since Polylang writes them with direct SQL
   ([ADR 0038](docs/adr/0038-a-save-reports-the-posts-it-moves.md)).
 - **Added:** Nested Pages and Simple Custom Post Order integrations. A drag and
   drop reports each post it reordered or, in Nested Pages, moved under another
   parent — both write with direct SQL, and saved nothing a save hook could see.
+  Ticking or unticking a type in Simple Custom Post Order's settings reports that
+  type whole.
 - **Added:** `site_logo` is a site setting, and so are Polylang's string
   translations — the translated site title and tagline among them. An entry of
   `nextjs_revalidate_site_setting_options` ending in `*` names every option

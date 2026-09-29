@@ -754,13 +754,16 @@ Nothing else in the `polylang` option reports a change. `hide_default`,
 all, which moves pages between paths rather than changing what every page
 renders; `version` and the rest are Polylang's bookkeeping.
 
-With **synchronisation** on, Polylang copies a post's parent, order and date to
-its translations with direct SQL, and saves none of them: moving the French page
-under another parent moves the German page too. A post's translations are its
-[dependent posts](#dependent-posts), so each one whose URI, order or parent moved
-is reported with the French page's own save — and when the save changes the
-parent, their descendants are too. A synchronised order moves no URI, and the
-translation is reported where it is, both sides its URI.
+With **synchronisation** on, Polylang copies what you chose — the parent, the
+order, the date, custom fields, the featured image, terms — to a post's
+translations with direct SQL and the meta and term APIs, and saves none of them:
+editing the French page edits the German page too. So with anything
+synchronised, every save of a post also reports its translations, each where it
+stands, whether Polylang changed anything of theirs or not. A translation is also
+one of the post's [dependent posts](#dependent-posts), so one whose URI moved is
+reported from the URI it had — and when the save changes the parent, their
+descendants are too. With nothing synchronised, a save reports its translations
+only when one moved.
 
 Per-language options — acf-options-for-polylang's, or a theme's own
 `my_setting_{lang}` — cannot be listed ahead of time: add them to
@@ -789,10 +792,22 @@ A post the drag and drop did not move is not reported. The posts are read from
 the plugin's own request, before it handles it; whether the request is allowed
 is still the plugin's question, and nothing is reported unless it goes on to
 write. Simple Custom Post Order's "move to position" in the order column reports
-the post it places, not the others it renumbers around it. With Nested Pages'
-"update post hook" setting on, the `wp_update_post()` it runs before its own
-write reports the page where it was, and the sort carries it to where it is: one
-change.
+the post it places, not the others it renumbers around it: the listings they are
+in are its type's, which its change covers. Nor is the renumbering Simple Custom
+Post Order does as its list screen renders: it keeps every post where it was.
+With Nested Pages' "update post hook" setting on, the `wp_update_post()` it runs
+before its own write reports the page where it was, and the sort carries it to
+where it is: one change.
+
+Ticking or unticking a post type in Settings → SCPOrder — "Reset order" among
+them, which unticks the types it resets — puts every listing of that type in
+another order, and reports it whole, as an `all` change of that type.
+
+The request body each plugin sends is read here, not declared by the plugin. If
+a plugin update changes it, what the plugin's own action still says is reported,
+and the plugin's log file says why, with **Enable logs** on under the **Debug**
+tab: Nested Pages' pages each where it stands, so a page it moved keeps its old
+URI cached; Simple Custom Post Order's types each whole.
 
 Both are supported, never required: with the plugin absent, nothing registers.
 

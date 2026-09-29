@@ -165,6 +165,30 @@ class DependentPostsTest extends PendingChangesTestCase {
 	 * A post whose permalink a theme builds from another post's — here, a
 	 * post under its linked page — is that page's to name.
 	 */
+	/**
+	 * An update that fails once its dependent posts are read never reaches
+	 * the end of its save. What it read is not the `before` of the next one:
+	 * the child moved in between.
+	 */
+	public function test_a_failed_update_leaves_nothing_behind_for_the_next_one() {
+		$parent = $this->page( 'parent' );
+		$child  = $this->page( 'child', $parent );
+
+		// As a save that fails once core has asked `pre_post_update` does.
+		do_action( 'pre_post_update', $parent, [ 'post_name' => 'never' ] );
+
+		wp_update_post( [ 'ID' => $child, 'post_name' => 'kid' ] );
+
+		$this->reset_pending_changes();
+
+		wp_update_post( [ 'ID' => $parent, 'post_name' => 'renamed' ] );
+
+		$this->assertPendingChanges( [
+			Change::post( $parent, 'page', '/parent/', '/renamed/' ),
+			Change::post( $child, 'page', '/parent/kid/', '/renamed/kid/' ),
+		] );
+	}
+
 	public function test_the_filter_adds_a_post_whose_permalink_is_built_from_the_saved_one() {
 		$page    = $this->page( 'features' );
 		$feature = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'a-feature' ] );
@@ -354,7 +378,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 	/**
 	 * Give a post with a `linked_page` the permalink of that page, followed by
-	 * its own slug — the shape tipee.ch gives its features.
+	 * its own slug — a shape a theme gives a post type.
 	 *
 	 * @return void
 	 */

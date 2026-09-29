@@ -116,6 +116,7 @@ $polylang_hooks = [
 	'updated_term_meta',
 	'deleted_term_meta',
 	'nextjs_revalidate_dependent_posts',
+	'wp_after_insert_post',
 ];
 
 // Constructing an integration is not registering it.

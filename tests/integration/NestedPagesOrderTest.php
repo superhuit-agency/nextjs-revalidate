@@ -30,6 +30,7 @@ class NestedPagesOrderTest extends ReorderedPostsTestCase {
 
 	public function tear_down() {
 		remove_all_filters( 'nestedpages_use_update_post' );
+		$this->reset_log();
 
 		parent::tear_down();
 	}
@@ -111,9 +112,11 @@ class NestedPagesOrderTest extends ReorderedPostsTestCase {
 	/**
 	 * A request whose list cannot be read — Nested Pages changed what it
 	 * sends — still reports each page the sort wrote, as it stands: a moved
-	 * page loses its old URI, and its listings are still told.
+	 * page loses its old URI, and its listings are still told. The log says
+	 * so.
 	 */
 	public function test_without_a_list_to_read_each_sorted_page_is_reported_as_it_stands() {
+		$this->enable_logs();
 		$first  = $this->published( 'page', 'first', 0, 0 );
 		$second = $this->published( 'page', 'second', 0, 1 );
 
@@ -129,6 +132,7 @@ class NestedPagesOrderTest extends ReorderedPostsTestCase {
 			],
 			$this->pending_changes()->pending()
 		);
+		$this->assertStringContainsString( "Post #$first was reordered or reparented", $this->log() );
 	}
 
 	public function test_an_unconfigured_site_refuses_a_sort() {

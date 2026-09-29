@@ -341,7 +341,7 @@ class Revalidate extends Base implements Hookable {
 			)
 			// A revision stands for its post, as the post is: nothing about the
 			// revision says what the post was before.
-			: $this->standing_post_change( $revision_of )
+			: $this->post_change_from( $revision_of, null )
 		);
 
 		// Bail for a post holding no front-end page on either side
@@ -369,13 +369,17 @@ class Revalidate extends Base implements Hookable {
 		$before = [];
 		foreach ( $this->dependent_posts( $post, is_array( $data ) ? $data : [] ) as $dependent_id ) {
 			$dependent = get_post( $dependent_id );
-			if ( $dependent instanceof WP_Post ) $before[ $dependent_id ] = self::position_of( $dependent, $this->front_end_uri( $dependent ) );
+			if ( $dependent instanceof WP_Post ) $before[ $dependent_id ] = $this->position_of( $dependent );
 		}
+
+		// A post updated again while its save is under way — a plugin writing
+		// it from its `save_post` — keeps the URIs read before the first write.
+		// Any other update starts afresh: what an earlier one left behind is
+		// from a save that failed before it reached its end.
+		if ( ! isset( $this->saving[ $post->ID ] ) ) unset( $this->dependents_before[ $post->ID ] );
 
 		if ( empty( $before ) ) return;
 
-		// A post updated twice in one request — its save, then a second write
-		// from a plugin reacting to it — keeps the URIs read before the first.
 		$this->dependents_before[ $post->ID ] = ( $this->dependents_before[ $post->ID ] ?? [] ) + $before;
 	}
 
@@ -395,8 +399,7 @@ class Revalidate extends Base implements Hookable {
 	 */
 	private function dependent_posts( WP_Post $post, array $data ) {
 
-		$moves = ( isset( $data['post_name'] ) && (string) $data['post_name'] !== $post->post_name )
-			|| ( isset( $data['post_parent'] ) && (int) $data['post_parent'] !== (int) $post->post_parent );
+		$moves = self::update_changes( $post, $data, 'post_name' ) || self::update_changes( $post, $data, 'post_parent' );
 
 		$post_ids = ( $moves && is_post_type_hierarchical( $post->post_type ) ) ? $this->descendants( $post->ID ) : [];
 
@@ -408,9 +411,9 @@ class Revalidate extends Base implements Hookable {
 		 * update changes its slug or its parent. Add a post whose permalink a
 		 * `post_type_link` filter builds from this one — each is reported,
 		 * after the update, when its URI, its order or its parent moved, and
-		 * left alone when none did. Asked on every update, so a callback that names posts only when
-		 * what their permalink is built from changes costs nothing on the
-		 * other saves.
+		 * left alone when none did. Asked on every update, so a callback that
+		 * names posts only when what their permalink is built from changes
+		 * costs nothing on the other saves.
 		 *
 		 * @param int[]   $post_ids    The dependent post IDs.
 		 * @param int     $post_id     The ID of the post about to be updated.
@@ -496,17 +499,10 @@ class Revalidate extends Base implements Hookable {
 			$dependent = get_post( $dependent_id );
 			if ( ! $dependent instanceof WP_Post ) continue;
 
-			$after = $this->front_end_uri( $dependent );
-
 			// Named, and not moved: this save changed nothing about its page.
-			if ( self::position_of( $dependent, $after ) === $before ) continue;
+			if ( $this->position_of( $dependent ) === $before ) continue;
 
-			if ( ! $this->should_revalidate( $dependent_id ) ) continue;
-
-			$change = $this->post_change( $dependent_id, $before['uri'], $after );
-			if ( is_null( $change ) ) continue;
-
-			$this->pendingChanges->report( $change );
+			$this->report_post_from( $dependent_id, $before['uri'] );
 		}
 	}
 
@@ -530,7 +526,7 @@ class Revalidate extends Base implements Hookable {
 			$post = get_post( $post_id );
 			if ( ! $post instanceof WP_Post ) continue;
 
-			$this->positions_before[ $post_id ] = self::position_of( $post, $this->front_end_uri( $post ) );
+			$this->positions_before[ $post_id ] = $this->position_of( $post );
 		}
 	}
 
@@ -558,7 +554,19 @@ class Revalidate extends Base implements Hookable {
 			$post = get_post( $post_id );
 			if ( ! $post instanceof WP_Post ) continue;
 
-			if ( ! is_null( $before ) && self::position_of( $post, $this->front_end_uri( $post ) ) === $before ) continue;
+			if ( ! is_null( $before ) && $this->position_of( $post ) === $before ) continue;
+
+			// The plugin's request was not read the way it is sent any more, and
+			// this is the plugin's own word that it wrote the post: reported
+			// where it stands, which tells its listings, where a URI it moved
+			// away from is not known.
+			if ( is_null( $before ) ) {
+				Logger::log(
+					sprintf( '⚠️ Post #%d was reordered or reparented, but where it stood before was not read — reported where it stands', $post_id ),
+					__FILE__,
+					Logger::ERROR
+				);
+			}
 
 			// A post that had no page before a reorder has none after it: its
 			// status is not what was written. It is not reported either way.
@@ -567,14 +575,26 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * Where a post stands, to tell whether a reorder moved it.
+	 * Where a post stands, to tell whether a reorder moved it: its URI, its
+	 * order and its parent.
 	 *
-	 * @param WP_Post     $post
-	 * @param string|null $uri  Its URI.
+	 * @param WP_Post $post
 	 * @return array{uri: string|null, menu_order: int, post_parent: int}
 	 */
-	private static function position_of( WP_Post $post, ?string $uri ) {
-		return [ 'uri' => $uri, 'menu_order' => (int) $post->menu_order, 'post_parent' => (int) $post->post_parent ];
+	private function position_of( WP_Post $post ) {
+		return [ 'uri' => $this->front_end_uri( $post ), 'menu_order' => (int) $post->menu_order, 'post_parent' => (int) $post->post_parent ];
+	}
+
+	/**
+	 * Whether an update writes a field of a post with another value.
+	 *
+	 * @param WP_Post $post  The post, as it is before the update.
+	 * @param array   $data  The post's fields as they are about to be written.
+	 * @param string  $field The field, `post_name` or `post_parent`.
+	 * @return bool
+	 */
+	public static function update_changes( WP_Post $post, array $data, string $field ) {
+		return isset( $data[ $field ] ) && (string) $data[ $field ] !== (string) $post->$field;
 	}
 
 	/**
@@ -646,16 +666,19 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * The post as it stands, on both sides: what a manual action reports, and
-	 * what a revision saved on its own stands for.
+	 * The post as it is now, from the URI it had before — or as it stands, on
+	 * both sides: what a manual action reports, and what a revision saved on
+	 * its own stands for.
 	 *
-	 * @param int $post_id The post ID.
+	 * @param int         $post_id    The post ID.
+	 * @param string|null $before_uri The URI the post had, or null for the one
+	 *                                it has now.
 	 * @return array|null The change, or null when the post has no page.
 	 */
-	private function standing_post_change( $post_id ) {
-		$uri = $this->front_end_uri( get_post( $post_id ) );
+	private function post_change_from( $post_id, ?string $before_uri ) {
+		$after = $this->front_end_uri( get_post( $post_id ) );
 
-		return $this->post_change( $post_id, $uri, $uri );
+		return $this->post_change( $post_id, $before_uri ?? $after, $after );
 	}
 
 	/**
@@ -797,9 +820,7 @@ class Revalidate extends Base implements Hookable {
 
 		if ( ! $this->should_revalidate( $post_id ) ) return false;
 
-		$after = $this->front_end_uri( get_post( $post_id ) );
-
-		$change = $this->post_change( $post_id, $before_uri ?? $after, $after );
+		$change = $this->post_change_from( $post_id, $before_uri );
 		if ( is_null($change) ) return false;
 
 		// No `is_configured()` guard here on purpose: the pending changes refuse

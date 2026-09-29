@@ -119,10 +119,12 @@ njr_test_registered( 'a site running Nested Pages reads its sort first, and list
 
 $GLOBALS['njr_test_hooks'] = [];
 ( new SimpleCustomPostOrder() )->register_hooks();
-njr_test_registered( 'a site running Simple Custom Post Order reads its two reorders first, and listens to their end', [
-	'wp_ajax_update-menu-order' => 1,
-	'wp_ajax_scpo_set_position' => 1,
-	'scp_update_menu_order'     => 10,
+njr_test_registered( 'a site running Simple Custom Post Order reads its two reorders first, listens to their end, and to its settings', [
+	'wp_ajax_update-menu-order'      => 1,
+	'wp_ajax_scpo_set_position'      => 1,
+	'scp_update_menu_order'          => 10,
+	'add_option_scporder_options'    => 10,
+	'update_option_scporder_options' => 10,
 ] );
 
 printf( "\n%d failure(s)\n", $failures );
