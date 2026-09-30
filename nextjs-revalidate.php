@@ -5,7 +5,7 @@
  * Description:       Tells a Next.js front-end which WordPress content changed — posts, menus, templates, redirects — so it can revalidate whatever it cached from it, on save and from the admin.
  * Author:            superhuit
  * Author URI:        https://www.superhuit.ch
- * Version:           1.7.0
+ * Version:           2.0.0-rc.1
  * license:           GPLv3
  * License URI:       https://www.gnu.org/licenses/gpl-3.0.html
  * Requires PHP:      7.4
