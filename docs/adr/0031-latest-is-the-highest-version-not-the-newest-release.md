@@ -64,3 +64,22 @@ lines already coexist there.
 **Branch protection on `v1.x` is a repository setting.** It has to be applied by
 hand once the branch exists, with the same required checks as `main`
 (**Typecheck** and **PHP 7.4**). The workflow file cannot ask for it.
+
+## Amended for 2.0.0-rc.1: a suffixed tag is a prerelease
+
+Decided while cutting the first release candidate of v2, for tipee.ch to test
+it from a zip. The consequence above came due: `sort -V` puts `v2.0.0-rc.1`
+above `v1.7.0` — and above the `v2.0.0` it precedes — so the step would have
+published it as Latest.
+
+**A tag carrying a suffix — anything after a `-` — is published as a
+prerelease, and never as Latest.** The `Publish release` step says so before it
+sorts anything, and the draft stays the action's, `prerelease: false` and all:
+the step that publishes it is the one that knows what it is. Nothing else
+changes, because the comparison already reads published releases with
+`--exclude-pre-releases`: once an RC is marked as one, no later tag counts it,
+and `v2.0.0` takes Latest from `v1.7.0` as it always would have.
+
+The release-belt upload still runs for a prerelease, named after the tag like
+every other zip. A composer consumer with the default `minimum-stability` does
+not see it.

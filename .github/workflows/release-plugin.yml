@@ -99,12 +99,22 @@ jobs:
       # "Latest" goes to the highest version released so far, never to the newest
       # release: this tag takes it only when no published release outranks it.
       # `sort -V` puts v1.10.0 above v1.9.0, which a plain sort does not.
+      #
+      # A tag with a suffix — v2.0.0-rc.1, v2.0.0-beta.2 — is a prerelease: it is
+      # published as one and is never Latest. `sort -V` would put it above the
+      # v2.0.0 it precedes, so it is kept out of the comparison altogether, which
+      # `--exclude-pre-releases` then does for every tag after it (ADR 0031).
       - name: Publish release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          if [[ "$TAG" == *-* ]]; then
+            echo "$TAG carries a suffix. Publishing it as a prerelease, never Latest."
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+            exit 0
+          fi
           highest=$(
             {
               gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
