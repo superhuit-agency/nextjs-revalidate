@@ -114,12 +114,19 @@ class FailureWindow extends Base implements Hookable {
 	 * Record the outcome of one revalidation attempt, dropping the oldest
 	 * outcome once the window is full.
 	 *
+	 * One attempt is one request to the front-end: a site's pending changes
+	 * delivered together — recorded once however many changes that request
+	 * carried, because the front-end answered once for
+	 * all of them. A window counting changes would let one bad minute during a
+	 * bulk edit pin the notice for ten requests after the front-end recovered
+	 * (ADR 0034).
+	 *
 	 * Everything that is not a success is a failure, whether or not it named a
 	 * cause: the condition is about failure, not about diagnosis, and an
 	 * unnamed cause is not a reason to stay silent.
 	 *
 	 * Two outcomes must not reach here, and one rule excludes both: what this
-	 * window samples is the *queue's own traffic*, and nothing else.
+	 * window samples is the *site's own revalidation traffic*, and nothing else.
 	 *
 	 *  - A **refusal** — an unconfigured site was never attempted against the
 	 *    front-end at all, so it is no evidence about the front-end.
@@ -130,7 +137,7 @@ class FailureWindow extends Base implements Hookable {
 	 *    one would let a diagnostic silence its own alarm. See
 	 *    `docs/adr/0013-a-probe-is-not-evidence.md`.
 	 *
-	 * @param true|WP_Error $outcome What `Revalidate::purge()` answered. Only
+	 * @param true|WP_Error $outcome What a delivery of pending changes answered. Only
 	 *                               `true` is a success: any other value —
 	 *                               including the `false` older code answered
 	 *                               with — is counted as a failure naming no
@@ -149,9 +156,8 @@ class FailureWindow extends Base implements Hookable {
 			'code'   => $failed ? $code : '',
 		];
 
-		// Read-modify-write, and up to `RevalidateQueue::MAX_NB_RUNNING_CRON`
-		// drains run at once, so two attempts finishing together can cost one
-		// outcome. Left as it is: the window is a sample of recent health, not
+		// Read-modify-write, and any number of requests may be delivering at
+		// once, so two attempts finishing together can cost one outcome. Left as it is: the window is a sample of recent health, not
 		// a ledger, and a lost outcome moves the condition by one slot out of
 		// ten — well inside the tolerance of numbers that were invented in the
 		// first place. Locking a per-site option to protect a threshold nobody
@@ -160,7 +166,7 @@ class FailureWindow extends Base implements Hookable {
 		// slightly slower than the failures arrive and the notice appears an
 		// attempt or two later than it could have.
 		//
-		// Not autoloaded: the drain writes this once per attempt, and an
+		// Not autoloaded: a delivery writes this once per attempt, and an
 		// autoloaded option would flush the whole alloptions cache each time.
 		update_option( self::OPTION_NAME, array_slice( $outcomes, -self::LENGTH ), false );
 	}
@@ -247,7 +253,8 @@ class FailureWindow extends Base implements Hookable {
 
 		// Yields to the unconfigured notice, on the screens that actually
 		// render it. The two are nearly exclusive already, since an
-		// unconfigured site refuses at enqueue and never attempts anything; the
+		// unconfigured site refuses a change when it is reported and never
+		// attempts anything; the
 		// overlap is a site that was configured and failing and then lost a
 		// setting, where the window is evidence about a configuration that no
 		// longer exists and the missing setting is the thing to fix.
@@ -278,7 +285,7 @@ class FailureWindow extends Base implements Hookable {
 
 		$message = sprintf(
 			/* translators: 1: number of failed revalidations. 2: number of attempts on record. */
-			__( 'Next.js revalidate is not keeping this site up to date — %1$d of the last %2$d revalidations failed. Content is still saved, but the front-end is serving pages which are quietly out of date.', 'nextjs-revalidate' ),
+			__( 'Next.js Revalidate is not keeping this site up to date — %1$d of the last %2$d revalidations failed. Content is still saved, but the front-end is serving pages which are quietly out of date.', 'nextjs-revalidate' ),
 			$nb_failures,
 			$nb_attempts
 		);
@@ -309,7 +316,7 @@ class FailureWindow extends Base implements Hookable {
 
 		return [
 			'message'      => $message,
-			'action_label' => $on_settings_page ? '' : __( 'Check the Next.js revalidate settings', 'nextjs-revalidate' ),
+			'action_label' => $on_settings_page ? '' : __( 'Check the Next.js Revalidate settings', 'nextjs-revalidate' ),
 			'action_url'   => $on_settings_page ? '' : admin_url( 'options-general.php?page=' . Settings::PAGE_NAME ),
 		];
 	}
@@ -364,7 +371,7 @@ class FailureWindow extends Base implements Hookable {
 	 * condition, not an event, and there is nothing to acknowledge.
 	 *
 	 * @return array{status: string, message: string, actions: array<int, array{label: string, url: string}>}|null
-	 *         Same family as `Revalidate::get_block_editor_purged_notice()`.
+	 *         Same family as `Revalidate::get_block_editor_revalidated_notice()`.
 	 */
 	public function get_block_editor_degraded_notice() {
 

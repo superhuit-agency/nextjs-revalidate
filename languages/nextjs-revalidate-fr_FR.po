@@ -1,10 +1,10 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Next.js revalidate\n"
+"Project-Id-Version: Next.js Revalidate\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/nextjs-"
 "revalidate\n"
-"POT-Creation-Date: 2026-08-20T13:45:46+00:00\n"
-"PO-Revision-Date: 2026-08-20 15:37+0200\n"
+"POT-Creation-Date: 2026-09-28T14:53:17+00:00\n"
+"PO-Revision-Date: 2026-09-24 12:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "Language: fr_FR\n"
@@ -24,9 +24,9 @@ msgstr ""
 "X-Poedit-SearchPathExcluded-1: vendor\n"
 
 #. Plugin Name of the plugin
-#: nextjs-revalidate.php include/Settings.php:158
-msgid "Next.js revalidate"
-msgstr "Next.js revalidate"
+#: nextjs-revalidate.php include/Settings.php:226
+msgid "Next.js Revalidate"
+msgstr "Next.js Revalidate"
 
 #. Plugin URI of the plugin
 #: nextjs-revalidate.php
@@ -36,14 +36,13 @@ msgstr "https://github.com/superhuit-agency/nextjs-revalidate.git"
 #. Description of the plugin
 #: nextjs-revalidate.php
 msgid ""
-"Next.js plugin allows you to purge & re-build the cached pages from the "
-"WordPress admin area. It also automatically purges & re-builds when a page/"
-"post/... is save or updated."
+"Tells a Next.js front-end which WordPress content changed — posts, menus, "
+"templates, redirects — so it can revalidate whatever it cached from it, on "
+"save and from the admin."
 msgstr ""
-"Le plugin Next.js Revalidate vous permet de purger et de reconstruire les "
-"pages en cache depuis la zone d’administration de WordPress. Il purge et "
-"reconstruit aussi automatiquement lorsqu’une page/post/… est sauvegardée ou "
-"mise à jour."
+"Indique à un front-end Next.js quels contenus WordPress ont changé — "
+"articles, menus, modèles, redirections — afin qu’il puisse revalider tout ce "
+"qu’il en a mis en cache, à l’enregistrement et depuis l’administration."
 
 #. Author of the plugin
 #: nextjs-revalidate.php
@@ -56,366 +55,367 @@ msgid "https://www.superhuit.ch"
 msgstr "https://www.superhuit.ch"
 
 #. translators: 1: number of failed revalidations. 2: number of attempts on record.
-#: include/FailureWindow.php:264
+#: include/FailureWindow.php:288
 #, php-format
 msgid ""
-"Next.js revalidate is not keeping this site up to date — %1$d of the last "
+"Next.js Revalidate is not keeping this site up to date — %1$d of the last "
 "%2$d revalidations failed. Content is still saved, but the front-end is "
 "serving pages which are quietly out of date."
 msgstr ""
-"Next.js revalidate ne parvient pas à maintenir ce site à jour : %1$d des "
-"%2$d dernières purges ont échoué. Le contenu est toujours enregistré, mais "
-"le front-end affiche des pages qui sont, sans que l'on s'en rende compte, "
-"obsolètes."
+"Next.js Revalidate ne parvient pas à maintenir ce site à jour : %1$d des "
+"%2$d dernières revalidations ont échoué. Le contenu est toujours enregistré, "
+"mais le front-end affiche des pages qui sont, sans que l'on s'en rende "
+"compte, obsolètes."
 
 #. translators: %s: the cause of the most recent failure.
-#: include/FailureWindow.php:273
+#: include/FailureWindow.php:297
 #, php-format
 msgid "Most recent error: %s."
 msgstr "Dernière erreur : %s."
 
-#: include/FailureWindow.php:279
+#: include/FailureWindow.php:303
 msgid "Other errors occurred as well."
 msgstr "D'autres erreurs se sont également produites."
 
-#: include/FailureWindow.php:284 include/Settings.php:649
+#: include/FailureWindow.php:308 include/Settings.php:786
 msgid "Please contact a site administrator."
 msgstr "Veuillez contacter un administrateur du site."
 
-#: include/FailureWindow.php:295
-msgid "Check the Next.js revalidate settings"
+#: include/FailureWindow.php:319
+msgid "Check the Next.js Revalidate settings"
 msgstr "Vérifier les paramètres Next.js Revalidate"
 
-#: include/FailureWindow.php:404
+#: include/FailureWindow.php:428
 msgid "the front-end could not be reached"
 msgstr "impossible d'accéder au Frontend"
 
-#: include/FailureWindow.php:407
+#: include/FailureWindow.php:431
 msgid "the front-end rejected the secret"
 msgstr "le front-end a rejeté le secret"
 
 #. translators: %s: an HTTP status code, e.g. 500.
-#: include/FailureWindow.php:412
+#: include/FailureWindow.php:436
 #, php-format
 msgid "the front-end answered %s"
 msgstr "le front-end a répondu %s"
 
-#: include/Revalidate.php:193
-msgid "The front-end answered without a status code."
-msgstr "Le front-end a répondu sans code d'état."
+#: include/Probe.php:111
+msgid "Sorry, you are not allowed to probe the front-end of this site."
+msgstr "Désolé, vous n’êtes pas autorisé(e) à sonder le front-end de ce site."
 
-#. translators: %d: the HTTP status code the front-end answered with.
-#: include/Revalidate.php:199
+#. translators: %s: the permalink nothing was sent for.
+#: include/Probe.php:217
 #, php-format
-msgid "The front-end answered %d."
-msgstr "The front-end answered %d."
-
-#: include/Revalidate.php:237
-#, php-format
-msgid "Purge cache of post “%s”"
-msgstr "Purger le cache du post « %s »"
-
-#: include/Revalidate.php:238
-msgid "Purge cache"
-msgstr "Vider le cache"
-
-#: include/Revalidate.php:306
-msgid "Sorry, you are not allowed to purge the cache of this post."
-msgstr "Désolé, vous n'êtes pas autorisé(e) à vider le cache de cet article."
-
-#: include/Revalidate.php:334
-msgctxt "Admin top bar menu"
-msgid "Purge this page"
-msgstr "Vider le cache"
-
-#: include/Revalidate.php:342
-msgctxt "Admin top bar menu"
-msgid "Purge the cache of the page currently being edited."
-msgstr "Vider le cache de la page en cours d'édition."
-
-#: include/Revalidate.php:412
-msgid "Purge caches"
-msgstr "Vider les caches"
-
-#: include/Revalidate.php:447
-#, php-format
-msgid "“%s” cache will be purged shortly."
-msgstr "Le cache « %s » a été correctement purgé."
-
-#: include/Revalidate.php:448 include/Revalidate.php:488
-msgid "Unable to purge cache. Please try again or contact an administrator."
+msgid ""
+"Nothing was sent for %s: this site's nextjs_revalidate_change filter dropped "
+"the change."
 msgstr ""
-"Le cache n’a pas pu être vidé correctement. Veuillez réessayer ou contacter "
-"un administrateur."
+"Rien n’a été envoyé pour %s : le filtre nextjs_revalidate_change de ce site "
+"a écarté le changement."
 
-#: include/Revalidate.php:487
+#. translators: %s: the permalink the front-end was asked to rebuild.
+#: include/Probe.php:228
 #, php-format
-msgid "%d cache will be purged shortly."
-msgid_plural "%d caches will be purged shortly."
-msgstr[0] "%d cache sera bientôt purgé."
-msgstr[1] "%d caches seront bientôt purgés."
+msgid "The front-end rebuilt %s."
+msgstr "Le front-end a reconstruit %s."
 
-#: include/RevalidateAll.php:45
+#. translators: 1: the permalink nothing was sent for. 2: why nothing was sent.
+#: include/Probe.php:242
+#, php-format
+msgid "Nothing was sent for %1$s. %2$s"
+msgstr "Rien n’a été envoyé pour %1$s. %2$s"
+
+#. translators: 1: the permalink. 2: what the attempt answered. 3: the error code.
+#: include/Probe.php:253
+#, php-format
+msgid "The front-end did not rebuild %1$s — %2$s (%3$s)"
+msgstr "Le front-end n’a pas reconstruit %1$s — %2$s (%3$s)"
+
+#: include/Probe.php:349
+msgid "Probe the front-end"
+msgstr "Sonder le front-end"
+
+#: include/Probe.php:351
+msgid ""
+"Ask the front-end to rebuild one path now, and see what it answers — "
+"including the error, when there is one."
+msgstr ""
+"Demander au front-end de reconstruire un chemin maintenant, et voir ce qu’il "
+"répond — y compris l’erreur, s’il y en a une."
+
+#: include/Probe.php:355
+msgid "Path to revalidate"
+msgstr "Chemin à revalider"
+
+#: include/Probe.php:366
+msgid ""
+"A path of this site, such as <code>/hello-world/</code>. The page is really "
+"rebuilt, exactly as it would be after an edit — this is not a dry run."
+msgstr ""
+"Un chemin de ce site, comme <code>/hello-world/</code>. La page est "
+"réellement reconstruite, exactement comme après une modification — ce n’est "
+"pas un essai à blanc."
+
+#: include/Probe.php:369
+msgid ""
+"The saved settings are what a probe uses, not what is currently typed on the "
+"Next.js API tab — save there first, then probe."
+msgstr ""
+"Une sonde utilise les réglages enregistrés, pas ce qui est saisi dans "
+"l’onglet API Next.js — enregistrez-y d’abord, puis sondez."
+
+#: include/Probe.php:371
+msgid "Send probe"
+msgstr "Envoyer la sonde"
+
+#: include/Revalidate.php:455
+#, php-format
+msgid "Revalidate post “%s”"
+msgstr "Revalider l’article « %s »"
+
+#: include/Revalidate.php:456 include/Revalidate.php:633
+msgid "Revalidate"
+msgstr "Revalider"
+
+#: include/Revalidate.php:497
+msgid "It is no longer applied: a post change carries no permalink to rewrite."
+msgstr ""
+"Il n’est plus appliqué : un changement d’article ne porte aucun permalien à "
+"réécrire."
+
+#: include/Revalidate.php:527
+msgid "Sorry, you are not allowed to revalidate this post."
+msgstr "Désolé, vous n’êtes pas autorisé(e) à revalider cet article."
+
+#: include/Revalidate.php:555
+msgctxt "Admin top bar menu"
+msgid "Revalidate this page"
+msgstr "Revalider cette page"
+
+#: include/Revalidate.php:563
+msgctxt "Admin top bar menu"
+msgid "Tell the front-end to revalidate the page currently being edited."
+msgstr "Demander au front-end de revalider la page en cours d’édition."
+
+#: include/Revalidate.php:668
+#, php-format
+msgid "“%s”: the revalidation was sent to the front-end."
+msgstr "« %s » : la revalidation a été envoyée au front-end."
+
+#: include/Revalidate.php:669 include/Revalidate.php:709
+msgid "Unable to revalidate. Please try again or contact an administrator."
+msgstr ""
+"Impossible de revalider. Veuillez réessayer ou contacter un administrateur."
+
+#: include/Revalidate.php:708
+#, php-format
+msgid "%d post: the revalidation was sent to the front-end."
+msgid_plural "%d posts: the revalidation was sent to the front-end."
+msgstr[0] "%d article : la revalidation a été envoyée au front-end."
+msgstr[1] "%d articles : la revalidation a été envoyée au front-end."
+
+#: include/RevalidateAll.php:53
 msgctxt "Admin top bar menu"
 msgid "All"
 msgstr "Tout"
 
-#: include/RevalidateAll.php:70
+#: include/RevalidateAll.php:86
 msgctxt "Admin top bar menu"
+msgid "Tell the front-end to revalidate everything it cached from these posts."
+msgstr ""
+"Demander au front-end de revalider tout ce qu’il a mis en cache à partir de "
+"ces articles."
+
+#: include/RevalidateAll.php:103
+msgid "Revalidate all: nothing was sent, this site is not configured."
+msgstr "Tout revalider : rien n’a été envoyé, ce site n’est pas configuré."
+
+#: include/RevalidateAll.php:113
 msgid ""
-"Purging all cache may take some time according to the number of pages to "
-"purge."
+"Revalidate all: nothing was sent, this site's nextjs_revalidate_change "
+"filter dropped it."
 msgstr ""
-"La purge de tout le cache peut prendre un certain temps en fonction du "
-"nombre de pages à purger."
+"Tout revalider : rien n’a été envoyé, le filtre nextjs_revalidate_change de "
+"ce site l’a écarté."
 
-#: include/RevalidateAll.php:87
-msgid "Revalidate all: nothing was queued, this site is not configured."
-msgstr ""
-"Tout purger : aucun élément n'était en file d'attente, ce site n'est pas "
-"configuré."
+#: include/RevalidateAll.php:124
+msgid "Revalidate all: the revalidation was sent to the front-end."
+msgstr "Tout revalider : la revalidation a été envoyée au front-end."
 
-#: include/RevalidateAll.php:97
-#, php-format
-msgid ""
-"Purge all: %d pages added to purge. Please wait until all pages are purged."
-msgstr ""
-"Purger tout : %d pages ajoutées à la file d’attente. Veuillez attendre que "
-"toutes les pages soient purgées."
+#: include/Settings.php:225
+msgid "Next.js Revalidate settings"
+msgstr "Next.js Revalidate paramètres"
 
-#: include/RevalidateQueue.php:372
-#, php-format
-msgid "Purging caches. Please wait… %s%s"
-msgstr ""
-"La purge des pages est en cours d’exécution. Veuillez patienter... %s%s"
-
-#: include/RevalidateQueue.php:378
-msgid "View purge caches queue"
-msgstr "Afficher la file d’attente de purge de cache"
-
-#: include/RevalidateQueue.php:387
-msgid "Queue correctly resetted."
-msgstr "La file d’attente a été correctement réinitialisée."
-
-#: include/Settings.php:157
-msgid "Next.js revalidate settings"
-msgstr "Next.js revalidate paramètres"
-
-#: include/Settings.php:174
+#: include/Settings.php:239
 msgid "Next.js API"
 msgstr "Configuration de l’API Next.js"
 
-#: include/Settings.php:175
-msgid "Allow purge all"
-msgstr "Autoriser la purge de tous"
+#: include/Settings.php:240
+msgid "Allow revalidate all"
+msgstr "Autoriser tout revalider"
 
-#: include/Settings.php:176
-msgid "On menu update"
-msgstr "Vider les caches lors de la mise à jour d’un menu"
-
-#: include/Settings.php:177
+#: include/Settings.php:241
 msgid "Debug"
 msgstr "Débogage"
 
-#: include/Settings.php:178
-msgid "Queue"
-msgstr "File d’attente"
+#: include/Settings.php:242
+msgid "Probe"
+msgstr "Sonde"
 
-#: include/Settings.php:183
+#: include/Settings.php:247
 msgid "NextJS-Revalidate settings tabs"
-msgstr "Paramètres de Next.js revalidate"
+msgstr "Paramètres de Next.js Revalidate"
 
-#: include/Settings.php:208
-msgid "Purge queue"
-msgstr "File d’attente de purge"
-
-#: include/Settings.php:210
-#, php-format
-msgid "%d URL waiting to be purged"
-msgid_plural "%d URLs waiting to be purged"
-msgstr[0] "%d URL en attente de purge"
-msgstr[1] "%d URLs en attente de purge"
-
-#: include/Settings.php:215
-msgid "Id"
-msgstr "Id"
-
-#: include/Settings.php:216
-msgid "Priority"
-msgstr "Priorité"
-
-#: include/Settings.php:217
-msgid "URL"
-msgstr "URL"
-
-#: include/Settings.php:250
+#: include/Settings.php:296
 msgid "Next.js API config"
 msgstr "Configuration de l’API Next.js"
 
-#: include/Settings.php:261
+#: include/Settings.php:307
 msgid "Revalidate domain"
 msgstr "Domaine"
 
-#: include/Settings.php:288
+#: include/Settings.php:324
 msgid "Revalidate path"
-msgstr "Chemin de purge"
+msgstr "Chemin de revalidation"
 
-#: include/Settings.php:294
+#: include/Settings.php:331
 msgid ""
-"Optional. The route that revalidates a single path on the front-end. Leave "
+"Optional. The route every revalidation is sent to on the front-end. Leave "
 "empty for the default."
 msgstr ""
-"Facultatif. L'itinéraire qui revalide un seul chemin côté client. Laisser "
-"vide pour utiliser la valeur par défaut."
+"Facultatif. La route du front-end à laquelle chaque revalidation est "
+"envoyée. Laisser vide pour utiliser la valeur par défaut."
 
-#: include/Settings.php:303
-msgid "FSE revalidate path"
-msgstr "Chemin de purge du FSE"
-
-#: include/Settings.php:309
-msgid ""
-"Optional. The route that invalidates the front-end’s FSE template snapshot. "
-"Leave empty for the default."
-msgstr ""
-"Facultatif. Chemin d'accès qui invalide l'instantané du modèle FSE du front-"
-"end. Laisser vide pour utiliser la valeur par défaut."
-
-#: include/Settings.php:318
+#: include/Settings.php:340
 msgid "Revalidate Secret"
 msgstr "Secret de revalidation"
 
-#: include/Settings.php:334
-msgid "Allow purge all options"
-msgstr "Options de purge de tous les types"
+#: include/Settings.php:356
+msgid "Allow revalidate all options"
+msgstr "Options de « Tout revalider »"
 
-#: include/Settings.php:336
-msgid ""
-"Define which post type has the option to have all posts purged in the admin "
-"bar."
+#: include/Settings.php:358
+msgid "Define which post types offer a revalidate all in the admin bar."
 msgstr ""
-"Définir quel type de post a l’option de purger tous les items dans la barre "
+"Définir quels types de contenu proposent « Tout revalider » dans la barre "
 "d’administration."
 
-#: include/Settings.php:369 include/Settings.php:419
+#: include/Settings.php:395
 msgid "All post types"
 msgstr "Tous les types"
 
-#: include/Settings.php:378 include/Settings.php:428
-msgid ""
-"Warning: according to the number of post types & posts for each post type "
-"this action can be very slow."
-msgstr ""
-"Attention : en fonction du nombre de types de post et de posts pour chaque "
-"type, cette action peut être très lente."
-
-#: include/Settings.php:386
-msgid "On menu update options"
-msgstr "Paramètres de mise à jour de menu"
-
-#: include/Settings.php:388
-msgid "Define which post type will be revalidated when updating a menu."
-msgstr "Définir quel type de post sera vider lors de la mise à jour d’un menu."
-
-#: include/Settings.php:436
+#: include/Settings.php:411
 msgid "Debug options"
 msgstr "Paramètres de débogage"
 
-#: include/Settings.php:438
+#: include/Settings.php:413
 msgid "Some configuration for easier debug."
 msgstr "Quelques configurations pour faciliter le débogage."
 
-#: include/Settings.php:451
+#: include/Settings.php:425
 msgid "Enable logs"
 msgstr "Activer les journaux"
 
-#: include/Settings.php:461
+#: include/Settings.php:435
 #, php-format
 msgid "Logs will be saved to file located in <code>%s</code>"
 msgstr ""
 "Les journaux seront sauvegardés dans un fichier stocké dans <code>%s</code>"
 
-#: include/Settings.php:606
+#: include/Settings.php:489
 msgid ""
-"Next.js revalidate is not configured for this site: the revalidate domain "
+"The revalidate domain was not saved: it must be a web address starting with "
+"http:// or https://, such as https://example.com."
+msgstr ""
+"Le domaine de revalidation n’a pas été enregistré : il doit s’agir d’une "
+"adresse web commençant par http:// ou https://, comme https://example.com."
+
+#: include/Settings.php:719
+msgid ""
+"Next.js Revalidate is not configured for this site: the revalidate domain "
 "and secret are both required before anything can be revalidated."
 msgstr ""
-"Next.js revalidate n'est pas configurée pour ce site : le domaine et la clé "
-"secrète de purge sont tous deux obligatoires avant de pouvoir procéder à une "
-"purge."
+"Next.js Revalidate n'est pas configurée pour ce site : le domaine et la clé "
+"secrète de revalidation sont tous deux obligatoires avant de pouvoir "
+"procéder à une revalidation."
 
-#: include/Settings.php:627
+#: include/Settings.php:764
 msgid "its revalidate domain and secret are missing"
-msgstr "le domaine et clé de purge sont manquants"
+msgstr "le domaine et le secret de revalidation sont manquants"
 
-#: include/Settings.php:628
+#: include/Settings.php:765
 msgid "its revalidate domain is missing"
-msgstr "le domaine de purge est manquants"
+msgstr "le domaine de revalidation est manquant"
 
-#: include/Settings.php:629
+#: include/Settings.php:766
 msgid "its secret is missing"
-msgstr "le secret de purge est manquants"
+msgstr "le secret de revalidation est manquant"
 
 #. translators: %s: which of the two required settings are missing.
-#: include/Settings.php:634
+#: include/Settings.php:771
 #, php-format
 msgid ""
-"Next.js revalidate is not configured for this site — %s. Content is still "
+"Next.js Revalidate is not configured for this site — %s. Content is still "
 "saved, but every revalidation is refused: the front-end is never asked to "
 "rebuild its pages."
 msgstr ""
-"Next.js revalidate n'est pas configurée pour ce site — %s. Le contenu est "
+"Next.js Revalidate n'est pas configurée pour ce site — %s. Le contenu est "
 "toujours enregistré, mais chaque revalidation est refusée : le front-end "
 "n'est jamais invité à reconstruire ses pages."
 
-#: include/Settings.php:645
-msgid "Configure Next.js revalidate"
-msgstr "Configurer Next.js revalidate"
+#: include/Settings.php:782
+msgid "Configure Next.js Revalidate"
+msgstr "Configurer Next.js Revalidate"
 
 #. translators: %s: number of sites on the network.
-#: include/Settings.php:711
+#: include/Settings.php:828
 #, php-format
-msgid "Next.js revalidate cannot migrate the %s sites of this network in a single request, and it does not migrate some of them and leave the rest running new code over old data. Open the admin of each site once instead — a site migrates itself the first time somebody does."
+msgid ""
+"Next.js Revalidate cannot migrate the %s sites of this network in a single "
+"request, and it does not migrate some of them and leave the rest running new "
+"code over old data. Open the admin of each site once instead — a site "
+"migrates itself the first time somebody does."
 msgstr ""
+"Next.js Revalidate ne peut pas migrer les %s sites de ce réseau en une seule "
+"requête, et il n’en migre pas une partie en laissant les autres exécuter le "
+"nouveau code sur d’anciennes données. Ouvrez plutôt l’administration de "
+"chaque site une fois — un site se migre lui-même la première fois que "
+"quelqu’un le fait."
 
 #: include/Traits/AdminBarMenu.php:24
 msgctxt "Admin top bar menu"
-msgid "Purge caches"
-msgstr "Vider les caches"
+msgid "Revalidate"
+msgstr "Revalider"
 
-#: nextjs-revalidate.php:72
+#: include/Traits/FrontEndRequest.php:125
+msgid "The front-end answered without a status code."
+msgstr "Le front-end a répondu sans code d'état."
+
+#. translators: %d: the HTTP status code the front-end answered with.
+#: include/Traits/FrontEndRequest.php:131
+#, php-format
+msgid "The front-end answered %d."
+msgstr "The front-end answered %d."
+
+#: nextjs-revalidate.php:79
 msgid "Please install composer dependencies for Next.js Revalidate to work"
 msgstr ""
 "Veuillez installer les dépendances du compositeur pour que Next.js "
 "Revalidate fonctionne"
 
 #. translators: %s: number of sites on the network.
-#: nextjs-revalidate.php:319
+#: nextjs-revalidate.php:387
 #, php-format
 msgid ""
-"Next.js revalidate cannot set up the %s sites of this network in a single "
-"request, and it does not set up some of them and leave the rest without a "
-"queue table. Activate the plugin on each site individually instead."
+"Next.js Revalidate cannot set up the %s sites of this network in a single "
+"request, and it does not set up some of them and leave the rest unable to "
+"revalidate. Activate the plugin on each site individually instead."
 msgstr ""
-"Next.js revalidate ne peut pas configurer les %s sites de ce réseau en une "
-"seule requête ; elle en configure certains et laisse les autres sans table "
-"de file d'attente. Activez plutôt le plugin sur chaque site individuellement."
+"Next.js Revalidate ne peut pas configurer les %s sites de ce réseau en une "
+"seule requête, et il ne se contente pas d’en configurer certains en laissant "
+"les autres dans l’incapacité de revalider. Activez plutôt le plugin sur "
+"chaque site individuellement."
 
-#: nextjs-revalidate.php:322
+#: nextjs-revalidate.php:390
 msgid "Plugin could not be activated"
 msgstr "Impossible d'activer le plugin"
-
-#, php-format
-#~ msgid "Successfully purged %d cache."
-#~ msgid_plural "Successfully purged %d caches."
-#~ msgstr[0] "%d cache a été correctement purgé."
-#~ msgstr[1] "%d caches ont été correctement purgés."
-
-#~ msgid ""
-#~ "The caches could not be purged correctly. Please try again or contact an "
-#~ "administrator."
-#~ msgstr ""
-#~ "Le cache n’a pas pu être vidé correctement. Veuillez réessayer ou "
-#~ "contacter un administrateur."
-
-#~ msgid "Purges Next.js cache on pages and posts update."
-#~ msgstr "Purges le cache des pages et publications de Next.js."

@@ -1,13 +1,18 @@
 <?php
 /**
- * The FSE snapshot invalidation — NextJsRevalidate\FseSnapshot.
+ * The FSE snapshot, as a producer of `templates` changes — NextJsRevalidate\FseSnapshot.
  *
- * An FSE change is not a revalidation: nothing is enqueued, no permalink is
- * composed, and the front-end is told once that the whole snapshot is stale.
- * What that leaves worth pinning is what a reviewer cannot see by reading the
- * hooks — that the request is made once per request however many hooks fire,
- * that it goes to the FSE endpoint with the secret and nothing else, that a
- * menu or an ordinary post never reaches it, and that the setting can stop it.
+ * Saving or deleting a template or a template part, or switching the theme,
+ * reports one `templates` change into the pending changes, and the front-end
+ * hears about it with every other change of the request, in the same request to
+ * the same endpoint. What is worth pinning is what a reviewer cannot see by
+ * reading the hooks: that however many of them fire, the front-end is told
+ * once, with one `templates` change; that a menu or an ordinary post never
+ * reaches it; and that an unconfigured site refuses. What the request looks
+ * like is `tests/pending-changes-test.php`'s business.
+ *
+ * Driven through the real `PendingChanges`, `Settings` and `FailureWindow`,
+ * with only the transport and the option store stubbed.
  *
  * Reachable by stubbing a handful of WordPress functions, so it is a standalone
  * script rather than a PHPUnit test — see `docs/adr/0008-two-testing-idioms.md`.
@@ -21,46 +26,34 @@ if ( 'cli' !== PHP_SAPI ) die( 'This file must be run from the command line.' );
 define( 'ABSPATH', __DIR__ . '/' );
 
 /**
- * Every url `wp_remote_get()` was asked for since the last reset, in order.
- * @var string[]
- */
-$GLOBALS['njr_test_requests'] = [];
-
-/**
- * What the next `wp_remote_get()` answers.
- * @var mixed
- */
-$GLOBALS['njr_test_response'] = [ 'response' => [ 'code' => 200 ] ];
-
-/**
- * Every callback attached to `shutdown` since the last reset.
- * @var callable[]
- */
-$GLOBALS['njr_test_shutdown'] = [];
-
-/**
- * What the fixture site holds, as `Settings` would answer it.
+ * Every `wp_remote_post()` since the last reset, as `[ url, args ]`.
  * @var array
  */
-$GLOBALS['njr_test_settings'] = [];
+$GLOBALS['njr_test_posts'] = [];
+
+/**
+ * The fixture site's option rows. option name => stored value.
+ * @var array
+ */
+$GLOBALS['njr_test_options'] = [];
 
 // WordPress stubs
 // ====
 
-function add_action( $name, $callback, $priority = 10, $accepted_args = 1 ) {
-	if ( 'shutdown' === $name ) $GLOBALS['njr_test_shutdown'][] = $callback;
-}
+function add_action( $name, $callback, $priority = 10, $accepted_args = 1 ) {}
+
+function apply_filters( $name, $value, ...$args ) { return $value; }
 
 function __( $text, $domain = null ) { return $text; }
 
-function add_query_arg( $args, $url ) {
-	return $url . ( false === strpos( $url, '?' ) ? '?' : '&' ) . http_build_query( $args );
-}
+function untrailingslashit( $string ) { return rtrim( $string, '/\\' ); }
 
-function wp_remote_get( $url, $args = [] ) {
-	$GLOBALS['njr_test_requests'][] = $url;
+function wp_json_encode( $data ) { return json_encode( $data ); }
 
-	return $GLOBALS['njr_test_response'];
+function wp_remote_post( $url, $args = [] ) {
+	$GLOBALS['njr_test_posts'][] = [ $url, $args ];
+
+	return [ 'response' => [ 'code' => 204 ] ];
 }
 
 function wp_remote_retrieve_response_code( $response ) {
@@ -69,6 +62,17 @@ function wp_remote_retrieve_response_code( $response ) {
 
 function is_wp_error( $thing ) {
 	return $thing instanceof WP_Error;
+}
+
+function get_current_blog_id() { return 1; }
+
+function get_option( $name, $default = false ) {
+	return array_key_exists( $name, $GLOBALS['njr_test_options'] ) ? $GLOBALS['njr_test_options'][ $name ] : $default;
+}
+
+function update_option( $name, $value, $autoload = null ) {
+	$GLOBALS['njr_test_options'][ $name ] = $value;
+	return true;
 }
 
 /**
@@ -100,54 +104,9 @@ class WP_Post {
 	}
 }
 
-/**
- * `Settings`, as far as this subject uses it. The real one is pinned by
- * `tests/SettingsTest.php` and `tests/RevalidateEndpointsTest.php`; what
- * matters here is only what it answers.
- */
-class NextJsRevalidate_Test_Settings {
-
-	public function __get( $name ) {
-		return $GLOBALS['njr_test_settings'][ $name ] ?? '';
-	}
-
-	/**
-	 * The real `Settings` has one of these, and a stub without it answers
-	 * "empty" for every setting a configured site holds — see ADR-0010.
-	 */
-	public function __isset( $name ) {
-		return ! empty( $this->__get( $name ) );
-	}
-
-	public function missing_settings() {
-		$missing = [];
-		if ( empty( $this->domain ) ) $missing[] = 'domain';
-		if ( empty( $this->secret ) ) $missing[] = 'secret';
-
-		return $missing;
-	}
-
-	public function is_configured() {
-		return empty( $this->missing_settings() );
-	}
-
-	public function not_configured_error() {
-		return new WP_Error( 'not_configured', 'Next.js revalidate is not configured for this site.' );
-	}
-
-	public function fse_endpoint_url() {
-		$domain = rtrim( (string) $this->domain, '/' );
-
-		return '' === $domain ? '' : $domain . '/api/revalidate-fse';
-	}
-
-	public function revalidates_on_fse_save() {
-		return filter_var( trim( (string) $this->revalidate_on_fse_save ), FILTER_VALIDATE_BOOLEAN );
-	}
-}
-
 class NextJsRevalidate {
 	public $settings;
+	public $pendingChanges;
 
 	private static $instance;
 
@@ -157,7 +116,7 @@ class NextJsRevalidate {
 	}
 
 	private function __construct() {
-		$this->settings = new NextJsRevalidate_Test_Settings();
+		$this->settings = new NextJsRevalidate\Settings();
 	}
 }
 
@@ -166,11 +125,19 @@ class NextJsRevalidate {
 
 require_once __DIR__ . '/../include/Interfaces/Hookable.php';
 require_once __DIR__ . '/../include/Abstracts/Base.php';
-require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
+require_once __DIR__ . '/../include/Settings.php';
 require_once __DIR__ . '/../include/Logger.php';
+require_once __DIR__ . '/../include/Traits/BlockEditorScreen.php';
+require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
+require_once __DIR__ . '/../include/FailureWindow.php';
+require_once __DIR__ . '/../include/Change.php';
+require_once __DIR__ . '/../include/PendingChanges.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
 
+use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
+use NextJsRevalidate\PendingChanges;
+use NextJsRevalidate\Settings;
 
 // The harness
 // ====
@@ -190,160 +157,132 @@ function njr_test_assert( $condition, $description ) {
 }
 
 /**
- * A fresh subject over a fixture site, with nothing recorded yet.
+ * A fresh request on a fixture site: new pending changes, nothing sent.
  *
- * @param array $settings What the site holds.
+ * @param array $options What the site holds. Configured by default.
  * @return FseSnapshot
  */
-function njr_test_subject( array $settings = [ 'domain' => 'https://front-end.test', 'secret' => 's3cret', 'revalidate_on_fse_save' => 'on' ] ) {
-	$GLOBALS['njr_test_settings'] = $settings;
-	$GLOBALS['njr_test_requests'] = [];
-	$GLOBALS['njr_test_shutdown'] = [];
+function njr_test_subject( array $options = [ Settings::SETTINGS_DOMAIN_NAME => 'https://front-end.test', Settings::SETTINGS_SECRET_NAME => 's3cret' ] ) {
+	$GLOBALS['njr_test_options'] = $options;
+	$GLOBALS['njr_test_posts']   = [];
+
+	NextJsRevalidate::init()->pendingChanges = new PendingChanges();
 
 	return new FseSnapshot();
 }
 
 /**
- * End the fixture request: run whatever was deferred to `shutdown`.
+ * End the fixture request.
  *
  * @return void
  */
-function njr_test_shutdown() {
-	$callbacks = $GLOBALS['njr_test_shutdown'];
+function njr_test_end_request() {
+	NextJsRevalidate::init()->pendingChanges->deliver();
+}
 
-	$GLOBALS['njr_test_shutdown'] = [];
+/**
+ * The changes the n-th request carried.
+ *
+ * @param int $n
+ * @return array|null
+ */
+function njr_test_changes( $n = 0 ) {
+	$body = json_decode( (string) ( $GLOBALS['njr_test_posts'][ $n ][1]['body'] ?? '' ), true );
 
-	foreach ( $callbacks as $callback ) call_user_func( $callback );
+	return $body['changes'] ?? null;
 }
 
 // The cases
 // ====
 
-// Saving a template fires exactly one request, and it is not sent from inside
-// the save: the front-end is told once the request that changed the snapshot is
-// over, which is what makes the coalescing below whole.
+// Saving a template reports a change, and asks the front-end nothing until the
+// request that changed the snapshot is over.
 $fse = njr_test_subject();
 $fse->on_template_save( 12 );
-njr_test_assert( [] === $GLOBALS['njr_test_requests'], 'the save itself asks the front-end nothing' );
+njr_test_assert( [ [ 'subject' => 'templates' ] ] === NextJsRevalidate::init()->pendingChanges->pending(), 'saving a template reports one templates change' );
+njr_test_assert( [] === $GLOBALS['njr_test_posts'], 'the save itself asks the front-end nothing' );
 
-njr_test_shutdown();
-njr_test_assert( 1 === count( $GLOBALS['njr_test_requests'] ), 'saving a template fires exactly one request' );
+njr_test_end_request();
+njr_test_assert( 1 === count( $GLOBALS['njr_test_posts'] ), 'the end of the request sends it' );
+njr_test_assert( 'https://front-end.test/api/revalidate' === ( $GLOBALS['njr_test_posts'][0][0] ?? null ), 'to the one endpoint every change goes to — there is no FSE endpoint any more' );
+njr_test_assert( [ [ 'subject' => 'templates' ] ] === njr_test_changes(), 'carrying a templates change that names no template' );
+njr_test_assert( 1 === count( FailureWindow::outcomes() ), 'and it is a revalidation like any other, entering the failure window' );
 
-// The URL: the FSE endpoint, the secret as a query arg, and no path — the
-// snapshot is not held at one.
-$url = $GLOBALS['njr_test_requests'][0];
-njr_test_assert( 0 === strpos( $url, 'https://front-end.test/api/revalidate-fse?' ), 'the request goes to the FSE endpoint' );
-njr_test_assert( false !== strpos( $url, 'secret=s3cret' ), 'the secret travels as a query arg, as it does for a revalidation' );
-njr_test_assert( false === strpos( $url, 'path=' ), 'nothing carries a path: the snapshot is not held at one' );
-
-// Coalescing. A single site-editor save can reach several of these hooks — a
-// template saved, a part saved, a part reset to its theme default — and the
-// front-end needs telling once.
+// The acceptance case: two templates saved and the theme switched in one
+// request are one request, carrying one templates change.
 $fse = njr_test_subject();
 $fse->on_template_save( 12 );
 $fse->on_template_save( 13 );
+$fse->on_theme_switch();
+njr_test_end_request();
+njr_test_assert( 1 === count( $GLOBALS['njr_test_posts'] ), 'two template saves and a theme switch in one request send exactly one request' );
+njr_test_assert( [ [ 'subject' => 'templates' ] ] === njr_test_changes(), 'carrying exactly one templates change' );
+
+// A site-editor save can reach every one of these hooks.
+$fse = njr_test_subject();
+$fse->on_template_save( 12 );
 $fse->on_post_delete( 14, new WP_Post( 14, 'wp_template_part' ) );
 $fse->on_theme_switch();
-$deferred = count( $GLOBALS['njr_test_shutdown'] );
-njr_test_shutdown();
-njr_test_assert( 1 === $deferred, 'four changes in one request defer exactly one telling' );
-njr_test_assert( 1 === count( $GLOBALS['njr_test_requests'] ), 'four changes in one request are coalesced into a single request' );
+njr_test_end_request();
+njr_test_assert( [ [ 'subject' => 'templates' ] ] === njr_test_changes(), 'a save, a reset and a switch in one request are one templates change' );
 
-// …and a second request is a second telling: the coalescing is per request, not
-// a latch that fires once for the life of the process.
+// …and a second request is a second telling: nothing latches for the life of
+// the process.
 $fse->on_template_save( 15 );
-njr_test_shutdown();
-njr_test_assert( 2 === count( $GLOBALS['njr_test_requests'] ), 'a later request tells the front-end again' );
+njr_test_end_request();
+njr_test_assert( 2 === count( $GLOBALS['njr_test_posts'] ), 'a later request tells the front-end again' );
 
 // "Reset to theme default" deletes the post rather than saving it, and there is
 // no `save_post` for that.
-$fse = njr_test_subject();
-$fse->on_post_delete( 21, new WP_Post( 21, 'wp_template' ) );
-njr_test_shutdown();
-njr_test_assert( 1 === count( $GLOBALS['njr_test_requests'] ), 'deleting a template fires the invalidation' );
+foreach ( [ 'wp_template', 'wp_template_part' ] as $post_type ) {
+	$fse = njr_test_subject();
+	$fse->on_post_delete( 21, new WP_Post( 21, $post_type ) );
+	njr_test_end_request();
+	njr_test_assert( [ [ 'subject' => 'templates' ] ] === njr_test_changes(), "deleting a $post_type reports a templates change" );
+}
 
 // Switching themes changes every template at once.
 $fse = njr_test_subject();
 $fse->on_theme_switch();
-njr_test_shutdown();
-njr_test_assert( 1 === count( $GLOBALS['njr_test_requests'] ), 'switching themes fires the invalidation' );
+njr_test_end_request();
+njr_test_assert( [ [ 'subject' => 'templates' ] ] === njr_test_changes(), 'switching themes reports a templates change' );
 
 // Deleting anything else does not. A menu is the case worth naming: menu items
 // are fetched at request time by the front-end and are absent from the snapshot
-// by design, so telling it they changed would be pure waste.
+// by design.
 foreach ( [ 'wp_navigation', 'nav_menu_item', 'post', 'page' ] as $post_type ) {
 	$fse = njr_test_subject();
 	$fse->on_post_delete( 31, new WP_Post( 31, $post_type ) );
-	njr_test_shutdown();
-	njr_test_assert( [] === $GLOBALS['njr_test_requests'], "deleting a $post_type fires nothing" );
+	njr_test_end_request();
+	njr_test_assert( [] === $GLOBALS['njr_test_posts'], "deleting a $post_type reports nothing" );
 }
 
-// The setting is the escape hatch for a front-end that does not serve the
-// endpoint yet: off, and nothing is asked of it at all.
-$fse = njr_test_subject( [ 'domain' => 'https://front-end.test', 'secret' => 's3cret', 'revalidate_on_fse_save' => 'off' ] );
-$fse->on_template_save( 41 );
-njr_test_shutdown();
-njr_test_assert( [] === $GLOBALS['njr_test_requests'], 'the setting switched off asks the front-end nothing' );
-njr_test_assert( [] === $GLOBALS['njr_test_shutdown'], 'the setting switched off defers nothing either' );
-
-// Only a site that says so invalidates. The empty row is the site that upgraded
-// into this release without opting in — and it is *the same row* as the site
-// that has just switched the gate off, which is why neither can invalidate: of
-// the two, the one whose front-end may not serve the endpoint at all is the one
-// this has to be safe for. `Settings::define_settings()` is what gives a new
-// install the `on`, and `tests/SettingsTest.php` is what pins that.
-foreach ( [ 'on' => 1, '1' => 1, 'true' => 1, '' => 0, 'off' => 0, '  ' => 0, 'banana' => 0 ] as $stored => $expected ) {
-	$fse = njr_test_subject( [ 'domain' => 'https://front-end.test', 'secret' => 's3cret', 'revalidate_on_fse_save' => (string) $stored ] );
-	$fse->on_template_save( 42 );
-	njr_test_shutdown();
-	njr_test_assert(
-		$expected === count( $GLOBALS['njr_test_requests'] ),
-		sprintf(
-			'a setting stored as %s %s',
-			'' === trim( (string) $stored ) ? "'$stored'" : "`$stored`",
-			$expected ? 'invalidates' : 'asks the front-end nothing'
-		)
-	);
-}
-
-// An unconfigured site refuses: it could not deliver, so it asks nothing.
-$fse = njr_test_subject( [ 'domain' => '', 'secret' => '' ] );
-$outcome = $fse->invalidate();
-njr_test_assert( is_wp_error( $outcome ) && 'not_configured' === $outcome->get_error_code(), 'an unconfigured site refuses with `not_configured`' );
-njr_test_assert( [] === $GLOBALS['njr_test_requests'], 'an unconfigured site asks the front-end nothing at all' );
-
-// The outcome is named the way a revalidation's is — one code per way of
-// failing — because both come back through the same transport.
-$outcomes = [
-	[ [ 'response' => [ 'code' => 200 ] ],                    true,          'a 200 is the success, and it is `true` rather than truthy' ],
-	[ [ 'response' => [ 'code' => 404 ] ],                    'http_404',    'a 404 — the front-end has no such route — is `http_404`' ],
-	[ [ 'response' => [ 'code' => 401 ] ],                    'http_401',    'a 401 is `http_401`' ],
-	[ [ 'body' => '' ],                                       'no_response', 'an answer without a status is `no_response`' ],
-	[ new WP_Error( 'http_request_failed', 'timed out' ),     'unreachable', 'a transport error is `unreachable`' ],
-];
-
-foreach ( $outcomes as [ $response, $expected, $description ] ) {
-	$fse = njr_test_subject();
-	$GLOBALS['njr_test_response'] = $response;
-
-	$outcome = $fse->invalidate();
-	$code    = is_wp_error( $outcome ) ? $outcome->get_error_code() : $outcome;
-
-	njr_test_assert( $expected === $code, $description );
-}
-
-// And so is the redaction: this endpoint's URL carries the same secret, and the
-// snapshot's outcome goes straight to the log file. The rule is
-// `tests/transport-redaction-test.php`; this pins that the FSE path is not the
-// one that forgot. See `docs/adr/0023-the-transport-redacts-the-secret.md`.
+// On a WordPress whose `deleted_post` passes no post, the type cannot be read
+// after the delete — and nothing is guessed.
 $fse = njr_test_subject();
-$GLOBALS['njr_test_response'] = new WP_Error( 'http_request_failed', 'Failed to open stream: https://front-end.test/api/revalidate-fse?secret=s3cret' );
+$fse->on_post_delete( 32 );
+njr_test_end_request();
+njr_test_assert( [] === $GLOBALS['njr_test_posts'], 'a delete whose type cannot be read reports nothing' );
 
-$outcome = $fse->invalidate();
-njr_test_assert(
-	is_wp_error( $outcome ) && false === strpos( $outcome->get_error_message(), 's3cret' ),
-	'a transport message quoting the request URL does not carry the secret out of invalidate()'
-);
+// An unconfigured site refuses: it could not deliver, so it holds nothing and
+// asks nothing.
+$fse = njr_test_subject( [ Settings::SETTINGS_DOMAIN_NAME => 'https://front-end.test' ] );
+$fse->on_template_save( 41 );
+njr_test_assert( [] === NextJsRevalidate::init()->pendingChanges->pending(), 'an unconfigured site holds no templates change' );
+njr_test_end_request();
+njr_test_assert( [] === $GLOBALS['njr_test_posts'], 'and asks the front-end nothing at all' );
+
+// There is no switch any more: a site still holding the v1 gate switched off
+// reports its templates like any other, because the front-end serving the
+// contract ignores a subject it does not cache (ADR 0034).
+$fse = njr_test_subject( [
+	Settings::SETTINGS_DOMAIN_NAME          => 'https://front-end.test',
+	Settings::SETTINGS_SECRET_NAME          => 's3cret',
+	Settings::LEGACY_REVALIDATE_ON_FSE_SAVE => '',
+] );
+$fse->on_template_save( 42 );
+njr_test_end_request();
+njr_test_assert( 1 === count( $GLOBALS['njr_test_posts'] ), 'a leftover v1 switch, off, no longer stops the change' );
 
 printf( "\n%d failure(s)\n", $failures );
 exit( $failures === 0 ? 0 : 1 );

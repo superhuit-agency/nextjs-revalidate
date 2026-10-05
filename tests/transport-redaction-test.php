@@ -3,13 +3,13 @@
  * The secret, kept out of every message the transport hands back —
  * `Traits\FrontEndRequest`.
  *
- * Every request this plugin makes carries the secret as a query arg, and two of
- * the outcomes the trait answers carry a string of *arbitrary origin* back with
- * them: `unreachable` carries whatever the HTTP transport said, and `exception`
+ * Every request this plugin makes carries the secret, in the `POST`'s
+ * `Authorization` header, and two of the outcomes the trait answers carry a
+ * string of *arbitrary origin* back with them: `unreachable` carries whatever the HTTP transport said, and `exception`
  * carries whatever anything in the request path threw. Those strings reach an
  * admin notice, a REST response and a log file in `wp-content/uploads` that
  * most hosts serve directly over HTTP — so a transport that quoted the request
- * URL back would publish the one value this plugin exists to hold.
+ * back would publish the one value this plugin exists to hold.
  * See `docs/adr/0023-the-transport-redacts-the-secret.md`.
  *
  * Two halves, because the decision has two halves:
@@ -35,7 +35,7 @@ if ( 'cli' !== PHP_SAPI ) die( 'This file must be run from the command line.' );
 define( 'ABSPATH', __DIR__ . '/' );
 
 /**
- * What the next `wp_remote_get()` answers: an array, a WP_Error, or a callable
+ * What the next `wp_remote_post()` answers: an array, a WP_Error, or a callable
  * to run in its place.
  * @var mixed
  */
@@ -52,11 +52,13 @@ $GLOBALS['njr_test_secret'] = '';
 
 function __( $text, $domain = null ) { return $text; }
 
-function wp_remote_get( $url, $args = [] ) {
+function wp_remote_post( $url, $args = [] ) {
 	$response = $GLOBALS['njr_test_response'];
 
 	return is_callable( $response ) ? $response() : $response;
 }
+
+function wp_json_encode( $data ) { return json_encode( $data ); }
 
 function wp_remote_retrieve_response_code( $response ) {
 	return $response['response']['code'] ?? '';
@@ -88,11 +90,11 @@ require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
  * The trait's using class, reduced to what the trait actually asks of one: a
  * `settings` holding a secret, and a way in from outside.
  *
- * Driven directly rather than through `Revalidate` or `FseSnapshot` because the
+ * Driven directly rather than through `Revalidate` or `PendingChanges` because the
  * seam under test is the trait — the whole point of ADR 0020 is that a caller
  * cannot opt out of this, so a test that went through one caller would prove
- * the weaker thing. `purge-outcome-test.php` covers the trip through
- * `Revalidate::purge()`, settings and all.
+ * the weaker thing. `pending-changes-test.php` covers the trip through
+ * `PendingChanges`, settings and all.
  */
 class NextJsRevalidate_Test_Transport {
 	use NextJsRevalidate\Traits\FrontEndRequest;
@@ -109,7 +111,11 @@ class NextJsRevalidate_Test_Transport {
 	}
 
 	public function send( $url ) {
-		return $this->send_front_end_request( $url, 60 );
+		return $this->send_front_end_changes( $url, [ 'version' => 2, 'changes' => [ [ 'subject' => 'path', 'uri' => '/' ] ] ], 5 );
+	}
+
+	public function send_changes( $url ) {
+		return $this->send_front_end_changes( $url, [ 'version' => 2, 'changes' => [ [ 'subject' => 'templates' ] ] ], 5 );
 	}
 }
 
@@ -135,7 +141,7 @@ function njr_test_assert( $condition, $description ) {
  * with.
  *
  * @param string $secret   What the site holds.
- * @param mixed  $response What `wp_remote_get()` answers.
+ * @param mixed  $response What `wp_remote_post()` answers.
  * @return string
  */
 function njr_test_message( $secret, $response ) {
@@ -265,8 +271,8 @@ njr_test_assert(
 	'`http_{status}` keeps the literal this plugin wrote, redaction and all'
 );
 
-// Nothing is thrown out of the trait, including out of the redaction: the queue
-// drain runs this in a loop holding a running-cron count.
+// Nothing is thrown out of the trait, including out of the redaction: the
+// pending changes are delivered from `shutdown`, or mid-save at the cap.
 $thrown = false;
 try {
 	njr_test_message( $secret, njr_test_throw( 'a filter blew up' ) );
@@ -274,6 +280,26 @@ try {
 	$thrown = true;
 }
 njr_test_assert( ! $thrown, 'a throw inside the request is still caught rather than escaping' );
+
+// The v2 `POST` carries the secret in a header rather than a URL, so the by-shape
+// pass has nothing to find in a message quoting it — and a transport is as free
+// to quote a header back as a URL. The by-value pass is what covers it, through
+// the same mint as every other message.
+foreach (
+	[
+		'a transport error' => njr_test_transport_error( "refused: Authorization: Bearer $secret" ),
+		'a throw'           => njr_test_throw( "cannot send header Authorization: Bearer $secret" ),
+	] as $what => $response
+) {
+	$GLOBALS['njr_test_secret']   = $secret;
+	$GLOBALS['njr_test_response'] = $response;
+
+	$outcome = ( new NextJsRevalidate_Test_Transport() )->send_changes( 'https://front-end.test/api/revalidate' );
+	$message = is_wp_error( $outcome ) ? $outcome->get_error_message() : '';
+
+	njr_test_assert( false === strpos( $message, $secret ), "$what from the POST quoting the Authorization header does not carry the secret out" );
+	njr_test_assert( false !== strpos( $message, 'Bearer ***' ), "$what from the POST keeps the rest of the message" );
+}
 
 // The seam
 // ====
@@ -445,7 +471,7 @@ foreach ( array_merge( njr_php_files( $root, 'include' ), [ 'nextjs-revalidate.p
 		$failures++;
 		printf(
 			"FAIL — %s:%d mints a WP_Error carrying a message of foreign origin without redact_secret(): %s\n"
-				. "       Every request this plugin makes holds the secret in a query arg, and this message\n"
+				. "       Every request this plugin makes carries the secret, and this message\n"
 				. "       reaches the log file in wp-content/uploads. See docs/adr/0023-the-transport-redacts-the-secret.md.\n",
 			$file,
 			$line,

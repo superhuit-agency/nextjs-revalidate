@@ -15,9 +15,10 @@ content changed, so the front-end can revalidate whatever it cached from it.
 
 **Change**:
 Something that happened to one WordPress subject — a post, a term, a redirect's
-path, the templates — that may leave cache entries on the front-end stale.
-Described as WordPress sees it, never as the front-end caches it: the plugin
-reports changes, and the front-end decides which cache entries each one expires.
+path, the templates, the **site settings** — that may leave cache entries on the
+front-end stale. Described as WordPress sees it, never as the front-end caches
+it: the plugin reports changes, and the front-end decides which cache entries
+each one expires.
 _Avoid_: Event — WordPress's hooks, and a field on the wire; fact; payload; tag —
 the front-end's side of the line.
 
@@ -33,6 +34,16 @@ An operator's request that the front-end revalidate everything it cached from
 the site, or from one post type and the **revalidatable taxonomies** registered
 for it. Reported as a single change, never as the pages it covers.
 _Avoid_: Purge all
+
+**Site setting**:
+A value held once for the whole site, by WordPress or by an **integration**, that
+the front-end renders as it is on any page: the site title, the tagline, the date
+and time formats, SEO defaults, the language list. A save of any of them is
+reported as one change for all of them. Not a value that moves which content
+lives at which path — the permalink structure, the front page, the posts per
+page — which leaves different things stale.
+_Avoid_: Setting — the plugin's own configuration; option — a storage primitive,
+and a language is not one.
 
 **Pending changes**:
 The changes one request has produced and not yet delivered. Two changes to the
@@ -122,6 +133,24 @@ action, the admin bar — never one that only save-time code consults.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
 
+**Dependent post**:
+A post whose permalink is built from another post's, so that saving that other
+post can move its page without saving it: a child page, whose permalink is its
+parent's plus its own slug; a translation Polylang synchronises with direct SQL;
+a post a theme's `post_type_link` filter builds from another. Its URI, order and
+parent are read before the save and after it, and it is reported as a `post`
+change of its own when any of them differs — never when none does, so an edit of
+a parent page does not walk its tree. Descendants by default, when the save
+changes a hierarchical post's slug or parent; the site and an integration name
+the rest (ADR 0038). A translation Polylang synchronises is also reported where
+it stands on every save, since Polylang may have written any field of it.
+
+A post moved by a plugin's direct write, with no save at all — a Nested Pages
+drag and drop — is not a dependent post: nothing was saved for it to depend on.
+Its integration reads it before the write and reports it after, the same way.
+_Avoid_: Child post, related post — the first is one kind of it, and the second
+says nothing about why its page moved.
+
 **Revalidatable taxonomy**:
 A taxonomy whose terms' archive pages the front-end could hold, and whose terms
 this plugin may therefore revalidate. One axis — the taxonomy is viewable,
@@ -142,17 +171,17 @@ a whole taxonomy as readily as decline one.
 
 Only **revalidate all** asks the question today: nothing in this plugin reacts to
 a term being created, edited or deleted, so a term archive goes stale until
-somebody purges all. That gap is an enhancement, not a property of the taxonomy.
+somebody revalidates all. That gap is an enhancement, not a property of the taxonomy.
 _Avoid_: Public taxonomy — `public` is a different setting and the two disagree
 in both directions, which is the whole of the bug this names the fix for.
 
 **Offered post type**:
 A post type whose posts this plugin offers an operator an action over: the
-"Purge caches" bulk action on its list screen, its two switches on the settings
-page, its entry in the admin bar's purge-all menu, and its place among the post
-types a **revalidate all** walks. One axis, the type axis of a **revalidatable
-post** — WordPress's own `is_post_type_viewable()` — with attachments taken out,
-because an uploaded file is not a page the front-end holds.
+"Revalidate" bulk action on its list screen, its allow revalidate all switch on
+the settings page, and its entry in the admin bar's revalidate all menu. One axis, the
+type axis of a **revalidatable post** — WordPress's own `is_post_type_viewable()`
+— with attachments taken out, because an uploaded file is not a page the
+front-end holds.
 
 An offer, and not a gate: that is the whole of the term. Being offered decides
 nothing about whether a change is reported, which is **revalidatable post**'s
@@ -182,6 +211,27 @@ them, and a page holds no part of it separately.
 > invalidation**, because it was the one request that did not revalidate a path.
 > Once no request revalidates a path, it is a revalidation like the rest, and
 > the term is retired.
+
+### Menus
+
+**Classic menu**:
+A menu built under Appearance → Menus: a `nav_menu` term, assigned to none or
+more of the theme's locations. A save reports a `menu` change carrying its term
+ID and the locations it is assigned to.
+_Avoid_: Nav menu — WordPress's name for the storage, and a block menu is a
+navigation menu too.
+
+**Block menu**:
+A menu the Site Editor and the Navigation block save: a `wp_navigation` post,
+which the front-end renders by its post ID and which no theme location holds.
+Saved, trashed, restored or permanently deleted, it reports a `menu` change of
+the classic menu's shape, carrying its post ID and no locations. Its type is not
+viewable, so a block menu is never a **revalidatable post**: it has a producer of
+its own, and nothing about it widens that question for other types. A block
+menu's post ID and a classic menu's term ID can be the same number, and no field
+tells them apart — the cost is one extra menu expired on the front-end.
+_Avoid_: Navigation, navigation post — the block that renders it, and the
+storage.
 
 ### Integrations
 
@@ -280,8 +330,8 @@ two halves, and nothing in the options table is an endpoint URL.
 
 **Configured site**:
 A site holding both of the settings a revalidation cannot be delivered without —
-the revalidate domain and the secret. The **endpoint paths** are deliberately not
-among them, because each falls back to a default. The precondition for every
+the revalidate domain and the secret. The **endpoint path** is deliberately not
+among them, because it falls back to a default. The precondition for every
 revalidation, and a per-site property: on a network each site is configured or
 not on its own, and a newly created site starts unconfigured by design.
 Half-configured is unconfigured.
@@ -316,23 +366,23 @@ it runs in.
 Taking the secret out of a message the plugin did not write itself, at the moment
 that message becomes an outcome. Applied to exactly two of them — what the HTTP
 transport said about a request it could not complete, and what anything in the
-request path threw — because every request this plugin makes carries the secret
-in a query arg, and those two messages are the only ones whose author is outside
-this repository.
+request path threw — because every request this plugin makes carries the secret,
+and those two messages are the only ones whose author is outside this repository.
 
 Two passes, and neither covers the other: a `secret=` query arg is blanked **by
 shape**, with the configured value never consulted, and the configured secret is
 then replaced **by value** wherever else it appears — in every spelling it can
 travel in, since a URL carries it `urlencode()`d rather than as it was typed.
+Deliberately unguarded by any minimum length — a one-character secret is a legal
+configuration, so it is redacted like any other and the surrounding diagnostic
+is allowed to come out garbled.
 
 > From v2 the secret travels in an `Authorization` header rather than a query
 > arg, so the by-shape pass has nothing left to find in a request of this
 > plugin's own; the by-value pass is what still applies, because a transport
-> message can quote a header back.
-Deliberately unguarded by
-any minimum length — a one-character secret is a legal configuration, so it is
-redacted like any other and the surrounding diagnostic is allowed to come out
-garbled.
+> message can quote a header back. The by-shape pass stayed while the
+> revalidation queue still sent v1's `GET`, and is a harmless no-op now that
+> nothing does (ADR 0023, amended).
 
 A property of messages *leaving the transport*, never a property of the **log
 file**: a redaction says nothing about what a file already holds, or about who
@@ -422,7 +472,7 @@ may *trigger* setup, not the work itself.
 
 **Site teardown**:
 The inverse of site setup, in its two distinct depths: unscheduling cron on
-deactivation, and dropping the table and options on uninstall. A site is torn
+deactivation, and deleting its options and scheduled purges on uninstall. A site is torn
 down at the same depth on a network as it would be on a single install.
 
 The **failure window** is the one exception, and is cleared at the shallower
@@ -458,7 +508,7 @@ returns the already-built root, not the thing that builds it.
 Attaching a class's callbacks to WordPress actions and filters. A separate act
 from constructing that class, performed once, by the composition root. The order
 is load-bearing: WordPress runs same-hook, same-priority callbacks in
-registration order, and nine of this plugin's callbacks sit on `admin_init` at
+registration order, and eight of this plugin's callbacks sit on `admin_init` at
 priority 10.
 _Avoid_: Wiring, binding, hooking up
 

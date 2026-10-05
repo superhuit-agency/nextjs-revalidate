@@ -190,3 +190,25 @@ unknown one answers `null`. It cannot catch upstream moving the files again —
 its fixtures are ours — but the integration suite runs only under Docker, so
 logic left inside `bootstrap.php` is checked by nothing an unattended agent can
 run. ADR 0008's rule put it in `npm run test:php` for that reason.
+
+## Amended for v2: a redirect change, not an enqueued permalink
+
+Built in #158, under ADR 0033 and ADR 0034. Every place above that enqueues the
+source path now reports `{ "subject": "redirect", "uri": … }` into the request's
+pending changes instead — one change per affected source path, the old path and
+the new one separately when an update carries the previous state. What stands
+unchanged: which redirects are candidates, the source path's normalisation, the
+`nextjs_revalidate_should_revalidate_redirect` filter and the order it is asked
+in, and the log lines a skip writes.
+
+Two things fell away. **The permalink composition** — building the site's scheme,
+host and port around the source so a subdirectory site named its directory once
+— has nothing left to do: a `uri` is a path from the domain root, which is what a
+source already is, so the path is reported as it stands. **The queue's
+deduplication** is now the pending changes': two identical redirect changes in
+one request merge into one, so a bulk operation over redirects sharing a source
+still costs one change, and the integration still keeps no memory of its own.
+
+A redirect change is its own subject rather than a path change because "the
+redirect at `/old/` changed" and "someone named `/old/`" are different facts to a
+front-end that caches redirects apart from pages (ADR 0033).

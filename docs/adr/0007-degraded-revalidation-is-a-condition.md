@@ -143,3 +143,18 @@ asked not to be told. Both notices consult one decision,
 `Settings::shows_unconfigured_notice()`, so they cannot disagree. A configured
 site's degraded notice never consults it: that condition is this ADR's, and a
 site cannot filter it away.
+
+## Amended for v2: the window counts requests
+
+Built in #156 and #160, under ADR 0034. One attempt is one request to the
+front-end — a site's pending changes delivered together — and it enters the
+window once however many changes it carried: a window counting changes would let
+one bad minute during a bulk edit pin the notice for ten requests after the
+front-end recovered. A templates change is a revalidation like any other now,
+so a failed FSE snapshot invalidation enters the window where it used to reach
+only the log. The probe still never enters it (ADR 0013).
+
+The queue's drains are gone with the queue (#160), so the "up to four drains"
+above is any number of requests delivering at once. The read-modify-write race
+and the reason to accept it are unchanged. "Refuses at enqueue" above reads,
+from v2, as refusing a change when it is reported.

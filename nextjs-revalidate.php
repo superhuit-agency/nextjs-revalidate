@@ -1,11 +1,11 @@
 <?php
 /**
- * Plugin Name:       Next.js revalidate
+ * Plugin Name:       Next.js Revalidate
  * Plugin URI:        https://github.com/superhuit-agency/nextjs-revalidate.git
- * Description:       Next.js plugin allows you to purge & re-build the cached pages from the WordPress admin area. It also automatically purges & re-builds when a page/post/... is save or updated.
+ * Description:       Tells a Next.js front-end which WordPress content changed — posts, menus, templates, redirects — so it can revalidate whatever it cached from it, on save and from the admin.
  * Author:            superhuit
  * Author URI:        https://www.superhuit.ch
- * Version:           1.7.0
+ * Version:           2.0.0
  * license:           GPLv3
  * License URI:       https://www.gnu.org/licenses/gpl-3.0.html
  * Requires PHP:      7.4
@@ -18,33 +18,40 @@
  * @author Superhuit, Kuuak
  */
 /*
-Next.js revalidate is free software: you can redistribute it and/or modify
+Next.js Revalidate is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 any later version.
 
-Next.js revalidate is distributed in the hope that it will be useful,
+Next.js Revalidate is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with Next.js revalidate. If not, see {URI to Plugin License}.
+along with Next.js Revalidate. If not, see {URI to Plugin License}.
 */
 
 use NextJsRevalidate\Assets;
+use NextJsRevalidate\BlockMenus;
+use NextJsRevalidate\Change;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
+use NextJsRevalidate\Integrations\NestedPages;
+use NextJsRevalidate\Integrations\Polylang;
 use NextJsRevalidate\Integrations\Redirection;
+use NextJsRevalidate\Integrations\SimpleCustomPostOrder;
+use NextJsRevalidate\Integrations\Yoast;
+use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Probe;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
+use NextJsRevalidate\SiteSettings;
 use NextJsRevalidate\Cron\ScheduledPurges;
 use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\RestApi;
-use NextJsRevalidate\RevalidateQueue;
 
 // Exit if accessed directly.
 defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
@@ -92,17 +99,23 @@ require_once __DIR__ . '/vendor/autoload.php';
  * `phpstan-baseline.neon` used to carry. Read, never written — the composition
  * root is the only thing that assigns them.
  *
- * @property-read Assets          $assets
- * @property-read Revalidate      $revalidate
- * @property-read Probe           $probe
- * @property-read Settings        $settings
- * @property-read FailureWindow   $failureWindow
- * @property-read ScheduledPurges $cronScheduledPurges
- * @property-read RevalidateAll   $revalidateAll
- * @property-read FseSnapshot     $fseSnapshot
- * @property-read RevalidateQueue $queue
- * @property-read RestApi         $restApi
- * @property-read Redirection     $redirection
+ * @property-read Assets                $assets
+ * @property-read Revalidate            $revalidate
+ * @property-read Probe                 $probe
+ * @property-read Settings              $settings
+ * @property-read FailureWindow         $failureWindow
+ * @property-read PendingChanges        $pendingChanges
+ * @property-read ScheduledPurges       $cronScheduledPurges
+ * @property-read RevalidateAll         $revalidateAll
+ * @property-read FseSnapshot           $fseSnapshot
+ * @property-read BlockMenus            $blockMenus
+ * @property-read SiteSettings          $siteSettings
+ * @property-read RestApi               $restApi
+ * @property-read Redirection           $redirection
+ * @property-read Yoast                 $yoast
+ * @property-read Polylang              $polylang
+ * @property-read NestedPages           $nestedPages
+ * @property-read SimpleCustomPostOrder $simpleCustomPostOrder
  */
 class NextJsRevalidate {
 
@@ -111,12 +124,18 @@ class NextJsRevalidate {
 	private Probe $probe;
 	private Settings $settings;
 	private FailureWindow $failureWindow;
+	private PendingChanges $pendingChanges;
 	private ScheduledPurges $cronScheduledPurges;
 	private RevalidateAll $revalidateAll;
 	private FseSnapshot $fseSnapshot;
-	private RevalidateQueue $queue;
+	private BlockMenus $blockMenus;
+	private SiteSettings $siteSettings;
 	private RestApi $restApi;
 	private Redirection $redirection;
+	private Yoast $yoast;
+	private Polylang $polylang;
+	private NestedPages $nestedPages;
+	private SimpleCustomPostOrder $simpleCustomPostOrder;
 	private static NextJsRevalidate $instance;
 
 	/**
@@ -142,7 +161,7 @@ class NextJsRevalidate {
 	 * Constructing a Hookable touches no global state, so the two are separate
 	 * acts here: everything is built first, then every one of them is asked to
 	 * register, in construction order. That order is load-bearing — WordPress
-	 * runs same-hook, same-priority callbacks in registration order, and nine
+	 * runs same-hook, same-priority callbacks in registration order, and eight
 	 * of this plugin's callbacks sit on `admin_init` at priority 10.
 	 *
 	 * See `docs/adr/0003-explicit-hook-registration.md`.
@@ -154,12 +173,14 @@ class NextJsRevalidate {
 		$this->assets              = $this->hookable( new Assets() );
 		$this->settings            = $this->hookable( new Settings() );
 		$this->failureWindow       = $this->hookable( new FailureWindow() );
+		$this->pendingChanges      = $this->hookable( new PendingChanges() );
 		$this->revalidate          = $this->hookable( new Revalidate() );
 		$this->probe               = $this->hookable( new Probe() );
 		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
 		$this->fseSnapshot         = $this->hookable( new FseSnapshot() );
-		$this->queue               = $this->hookable( new RevalidateQueue() );
+		$this->blockMenus          = $this->hookable( new BlockMenus() );
+		$this->siteSettings        = $this->hookable( new SiteSettings() );
 		$this->restApi             = $this->hookable( new RestApi() );
 
 		foreach ( $this->hookables as $hookable ) $hookable->register_hooks();
@@ -167,8 +188,16 @@ class NextJsRevalidate {
 		// An integration registers its hooks explicitly, and only once it can
 		// see whether the plugin it integrates with is there — constructing it
 		// touches nothing. See docs/adr/0003-explicit-hook-registration.md.
-		$this->redirection         = new Redirection();
+		$this->redirection           = new Redirection();
 		$this->redirection->register_hooks();
+		$this->yoast                 = new Yoast();
+		$this->yoast->register_hooks();
+		$this->polylang              = new Polylang();
+		$this->polylang->register_hooks();
+		$this->nestedPages           = new NestedPages();
+		$this->nestedPages->register_hooks();
+		$this->simpleCustomPostOrder = new SimpleCustomPostOrder();
+		$this->simpleCustomPostOrder->register_hooks();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -269,8 +298,8 @@ class NextJsRevalidate {
 	}
 
 	/**
-	 * Prepare one site to revalidate: its queue table, its registered
-	 * settings and its scheduled cron.
+	 * Prepare one site to revalidate: its registered settings and its
+	 * scheduled cron.
 	 *
 	 * Applied identically whether the site is the only one of a single
 	 * install, an existing site reached by a sweep, or a site created later.
@@ -278,14 +307,11 @@ class NextJsRevalidate {
 	public function setup_site() {
 		$this->cronScheduledPurges->schedule_cron();
 		$this->settings->define_settings();
-
-		$this->queue->create_table();
 	}
 
 	/**
 	 * Tear one site down as far as a deactivation goes: its crons stop, its
-	 * failure window is forgotten, its queue table and its settings stay where
-	 * they are.
+	 * failure window is forgotten, its settings stay where they are.
 	 *
 	 * The failure window is the one exception to the two teardown depths, and
 	 * the reason is semantic rather than tidiness: while deactivated, content
@@ -297,21 +323,18 @@ class NextJsRevalidate {
 	 */
 	public function teardown_site() {
 		ScheduledPurges::unschedule_cron();
-		$this->queue->unschedule_cron();
 
 		FailureWindow::clear();
 	}
 
 	/**
-	 * Tear one site down as far as an uninstall goes: its settings, its
-	 * scheduled purges and its queue table are dropped.
+	 * Tear one site down as far as an uninstall goes: its settings and its
+	 * scheduled purges are dropped.
 	 */
 	public function uninstall_site() {
 		Settings::delete_settings();
 		ScheduledPurges::delete_scheduled_purges();
 		FailureWindow::clear();
-
-		$this->queue->delete_table();
 	}
 
 	/**
@@ -371,7 +394,7 @@ class NextJsRevalidate {
 		wp_die(
 			sprintf(
 				/* translators: %s: number of sites on the network. */
-				__( 'Next.js revalidate cannot set up the %s sites of this network in a single request, and it does not set up some of them and leave the rest without a queue table. Activate the plugin on each site individually instead.', 'nextjs-revalidate' ),
+				__( 'Next.js Revalidate cannot set up the %s sites of this network in a single request, and it does not set up some of them and leave the rest unable to revalidate. Activate the plugin on each site individually instead.', 'nextjs-revalidate' ),
 				number_format_i18n( get_blog_count() )
 			),
 			__( 'Plugin could not be activated', 'nextjs-revalidate' ),
@@ -422,56 +445,132 @@ NextJsRevalidate::init();
  */
 
 /**
- * Purge an URL from Next.js cache
- * Triggers a revalidation of the given URL
+ * Report a path as changed, so the front-end revalidates whatever it cached
+ * from it.
  *
- * The revalidation is *accepted*, not performed: this enqueues the permalink and
- * returns, and the queue is drained by cron afterwards. So the answer here can
- * only ever be whether the queue took the revalidation on, never whether the
- * front-end has rebuilt the page — that outcome happens after this call has
- * returned, and delivery is at most once, a failure being recorded in the log
- * and dropped (docs/adr/0004-at-most-once-revalidation.md).
+ * A **path** change — `{ "subject": "path", "uri": … }` — for a path this
+ * plugin has no other way to know about: a page assembled from something that
+ * is not a post, a listing of an external feed, anything site code knows went
+ * stale. What the front-end expires for it is the front-end's decision.
  *
- * @param  string $url       The URL to purge
- * @param  int    $priority  Optional. Used to specify the order in which the url are purged.
- *                           Lower numbers correspond with earlier purge,
- *                           and urls with the same priority are executed in the order in which they were added.
- *                           Default 10.
+ * The change is *accepted*, not delivered: it joins this request's pending
+ * changes, and they are sent to the front-end once the request has answered.
+ * So the answer here can only ever be whether the change was taken on, never
+ * whether the front-end took it — that happens after this call has returned,
+ * and delivery is at most once, a failure being recorded in the log and
+ * dropped (docs/adr/0010-the-public-api-reports-acceptance-not-delivery.md).
  *
- * @return bool        Whether the revalidation was accepted into the queue.
- *                     False on a refusal — the site is unconfigured, and nothing
- *                     it accepted could be delivered — and false when the write
- *                     itself failed, whether that was the insert or the
- *                     promotion of a permalink the queue already held.
+ * @since 2.0.0
+ *
+ * @param string $url A URL, or a path. A URL is reduced to its path from the
+ *                    domain root, dropping the query string and the fragment;
+ *                    a path is taken as from the domain root already.
+ *
+ * @return bool Whether the change was accepted into the pending changes. False
+ *              on a refusal — the site is unconfigured, and nothing it accepted
+ *              could be delivered — false when the `nextjs_revalidate_change`
+ *              filter dropped it, and false for a URL that names no path.
  */
-function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
-	$njr = NextJsRevalidate::init();
+function nextjs_revalidate_path( $url ) {
+	$uri = Change::uri_of( $url );
 
-	$accepted = $njr->queue->add_item( $url, $priority );
+	if ( null === $uri ) return false;
 
 	// A refusal arrives as a WP_Error, which is truthy; it is a false here.
-	// Callers needing the reason read it from the queue directly, as the REST
+	// Callers needing the reason read it from `report()` directly, as the REST
 	// routes do — this function's documented answer is a bool.
-	return ( $accepted && !is_wp_error($accepted) );
+	return true === NextJsRevalidate::init()->pendingChanges->report( Change::path( $uri ) );
 }
 
 /**
- * Schedule an URL purge from Next.js cache
- * Triggers a revalidation of the given URL at the given date time
+ * Report a post as changed, from the URI it had to the one it has now.
  *
- * Registering a scheduled purge is not enqueuing a revalidation: the permalink
- * reaches the queue when the date time passes, and is refused there like any
- * other revalidation if the site is unconfigured by then.
+ * A **post** change, for a post whose permalink moved without the post being
+ * saved: a theme building it from a term, through a `post_type_link` filter,
+ * reads the permalink before the term changes and reports it here after. A post
+ * whose permalink is built from another *post* is better named through the
+ * `nextjs_revalidate_dependent_posts` filter, which reads both sides itself.
  *
- * @param  String $datetime The date time when to purge
- * @param  String $url      The URL to purge
+ * The post is asked what every entry point asks — whether it is revalidatable —
+ * and its `after` is read off it as it is now. Accepted, not delivered, as
+ * `nextjs_revalidate_path()` is.
  *
- * @return Bool             Whether this call registered the scheduled purge.
- *                          False when the URL is already registered for that
- *                          date time — the schedule stands, this call added
- *                          nothing to it — and false when the write failed.
+ * @since 2.0.0
+ *
+ * @param int         $post_id    The post ID.
+ * @param string|null $before_url Optional. The URL, or the path, the post had. A
+ *                                URL is reduced to its path from the domain root.
+ *                                Default null, for the post as it stands: both
+ *                                sides its current URI.
+ *
+ * @return bool Whether the change was accepted into the pending changes. False
+ *              for a post that is not revalidatable or has no page, for a
+ *              `$before_url` that names no path, on a refusal, and when the
+ *              `nextjs_revalidate_change` filter dropped it.
+ */
+function nextjs_revalidate_post( $post_id, $before_url = null ) {
+	$before_uri = null;
+
+	if ( null !== $before_url ) {
+		$before_uri = Change::uri_of( $before_url );
+		if ( null === $before_uri ) return false;
+	}
+
+	return NextJsRevalidate::init()->revalidate->report_post_from( (int) $post_id, $before_uri );
+}
+
+/**
+ * Register a path to be reported as changed at a future date time — a
+ * **scheduled purge**.
+ *
+ * Registering one is not reporting a change: the path is reported by the cron
+ * request that finds it due, and is refused there like any other change if the
+ * site is unconfigured by then. The entry is dropped either way.
+ *
+ * @since 2.0.0
+ *
+ * @param string $datetime The date time from which the path is due.
+ * @param string $url      A URL, or a path. Registered as given, and reduced to
+ *                         its path from the domain root when it comes due.
+ *
+ * @return bool Whether this call registered the scheduled purge. False when the
+ *              URL is already registered for that date time — the schedule
+ *              stands, this call added nothing to it — and false when the
+ *              write failed.
+ */
+function nextjs_revalidate_schedule_path( $datetime, $url ) {
+	return NextJsRevalidate::init()->cronScheduledPurges->schedule_purge( $datetime, $url );
+}
+
+/**
+ * Purge an URL from Next.js cache.
+ *
+ * @deprecated 2.0.0 Use nextjs_revalidate_path(). Removed in 3.0.0 (ADR 0035).
+ *
+ * @param string $url      The URL, or path, to revalidate.
+ * @param int    $priority Accepted and ignored: there is no queue left for it
+ *                         to order.
+ *
+ * @return bool What nextjs_revalidate_path() answers.
+ */
+function nextjs_revalidate_purge_url( $url, $priority = 10 ) {
+	_deprecated_function( __FUNCTION__, '2.0.0', 'nextjs_revalidate_path()' );
+
+	return nextjs_revalidate_path( $url );
+}
+
+/**
+ * Schedule an URL purge from Next.js cache.
+ *
+ * @deprecated 2.0.0 Use nextjs_revalidate_schedule_path(). Removed in 3.0.0 (ADR 0035).
+ *
+ * @param string $datetime The date time when to purge.
+ * @param string $url      The URL, or path, to revalidate.
+ *
+ * @return bool What nextjs_revalidate_schedule_path() answers.
  */
 function nextjs_revalidate_schedule_purge_url( $datetime, $url ) {
-	$njr = NextJsRevalidate::init();
-	return $njr->cronScheduledPurges->schedule_purge( $datetime, $url );
+	_deprecated_function( __FUNCTION__, '2.0.0', 'nextjs_revalidate_schedule_path()' );
+
+	return nextjs_revalidate_schedule_path( $datetime, $url );
 }
