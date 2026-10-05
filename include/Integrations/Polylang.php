@@ -211,6 +211,13 @@ class Polylang extends Base implements Hookable {
 		// A revision or an autosave is synchronised to nothing.
 		if ( false !== wp_is_post_revision( $post_id ) || false !== wp_is_post_autosave( $post_id ) ) return;
 
+		// Unlike `Revalidate::report_post_save()`, no bail on a `meta-box-loader`
+		// request. Polylang copies a synchronised custom field to the translations
+		// as it is written, and a metabox's field is written in that request,
+		// after the block editor's REST save has already been reported: the
+		// translations stand as the front-end will see them only now. Skipping
+		// it would drop the report that is right, to save one extra request
+		// when nothing synchronised changed.
 		foreach ( array_diff( $this->translations( (int) $post_id ), [ (int) $post_id ] ) as $translation_id ) {
 			$this->revalidate->report_post_from( $translation_id, null );
 		}
