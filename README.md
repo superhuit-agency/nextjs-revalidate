@@ -68,7 +68,7 @@ Every change has a `subject`, and that subject's fields. v2.0 sends seven:
 
 | Subject | Fields | Sent for |
 | --- | --- | --- |
-| `post` | `id`, `type`, `before`, `after` | a post saved, published, unpublished, trashed or deleted; the **Revalidate** row action, bulk action and admin bar entry |
+| `post` | `id`, `type`, `before`, `after` | a post saved, published, unpublished, trashed or deleted; a post whose page another post's save moved — see [dependent posts](#dependent-posts); a post reordered or reparented by Nested Pages or Simple Custom Post Order; the **Revalidate** row action, bulk action and admin bar entry; `nextjs_revalidate_post()` |
 | `redirect` | `uri` | a redirect created, edited, deleted, enabled or disabled in Redirection — one change per affected source path |
 | `path` | `uri` | `nextjs_revalidate_path()`, the inbound REST routes, a due scheduled purge, the probe |
 | `menu` | `id`, `locations` | a classic menu saved; a block menu (`wp_navigation`) saved, trashed, restored or deleted |
@@ -144,7 +144,11 @@ The contract grows without breaking a front-end written against it:
 
 **Any 2xx is a success** — 200, 202 and 204 alike; the body is not read.
 Everything else is a **failure**, and so is a request the front-end did not
-answer within **five seconds**. Redirects are not followed: a 3xx is a failure.
+answer within **five seconds**. A 307 or a 308 to the same scheme, host and
+port is followed, with the same request, so a route served only at
+`/api/revalidate/` — `trailingSlash: true` — is reached; any other 3xx is a
+failure ([ADR 0039](docs/adr/0039-a-delivery-follows-a-redirect-that-keeps-the-request.md)).
+Type the path with its trailing slash to skip the extra round trip.
 A front-end should mark entries stale and answer; it should not rebuild pages
 before answering.
 
@@ -202,10 +206,12 @@ An option is a site setting when its name is on the list the
 filter returns. By default that is WordPress's own:
 
 `blogname`, `blogdescription`, `date_format`, `time_format`, `timezone_string`,
-`gmt_offset`, `home`, `site_icon`, `WPLANG`
+`gmt_offset`, `home`, `site_icon`, `site_logo`, `WPLANG`
 
 One on the list reports a change when it is added, updated to a different value,
-or deleted. Saving a value an option already holds reports nothing: WordPress
+or deleted. An entry ending in `*` names every option starting with what comes
+before it, for an option stored once per language: `landbot_config_url_*` covers
+`landbot_config_url_fr` and `landbot_config_url_de`. Saving a value an option already holds reports nothing: WordPress
 fires no update for it.
 
 Options that move which content lives at which path — the permalink structure,
@@ -236,11 +242,19 @@ file when logging is on, marked `🔎 Probe`.
 - Requires PHP 7.4+
 - Requires WordPress 5.6+
 
+Changes are sent once the editor has had their answer where the server can
+answer first: under PHP-FPM (`fastcgi_finish_request()`) and LiteSpeed
+(`litespeed_finish_request()`). Under Apache's `mod_php`, which has neither,
+every request that changed something waits for the front-end's answer before
+it answers the editor — up to the five-second timeout when the front-end is slow
+or down. The revalidation is the same either way; only the editor waits.
+
 ## API functions
 
-Neither function can tell you whether the front-end has revalidated anything.
-Each answers what the plugin took on: `nextjs_revalidate_path` whether the
-change was **accepted** into the request's pending changes, and
+No function here can tell you whether the front-end has revalidated anything.
+Each answers what the plugin took on: `nextjs_revalidate_path` and
+`nextjs_revalidate_post` whether the change was **accepted** into the request's
+pending changes, and
 `nextjs_revalidate_schedule_path` whether the schedule was registered — which is
 one step further away, since that change is only reported when the date time
 passes, and can be refused then. Pending changes are sent to the front-end once
@@ -249,7 +263,7 @@ this plugin that could report the outcome of a delivery that has not happened
 yet. Delivery is at most once — a revalidation that is attempted and fails is
 written to the log and dropped, never retried.
 
-Both take a full URL or a path. A URL is reduced to its path from the domain
+Each takes a full URL or a path. A URL is reduced to its path from the domain
 root — `https://example.com/hello-world/?ref=x` and `/hello-world/` are the same
 change — keeping its trailing slash, or its lack of one, as given.
 
@@ -281,6 +295,53 @@ for a URL that names no path at all. A path already reported in the same request
 is accepted (`true`) and sent once.
 
 It is never a statement about the front-end. A `true` says the plugin will try.
+
+### nextjs_revalidate_post
+
+Reports a post as changed, from the URI it had to the one it has now: a
+**post** change, for a post whose permalink moved without the post being saved.
+The case it is for is a permalink a theme builds from a term, through a
+`post_type_link` filter — the plugin reports nothing when a term changes, so the
+theme reads the permalink before the term changes and reports it after. A
+permalink built from another *post* is better named through
+[`nextjs_revalidate_dependent_posts`](#nextjs_revalidate_dependent_posts), which
+reads both sides itself.
+
+The post is asked what every entry point asks — whether it is
+[revalidated](#which-posts-are-revalidated) — and its `after` is its URI now.
+
+#### Usage
+```php
+// A category's slug is part of its interviews' permalinks.
+add_action( 'edit_terms', function( $term_id, $taxonomy ) {
+	if ( 'interview_category' !== $taxonomy ) return;
+	foreach ( my_theme_interviews_in( $term_id ) as $post_id ) {
+		$GLOBALS['my_theme_before'][ $post_id ] = get_permalink( $post_id );
+	}
+}, 10, 2 );
+
+// `edited_term`, not `edited_terms`: only by then has core cleared the term's
+// cache, so the permalinks are built from the new slug.
+add_action( 'edited_term', function( $term_id, $tt_id, $taxonomy ) {
+	if ( 'interview_category' !== $taxonomy ) return;
+	foreach ( $GLOBALS['my_theme_before'] ?? [] as $post_id => $before ) {
+		nextjs_revalidate_post( $post_id, $before );
+	}
+}, 10, 3 );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| post_id | int | The post |
+| before_url | string\|null | The URL, or the path, the post had. Optional: without it the post is reported as it stands, both sides its current URI — what the row action reports |
+
+#### Returns
+
+`bool` — whether the change was accepted into the pending changes. It is `false`
+for a post that is not revalidated or has no page, for a `before_url` that names
+no path, on a refusal, and when the `nextjs_revalidate_change` filter dropped it.
 
 ### nextjs_revalidate_schedule_path
 
@@ -430,6 +491,29 @@ attachment is never reported.
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
 
+### Dependent posts
+
+A post's page can move without the post being saved. A child page's permalink is
+its parent's plus its own slug, so renaming or moving the parent moves every
+descendant. Each post whose URI a save moved is reported as a `post` change of
+its own, after the saved post's, with the URI it had before the save and the one
+it has after:
+
+```json
+{ "subject": "post", "id": 42, "type": "page", "before": { "uri": "/about/" }, "after": { "uri": "/company/" } }
+{ "subject": "post", "id": 43, "type": "page", "before": { "uri": "/about/team/" }, "after": { "uri": "/company/team/" } }
+```
+
+By default these are the descendants of a post of a hierarchical type whose
+slug or parent the save changes; an edit reports the saved post alone. A post
+whose URI, order and parent did not move is not reported; one whose order alone
+moved is reported where it is, both sides its URI. A post whose permalink a theme builds
+from another post is added with the
+[`nextjs_revalidate_dependent_posts`](#nextjs_revalidate_dependent_posts) filter,
+and one built from a term is reported with
+[`nextjs_revalidate_post()`](#nextjs_revalidate_post). The
+[Polylang](#polylang) integration adds a post's translations.
+
 Permanently deleting a post asks the same question of the post as it stands just
 before it is gone, and reports its URI with no `after`, so the front-end stops
 serving a page for content that no longer exists. A post already in the trash is
@@ -495,6 +579,17 @@ taxonomy and can admit one WordPress would never route.
 Nothing else revalidates a term: this plugin does not react to a term being
 created, edited or deleted, so a term archive goes stale until somebody
 revalidates all.
+
+**On a headless site, viewable is not the same as displayed.** A taxonomy
+registered `public => false` and exposed in WPGraphQL is rendered by the
+front-end all the same, and is never named: revalidate all of its post type
+sends `"taxonomies": []`. Admit it with
+[`nextjs_revalidate_should_revalidate_taxonomy`](#nextjs_revalidate_should_revalidate_taxonomy).
+The same goes for a post type that is `show_in_graphql` but not
+`publicly_queryable`: admit its posts with
+[`nextjs_revalidate_should_revalidate_post`](#nextjs_revalidate_should_revalidate_post),
+and offer it in the admin with core's `is_post_type_viewable` filter — see
+[Which post types the admin offers](#which-post-types-the-admin-offers).
 
 ## Integrations
 
@@ -654,13 +749,71 @@ change is reported when:
 - the **default language** changes, from Polylang's Languages screen or by a
   write of the `polylang` option whose `default_lang` differs.
 
+- a language's **string translations** are saved — the translated site title
+  and tagline, and every string registered with Polylang. They are kept in the
+  language's term meta rather than in an option.
+
 Nothing else in the `polylang` option reports a change. `hide_default`,
 `force_lang` and `rewrite` decide whether a language prefix is in the path at
 all, which moves pages between paths rather than changing what every page
 renders; `version` and the rest are Polylang's bookkeeping.
 
+With **synchronisation** on, Polylang copies what you chose — the parent, the
+order, the date, custom fields, the featured image, terms — to a post's
+translations with direct SQL and the meta and term APIs, and saves none of them:
+editing the French page edits the German page too. So with anything
+synchronised, every save of a post also reports its translations, each where it
+stands, whether Polylang changed anything of theirs or not. A translation is also
+one of the post's [dependent posts](#dependent-posts), so one whose URI moved is
+reported from the URI it had — and when the save changes the parent, their
+descendants are too. With nothing synchronised, a save reports its translations
+only when one moved.
+
+Per-language options — acf-options-for-polylang's, or a theme's own
+`my_setting_{lang}` — cannot be listed ahead of time: add them to
+[`nextjs_revalidate_site_setting_options`](#nextjs_revalidate_site_setting_options)
+by the prefix they share, `my_setting_*`.
+
 Both integrations are supported, never required: with the plugin absent, nothing
 registers.
+
+### Nested Pages and Simple Custom Post Order
+
+[Nested Pages](https://wordpress.org/plugins/wp-nested-pages/) and
+[Simple Custom Post Order](https://wordpress.org/plugins/simple-custom-post-order/)
+reorder posts by drag and drop, and Nested Pages moves a page under another
+parent the same way. Both write the posts table with direct SQL and save nothing,
+so no save hook sees it. With either active, each post a drag and drop moved is
+reported as a `post` change:
+
+- **moved under another parent** in Nested Pages, from the URI it had to the one
+  it has — its children too, since they are dragged with it;
+- **reordered**, where it is, with both sides its current URI: nothing on the
+  wire carries an order, but the listings of its type changed, and a `post`
+  change is what tells the front-end about its type.
+
+A post the drag and drop did not move is not reported. The posts are read from
+the plugin's own request, before it handles it; whether the request is allowed
+is still the plugin's question, and nothing is reported unless it goes on to
+write. Simple Custom Post Order's "move to position" in the order column reports
+the post it places, not the others it renumbers around it: the listings they are
+in are its type's, which its change covers. Nor is the renumbering Simple Custom
+Post Order does as its list screen renders: it keeps every post where it was.
+With Nested Pages' "update post hook" setting on, the `wp_update_post()` it runs
+before its own write reports the page where it was, and the sort carries it to
+where it is: one change.
+
+Ticking or unticking a post type in Settings → SCPOrder — "Reset order" among
+them, which unticks the types it resets — puts every listing of that type in
+another order, and reports it whole, as an `all` change of that type.
+
+The request body each plugin sends is read here, not declared by the plugin. If
+a plugin update changes it, what the plugin's own action still says is reported,
+and the plugin's log file says why, with **Enable logs** on under the **Debug**
+tab: Nested Pages' pages each where it stands, so a page it moved keeps its old
+URI cached; Simple Custom Post Order's types each whole.
+
+Both are supported, never required: with the plugin absent, nothing registers.
 
 ## Filters
 
@@ -753,6 +906,43 @@ add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_re
 | taxonomy_name | string | The taxonomy name |
 | taxonomy | WP_Taxonomy\|false | The taxonomy, or false when none is registered under that name |
 
+### nextjs_revalidate_dependent_posts
+
+Filters the posts a post's update may move without saving them: the posts whose
+permalink is built from its own. Each is reported after the update when its URI,
+order or parent moved, and left alone when none did — see
+[Dependent posts](#dependent-posts).
+
+The IDs it starts with are the post's descendants, when it is of a hierarchical
+type and the update changes its slug or its parent, and none otherwise. Asked on
+every update, before the post is written, so a callback that names posts only
+when what their permalinks are built from changes costs nothing on the other
+saves.
+
+#### Usage
+```php
+// A feature lives under its linked page: /features/a-feature/.
+add_filter( 'nextjs_revalidate_dependent_posts', function( $post_ids, $post_id, $post_before, $data ) {
+	if ( 'page' !== $post_before->post_type || $data['post_name'] === $post_before->post_name ) return $post_ids;
+	return array_merge( $post_ids, get_posts( [
+		'post_type'  => 'feature',
+		'meta_key'   => 'linked_page',
+		'meta_value' => $post_id,
+		'fields'     => 'ids',
+		'numberposts' => -1,
+	] ) );
+}, 10, 4 );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| post_ids | int[] | The dependent post IDs |
+| post_id | int | The post about to be updated |
+| post_before | WP_Post | The post as it is before the update |
+| data | array | The post's fields as they are about to be written |
+
 ### nextjs_revalidate_change
 
 Filters every change before it joins the request's pending changes. Return the
@@ -781,15 +971,17 @@ renders as they are, on any page, whose change — added, updated to a different
 value, or deleted — reports a `settings` change. Read every time an option
 changes, so a filter added late still counts.
 
-Add an option your front-end renders, or remove a default it does not. Do not
-add one that moves which content lives at which path, such as
-`permalink_structure`: expiring what every page carries does not fix what that
-leaves stale.
+Add an option your front-end renders, or remove a default it does not. An entry
+ending in `*` names every option starting with what comes before it, for options
+stored once per language; a bare `*` names none. Do not add one that moves which
+content lives at which path, such as `permalink_structure`: expiring what every
+page carries does not fix what that leaves stale.
 
 #### Usage
 ```php
 add_filter( 'nextjs_revalidate_site_setting_options', function( $option_names ) {
 	$option_names[] = 'my_theme_footer_text';
+	$option_names[] = 'landbot_config_url_*'; // landbot_config_url_fr, landbot_config_url_de…
 	return array_diff( $option_names, [ 'time_format' ] );
 } );
 ```
@@ -798,7 +990,7 @@ add_filter( 'nextjs_revalidate_site_setting_options', function( $option_names ) 
 
 | Name | Type | Description |
 | --- | --- | --- |
-| option_names | string[] | The site setting options: WordPress's defaults, and those the active integrations add |
+| option_names | string[] | The site setting options: WordPress's defaults, and those the active integrations add. An entry ending in `*` is a prefix |
 
 ### nextjs_revalidate_purge_action_permalink
 

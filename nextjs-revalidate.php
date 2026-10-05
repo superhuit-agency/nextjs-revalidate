@@ -38,8 +38,10 @@ use NextJsRevalidate\Change;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
+use NextJsRevalidate\Integrations\NestedPages;
 use NextJsRevalidate\Integrations\Polylang;
 use NextJsRevalidate\Integrations\Redirection;
+use NextJsRevalidate\Integrations\SimpleCustomPostOrder;
 use NextJsRevalidate\Integrations\Yoast;
 use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Probe;
@@ -97,21 +99,23 @@ require_once __DIR__ . '/vendor/autoload.php';
  * `phpstan-baseline.neon` used to carry. Read, never written — the composition
  * root is the only thing that assigns them.
  *
- * @property-read Assets          $assets
- * @property-read Revalidate      $revalidate
- * @property-read Probe           $probe
- * @property-read Settings        $settings
- * @property-read FailureWindow   $failureWindow
- * @property-read PendingChanges  $pendingChanges
- * @property-read ScheduledPurges $cronScheduledPurges
- * @property-read RevalidateAll   $revalidateAll
- * @property-read FseSnapshot     $fseSnapshot
- * @property-read BlockMenus      $blockMenus
- * @property-read SiteSettings    $siteSettings
- * @property-read RestApi         $restApi
- * @property-read Redirection     $redirection
- * @property-read Yoast           $yoast
- * @property-read Polylang        $polylang
+ * @property-read Assets                $assets
+ * @property-read Revalidate            $revalidate
+ * @property-read Probe                 $probe
+ * @property-read Settings              $settings
+ * @property-read FailureWindow         $failureWindow
+ * @property-read PendingChanges        $pendingChanges
+ * @property-read ScheduledPurges       $cronScheduledPurges
+ * @property-read RevalidateAll         $revalidateAll
+ * @property-read FseSnapshot           $fseSnapshot
+ * @property-read BlockMenus            $blockMenus
+ * @property-read SiteSettings          $siteSettings
+ * @property-read RestApi               $restApi
+ * @property-read Redirection           $redirection
+ * @property-read Yoast                 $yoast
+ * @property-read Polylang              $polylang
+ * @property-read NestedPages           $nestedPages
+ * @property-read SimpleCustomPostOrder $simpleCustomPostOrder
  */
 class NextJsRevalidate {
 
@@ -130,6 +134,8 @@ class NextJsRevalidate {
 	private Redirection $redirection;
 	private Yoast $yoast;
 	private Polylang $polylang;
+	private NestedPages $nestedPages;
+	private SimpleCustomPostOrder $simpleCustomPostOrder;
 	private static NextJsRevalidate $instance;
 
 	/**
@@ -182,12 +188,16 @@ class NextJsRevalidate {
 		// An integration registers its hooks explicitly, and only once it can
 		// see whether the plugin it integrates with is there — constructing it
 		// touches nothing. See docs/adr/0003-explicit-hook-registration.md.
-		$this->redirection         = new Redirection();
+		$this->redirection           = new Redirection();
 		$this->redirection->register_hooks();
-		$this->yoast               = new Yoast();
+		$this->yoast                 = new Yoast();
 		$this->yoast->register_hooks();
-		$this->polylang            = new Polylang();
+		$this->polylang              = new Polylang();
 		$this->polylang->register_hooks();
+		$this->nestedPages           = new NestedPages();
+		$this->nestedPages->register_hooks();
+		$this->simpleCustomPostOrder = new SimpleCustomPostOrder();
+		$this->simpleCustomPostOrder->register_hooks();
 
 		register_activation_hook( __FILE__, [$this, 'activate'] );
 		register_deactivation_hook( __FILE__, [$this, 'deactivate'] );
@@ -470,6 +480,43 @@ function nextjs_revalidate_path( $url ) {
 	// Callers needing the reason read it from `report()` directly, as the REST
 	// routes do — this function's documented answer is a bool.
 	return true === NextJsRevalidate::init()->pendingChanges->report( Change::path( $uri ) );
+}
+
+/**
+ * Report a post as changed, from the URI it had to the one it has now.
+ *
+ * A **post** change, for a post whose permalink moved without the post being
+ * saved: a theme building it from a term, through a `post_type_link` filter,
+ * reads the permalink before the term changes and reports it here after. A post
+ * whose permalink is built from another *post* is better named through the
+ * `nextjs_revalidate_dependent_posts` filter, which reads both sides itself.
+ *
+ * The post is asked what every entry point asks — whether it is revalidatable —
+ * and its `after` is read off it as it is now. Accepted, not delivered, as
+ * `nextjs_revalidate_path()` is.
+ *
+ * @since 2.0.0
+ *
+ * @param int         $post_id    The post ID.
+ * @param string|null $before_url Optional. The URL, or the path, the post had. A
+ *                                URL is reduced to its path from the domain root.
+ *                                Default null, for the post as it stands: both
+ *                                sides its current URI.
+ *
+ * @return bool Whether the change was accepted into the pending changes. False
+ *              for a post that is not revalidatable or has no page, for a
+ *              `$before_url` that names no path, on a refusal, and when the
+ *              `nextjs_revalidate_change` filter dropped it.
+ */
+function nextjs_revalidate_post( $post_id, $before_url = null ) {
+	$before_uri = null;
+
+	if ( null !== $before_url ) {
+		$before_uri = Change::uri_of( $before_url );
+		if ( null === $before_uri ) return false;
+	}
+
+	return NextJsRevalidate::init()->revalidate->report_post_from( (int) $post_id, $before_uri );
 }
 
 /**

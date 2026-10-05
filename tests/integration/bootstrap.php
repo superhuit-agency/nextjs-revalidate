@@ -61,10 +61,16 @@ if ( file_exists( $njr_redirection ) ) {
 }
 
 // Yoast SEO and Polylang, which `.wp-env.tests.json` installs for the site
-// setting integrations, loaded the same way and on the same terms. Neither has
-// tables this suite needs created: Yoast's site settings are options, and
-// Polylang's languages are terms.
-foreach ( [ 'wordpress-seo/wp-seo.php', 'polylang/polylang.php' ] as $njr_integrated_plugin ) {
+// setting integrations, and Nested Pages and Simple Custom Post Order, which it
+// installs for the reordering ones, loaded the same way and on the same terms.
+// None has tables this suite needs created: Yoast's site settings are options,
+// Polylang's languages are terms, and both orderings write the posts table.
+foreach ( [
+	'wordpress-seo/wp-seo.php',
+	'polylang/polylang.php',
+	'wp-nested-pages/nestedpages.php',
+	'simple-custom-post-order/simple-custom-post-order.php',
+] as $njr_integrated_plugin ) {
 	$njr_integrated_plugin = dirname( $njr_plugin_dir ) . '/' . $njr_integrated_plugin;
 	if ( ! file_exists( $njr_integrated_plugin ) ) continue;
 
