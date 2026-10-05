@@ -336,7 +336,7 @@ class Revalidate extends Base implements Hookable {
 		$change = ( false === $revision_of
 			? $this->post_change(
 				$post_id,
-				( $post_before instanceof WP_Post ) ? $this->front_end_uri( $post_before ) : null,
+				$this->uri_before( $post_id, $post_before ),
 				$this->front_end_uri( get_post( $post_id ) )
 			)
 			// A revision stands for its post, as the post is: nothing about the
@@ -348,6 +348,31 @@ class Revalidate extends Base implements Hookable {
 		if ( is_null($change) ) return;
 
 		$this->pendingChanges->report( $change );
+	}
+
+	/**
+	 * The URI a saved post had before its save — or before the save under way
+	 * that moved it, when it is a **dependent post** of one.
+	 *
+	 * A plugin saving a child page from its parent's `save_post` saves it
+	 * after the parent's row is written: the child's own `$post_before` is
+	 * read through its parent as it now is, and holds the new URI. Reported
+	 * first, that would be the `before` the pending changes keep, and the URI
+	 * the child had would never be expired. What was read on the parent's
+	 * `pre_post_update` is where it stood.
+	 *
+	 * @param int          $post_id     The post that was saved.
+	 * @param WP_Post|null $post_before The post as it was before the save, null for a new one.
+	 * @return string|null
+	 */
+	private function uri_before( $post_id, $post_before ) {
+		foreach ( $this->dependents_before as $saving_id => $dependents ) {
+			// An update that failed before it reached `post_updated` moved
+			// nothing, and what it read is not where the post stood.
+			if ( isset( $this->saving[ $saving_id ] ) && array_key_exists( (int) $post_id, $dependents ) ) return $dependents[ (int) $post_id ]['uri'];
+		}
+
+		return ( $post_before instanceof WP_Post ) ? $this->front_end_uri( $post_before ) : null;
 	}
 
 	/**

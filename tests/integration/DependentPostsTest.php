@@ -158,6 +158,33 @@ class DependentPostsTest extends PendingChangesTestCase {
 		] );
 	}
 
+	/**
+	 * A descendant a plugin saves from its parent's `save_post` is saved
+	 * after the parent's row is written, and its own save would read it at
+	 * its new URI. It is reported from the URI it had before the parent's.
+	 */
+	public function test_a_descendant_saved_during_its_parents_save_keeps_the_uri_it_had() {
+		$parent = $this->page( 'about' );
+		$child  = $this->page( 'team', $parent );
+
+		$this->reset_pending_changes();
+
+		$save_child = function ( $post_id ) use ( $parent, $child, &$save_child ) {
+			if ( $parent !== $post_id ) return;
+
+			remove_action( 'save_post', $save_child );
+			wp_update_post( [ 'ID' => $child, 'post_content' => 'Edited.' ] );
+		};
+		add_action( 'save_post', $save_child );
+
+		wp_update_post( [ 'ID' => $parent, 'post_name' => 'company' ] );
+
+		$this->assertPendingChanges( [
+			Change::post( $child, 'page', '/about/team/', '/company/team/' ),
+			Change::post( $parent, 'page', '/about/', '/company/' ),
+		] );
+	}
+
 	// The filter
 	// ====
 
