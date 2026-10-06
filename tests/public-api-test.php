@@ -162,6 +162,7 @@ require_once __DIR__ . '/../include/FailureWindow.php';
 require_once __DIR__ . '/../include/Change.php';
 require_once __DIR__ . '/../include/PendingChanges.php';
 require_once __DIR__ . '/../include/Revalidate.php';
+require_once __DIR__ . '/../include/Terms.php';
 require_once __DIR__ . '/../include/Probe.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';

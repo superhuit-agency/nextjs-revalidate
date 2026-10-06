@@ -136,7 +136,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 		wp_update_post( [ 'ID' => $post, 'post_name' => 'renamed' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', '/renamed/' ) ] );
+		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', '/renamed/', $this->uncategorized(), $this->uncategorized() ) ] );
 		$this->assertNotContains( $other, array_column( $this->pending_changes()->pending(), 'id' ) );
 	}
 
@@ -290,7 +290,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 		wp_trash_post( $post );
 
-		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', null ) ] );
+		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', null, $this->uncategorized(), $this->uncategorized() ) ] );
 		$this->assertNotContains( $other, array_column( $this->pending_changes()->pending(), 'id' ) );
 
 		// A post's permalink is not built from its parent's, so `$other` stays
@@ -308,7 +308,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 		wp_delete_post( $post, true );
 
-		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', null ) ] );
+		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', null, $this->uncategorized(), $this->uncategorized() ) ] );
 		$this->assertNotContains( $other, array_column( $this->pending_changes()->pending(), 'id' ) );
 
 		// Core reattaches no child of a type that is not hierarchical, so
@@ -384,7 +384,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 		$this->assertSame( [ [ $page, [] ] ], $asked );
 		$this->assertPendingChanges( [
 			Change::post( $page, 'page', '/features/', null ),
-			Change::post( $feature, 'post', '/features/a-feature/', '/a-feature/' ),
+			Change::post( $feature, 'post', '/features/a-feature/', '/a-feature/', $this->uncategorized(), $this->uncategorized() ),
 		] );
 	}
 
@@ -437,7 +437,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 		$this->assertPendingChanges( [
 			Change::post( $page, 'page', '/features/', '/all-features/' ),
-			Change::post( $feature, 'post', '/features/a-feature/', '/all-features/a-feature/' ),
+			Change::post( $feature, 'post', '/features/a-feature/', '/all-features/a-feature/', $this->uncategorized(), $this->uncategorized() ),
 		] );
 	}
 
@@ -512,7 +512,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 		$this->assertTrue( nextjs_revalidate_post( $post, home_url( '/old-category/a-post/' ) ) );
 
-		$this->assertPendingChanges( [ Change::post( $post, 'post', '/old-category/a-post/', '/a-post/' ) ] );
+		$this->assertPendingChanges( [ Change::post( $post, 'post', '/old-category/a-post/', '/a-post/', $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -539,11 +539,19 @@ class DependentPostsTest extends PendingChangesTestCase {
 			foreach ( $before as $post_id => $url ) nextjs_revalidate_post( $post_id, $url );
 		}, 10, 3 );
 
+		$term_before = Change::term_side( 'old-category', Change::uri_of( get_term_link( $category, 'category' ) ) );
 		$this->reset_pending_changes();
 
 		wp_update_term( $category, 'category', [ 'slug' => 'new-category' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post, 'post', '/old-category/a-post/', '/new-category/a-post/' ) ] );
+		// The term's own change comes first (#55): it is reported on
+		// `edited_term` ahead of the theme's callback. The API has no record of
+		// the post's terms before, so both sides list the ones it has (#188).
+		$in_category = Change::post_term( $category, 'category', 'new-category' );
+		$this->assertPendingChanges( [
+			Change::term( $category, 'category', $term_before, Change::term_side( 'new-category', Change::uri_of( get_term_link( $category, 'category' ) ) ) ),
+			Change::post( $post, 'post', '/old-category/a-post/', '/new-category/a-post/', [ $in_category ], [ $in_category ] ),
+		] );
 	}
 
 	public function test_the_api_reports_a_post_as_it_stands_without_a_before() {
@@ -553,7 +561,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 		$this->assertTrue( nextjs_revalidate_post( $post ) );
 
-		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', '/a-post/' ) ] );
+		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', '/a-post/', $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	public function test_the_api_declines_a_post_that_is_not_revalidatable() {

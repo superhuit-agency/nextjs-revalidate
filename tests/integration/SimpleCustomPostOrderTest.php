@@ -56,8 +56,8 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 
 		$this->assertEqualSets(
 			[
-				Change::post( $second, 'post', '/second/', '/second/' ),
-				Change::post( $third, 'post', '/third/', '/third/' ),
+				Change::post( $second, 'post', '/second/', '/second/', $this->uncategorized(), $this->uncategorized() ),
+				Change::post( $third, 'post', '/third/', '/third/', $this->uncategorized(), $this->uncategorized() ),
 			],
 			$this->pending_changes()->pending()
 		);
@@ -82,7 +82,7 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 
 		$this->assertSame( 1, get_post( $second )->menu_order, 'Simple Custom Post Order did not move the post.' );
 
-		$this->assertPendingChanges( [ Change::post( $second, 'post', '/second/', '/second/' ) ] );
+		$this->assertPendingChanges( [ Change::post( $second, 'post', '/second/', '/second/', $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -105,8 +105,8 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 
 		$this->assertEqualSets(
 			[
-				Change::post( $first, 'post', '/first/', '/first/' ),
-				Change::post( $second, 'post', '/second/', '/second/' ),
+				Change::post( $first, 'post', '/first/', '/first/', $this->uncategorized(), $this->uncategorized() ),
+				Change::post( $second, 'post', '/second/', '/second/', $this->uncategorized(), $this->uncategorized() ),
 			],
 			$this->pending_changes()->pending()
 		);

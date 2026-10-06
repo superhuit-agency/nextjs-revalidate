@@ -40,7 +40,7 @@ class PostChangeTest extends PendingChangesTestCase {
 	public function test_publishing_a_post_on_a_configured_site_reports_it() {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish', 'post_title' => 'Straight out' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', null, $this->uri_of( $post_id ) ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', null, $this->uri_of( $post_id ), $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -54,7 +54,7 @@ class PostChangeTest extends PendingChangesTestCase {
 
 		wp_update_post( [ 'ID' => $post_id, 'post_status' => 'publish', 'post_content' => 'Now.' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', null, $this->uri_of( $post_id ) ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', null, $this->uri_of( $post_id ), $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -69,7 +69,7 @@ class PostChangeTest extends PendingChangesTestCase {
 
 		wp_update_post( [ 'ID' => $post_id, 'post_content' => 'A second draft.' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, $uri ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, $uri, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -87,7 +87,7 @@ class PostChangeTest extends PendingChangesTestCase {
 		$after = $this->uri_of( $post_id );
 		$this->assertNotSame( $before, $after, 'The fixture post kept its URI.' );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $before, $after ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $before, $after, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -102,7 +102,7 @@ class PostChangeTest extends PendingChangesTestCase {
 
 		wp_trash_post( $post_id );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, null ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, null, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -116,7 +116,7 @@ class PostChangeTest extends PendingChangesTestCase {
 
 		wp_update_post( [ 'ID' => $post_id, 'post_status' => 'draft' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, null ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, null, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -132,7 +132,7 @@ class PostChangeTest extends PendingChangesTestCase {
 
 		// Nobody is logged in here, so core hands the private post `?p=` —
 		// and its page is still where it was.
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, $uri ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, $uri, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -149,7 +149,7 @@ class PostChangeTest extends PendingChangesTestCase {
 		wp_update_post( [ 'ID' => $post_id, 'post_name' => 'third-name', 'post_content' => 'Three.' ] );
 		wp_update_post( [ 'ID' => $post_id, 'post_name' => 'fourth-name', 'post_content' => 'Four.' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $before, $this->uri_of( $post_id ) ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $before, $this->uri_of( $post_id ), $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -169,7 +169,7 @@ class PostChangeTest extends PendingChangesTestCase {
 		$revision_id = wp_save_post_revision( $post_id );
 		$this->assertNotEmpty( $revision_id, 'No revision was written.' );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, $uri ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $uri, $uri, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**

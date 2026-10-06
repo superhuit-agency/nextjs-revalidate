@@ -64,11 +64,12 @@ with its own secret.
 
 ### The subjects
 
-Every change has a `subject`, and that subject's fields. v2.0 sends seven:
+Every change has a `subject`, and that subject's fields. There are eight:
 
 | Subject | Fields | Sent for |
 | --- | --- | --- |
-| `post` | `id`, `type`, `before`, `after` | a post saved, published, unpublished, trashed or deleted; a post whose page another post's save moved — see [dependent posts](#dependent-posts); a post reordered or reparented by Nested Pages or Simple Custom Post Order; the **Revalidate** row action, bulk action and admin bar entry; `nextjs_revalidate_post()` |
+| `post` | `id`, `type`, `before`, `after` | a post saved, published, unpublished, trashed or deleted; a post's terms written with no save — see [term membership](#term-membership); a post whose page another post's save moved — see [dependent posts](#dependent-posts); a post reordered or reparented by Nested Pages or Simple Custom Post Order; the **Revalidate** row action, bulk action and admin bar entry; `nextjs_revalidate_post()` |
+| `term` | `id`, `taxonomy`, `before`, `after` | a term of a **revalidatable taxonomy** created, edited or deleted; a term whose archive another term's edit or delete moved — see [dependent terms](#dependent-terms); the default term a delete moved posts into |
 | `redirect` | `uri` | a redirect created, edited, deleted, enabled or disabled in Redirection — one change per affected source path |
 | `path` | `uri` | `nextjs_revalidate_path()`, the inbound REST routes, a due scheduled purge, the probe |
 | `menu` | `id`, `locations` | a classic menu saved; a block menu (`wp_navigation`) saved, trashed, restored or deleted |
@@ -80,7 +81,8 @@ Every change has a `subject`, and that subject's fields. v2.0 sends seven:
 {
   "version": 2,
   "changes": [
-    { "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/" }, "after": { "uri": "/hello-world/" } },
+    { "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/", "terms": [ { "id": 7, "taxonomy": "category", "slug": "video" } ] }, "after": { "uri": "/hello-world/", "terms": [ { "id": 9, "taxonomy": "category", "slug": "podcast" } ] } },
+    { "subject": "term", "id": 7, "taxonomy": "category", "before": { "slug": "video", "uri": "/category/video/" }, "after": { "slug": "videos", "uri": "/category/videos/" } },
     { "subject": "redirect", "uri": "/old-path/" },
     { "subject": "path", "uri": "/feeds/events/" },
     { "subject": "menu", "id": 7, "locations": [ "primary" ] },
@@ -98,8 +100,13 @@ Every field, and when it is `null`:
 | any | `subject` | string | Which subject changed. |
 | `post` | `id` | integer | The post's ID. |
 | `post` | `type` | string | Its post type, as registered: `post`, `page`, `event`… |
-| `post` | `before` | `{ uri }` or `null` | Where the front-end showed the post before the change. `null` when it was not on the front-end — a publish. |
-| `post` | `after` | `{ uri }` or `null` | Where the front-end shows it after. `null` when it is no longer there — unpublished, trashed or deleted alike, since the page is gone either way. |
+| `post` | `before` | `{ uri, terms }` or `null` | Where the front-end showed the post before the change, and the terms it was in. `null` when it was not on the front-end — a publish. |
+| `post` | `after` | `{ uri, terms }` or `null` | Where the front-end shows it after, and the terms it is in. `null` when it is no longer there — unpublished, trashed or deleted alike, since the page is gone either way. |
+| `post` | `terms` | `{ id, taxonomy, slug }[]` | On each side, the post's terms in **revalidatable taxonomies** — the archives it appears in — sorted by taxonomy then ID. `[]` when it is in none. |
+| `term` | `id` | integer | The term's ID. |
+| `term` | `taxonomy` | string | Its taxonomy, as registered: `category`, `post_tag`, `genre`… |
+| `term` | `before` | `{ slug, uri }` or `null` | The term's slug, and where its archive was, before the change. `null` when it was not there — a term just created. |
+| `term` | `after` | `{ slug, uri }` or `null` | Its slug, and where its archive is, after. `null` when it is no longer there — a term deleted. |
 | `redirect` | `uri` | string | A source path whose redirect changed. |
 | `path` | `uri` | string | A path somebody reported as changed, without saying what is there. |
 | `menu` | `id` | integer | The term ID of a classic menu, or the post ID of a block menu. The two can collide: nothing tells them apart, and a front-end tagging menus by ID expires one extra entry at worst. |
@@ -121,6 +128,23 @@ Every field, and when it is `null`:
   `before`, and anything that takes the page away no `after`. The row action,
   bulk action and admin bar entry report a post as it stands, with both sides its
   current URI.
+- **A post's `terms`** are on both sides of every post change, whatever
+  produced it. Expire the archive of every term on either side: a publish
+  reaches the archives the post joined, an unpublish, a trash or a delete the
+  ones it left, a move from *Video* to *Podcast* both, and an edit the ones
+  whose listings show its title. A producer with no record of the post's terms
+  before — the row action, a dependent post, `nextjs_revalidate_post()` — lists
+  the terms it has now on both sides.
+- **A term's `before` and `after`** compare the same way: an edit of its name
+  or description has two equal sides, a slug change two different slugs and
+  URIs, a creation no `before`, a delete no `after`. `slug` is there for a
+  front-end tagging terms by slug, whose entries still carry the old one after
+  a slug change.
+- **A term's change never names the posts in it**, however many there are. A
+  rename or a delete is one change, so **a front-end must tag whatever shows a
+  term — its archive, a badge or a term list on a post's page — with that
+  term's tag**, and expire it on the term's change. One that tags only the
+  archive leaves every post page showing the old name.
 - **`templates`** never names which template changed: the front-end holds the
   whole template structure as one value, the **FSE snapshot**.
 - **`settings`** never names which setting changed: it says something every
@@ -168,7 +192,8 @@ onto an example tag scheme and expires each tag with `revalidateTag( tag, 'max' 
 
 | Change | Tags expired |
 | --- | --- |
-| `post` | `node:{id}` and `type:{type}`; and `uris` when `before.uri` and `after.uri` differ — a publish, an unpublish, a trash, a delete or a slug change |
+| `post` | `node:{id}`, `type:{type}`, and `term:{id}` for every term on either side; and `uris` when `before.uri` and `after.uri` differ — a publish, an unpublish, a trash, a delete or a slug change |
+| `term` | `term:{id}`; and `uris` when `before.uri` and `after.uri` differ — a creation, a delete, a slug change or a move |
 | `redirect`, `path` | `uris` |
 | `menu` | `menu:{id}`, whatever its locations |
 | `templates` | `templates` |
@@ -301,8 +326,9 @@ It is never a statement about the front-end. A `true` says the plugin will try.
 Reports a post as changed, from the URI it had to the one it has now: a
 **post** change, for a post whose permalink moved without the post being saved.
 The case it is for is a permalink a theme builds from a term, through a
-`post_type_link` filter — the plugin reports nothing when a term changes, so the
-theme reads the permalink before the term changes and reports it after. A
+`post_type_link` filter — a term's change reports the term and never the posts
+built from it, so the theme reads the permalink before the term changes and
+reports it after. A
 permalink built from another *post* is better named through
 [`nextjs_revalidate_dependent_posts`](#nextjs_revalidate_dependent_posts), which
 reads both sides itself.
@@ -475,7 +501,7 @@ A revalidated post is reported as a `post` change, which describes the post as
 the front-end sees it before and after:
 
 ```json
-{ "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/" }, "after": { "uri": "/hello-world/" } }
+{ "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/", "terms": [ { "id": 7, "taxonomy": "category", "slug": "video" } ] }, "after": { "uri": "/hello-world/", "terms": [ { "id": 7, "taxonomy": "category", "slug": "video" } ] } }
 ```
 
 `uri` is the path from the domain root. A side is `null` when the post is not on
@@ -491,6 +517,32 @@ attachment is never reported.
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
 
+### Term membership
+
+Each side of a post change lists the post's terms on that side — its terms in
+the [revalidatable taxonomies](#which-terms-are-revalidated), each as
+`{ id, taxonomy, slug }`, sorted by taxonomy then ID — so the front-end reaches
+every archive the post is in, joined or left. A save that moves a post from
+*Video* to *Podcast* lists *Video* in `before.terms` and *Podcast* in
+`after.terms`; a title edit lists the same terms on both sides.
+
+A post's terms written with **no save** — an import, a plugin, Polylang's
+synchronisation, calling `wp_set_object_terms()`, `wp_add_object_terms()` or
+`wp_remove_object_terms()` — are a change of that post too, reported where it
+stands with the terms it had before the write and the ones it has after:
+
+```json
+{ "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/", "terms": [ { "id": 7, "taxonomy": "category", "slug": "video" } ] }, "after": { "uri": "/hello/", "terms": [ { "id": 9, "taxonomy": "category", "slug": "podcast" } ] } }
+```
+
+Only a post with a page — a revalidatable post, `publish` or `private` — is
+reported, and only when its terms in a revalidatable taxonomy changed: a draft's,
+or a write that sets the terms a post already has, reports nothing. A post also
+saved in the same request is one change, from its terms before the first to its
+terms after the last. The one exception is a term's delete: the posts it moves
+are not reported, since the deleted term's own change reaches whatever showed
+it, and the default term's reaches the archive the posts moved into.
+
 ### Dependent posts
 
 A post's page can move without the post being saved. A child page's permalink is
@@ -500,8 +552,8 @@ its own, after the saved post's, with the URI it had before the save and the one
 it has after:
 
 ```json
-{ "subject": "post", "id": 42, "type": "page", "before": { "uri": "/about/" }, "after": { "uri": "/company/" } }
-{ "subject": "post", "id": 43, "type": "page", "before": { "uri": "/about/team/" }, "after": { "uri": "/company/team/" } }
+{ "subject": "post", "id": 42, "type": "page", "before": { "uri": "/about/", "terms": [] }, "after": { "uri": "/company/", "terms": [] } }
+{ "subject": "post", "id": 43, "type": "page", "before": { "uri": "/about/team/", "terms": [] }, "after": { "uri": "/company/team/", "terms": [] } }
 ```
 
 By default these are the descendants of a post of a hierarchical type whose
@@ -586,9 +638,47 @@ and one registered the other way round is. A headless site can say
 otherwise with the filter below, which is consulted for every registered
 taxonomy and can admit one WordPress would never route.
 
-Nothing else revalidates a term: this plugin does not react to a term being
-created, edited or deleted, so a term archive goes stale until somebody
-revalidates all.
+Creating, editing or deleting a term of a revalidatable taxonomy reports a
+`term` change, carrying its slug and the URI of its archive before and after:
+
+```json
+{ "subject": "term", "id": 42, "taxonomy": "category", "before": { "slug": "video", "uri": "/category/video/" }, "after": { "slug": "videos", "uri": "/category/videos/" } }
+```
+
+A creation has no `before` and a delete no `after`. An edit that moves nothing —
+the name, the description — has two equal sides and is reported all the same: the
+front-end shows the name. A term edited twice in one request is reported once,
+from the first `before` to the last `after`, and a term created and deleted in
+the same request is not reported at all. Terms of a taxonomy that is not
+revalidatable are never reported.
+
+A term's change never reports the posts in it. Deleting a category with 5,000
+posts is one change: the pages that show it carry its tag on the front-end. The
+one addition is the taxonomy's **default term** — *Uncategorized* — reported
+once, with equal sides, when the delete moved posts into it, because its
+archive gained them.
+
+### Dependent terms
+
+A child term's archive URI is its parent's plus its own slug, so changing a
+term's slug or parent moves every descendant's archive without editing any of
+them, and so does deleting it: WordPress moves its children up a level. Each
+descendant whose URI moved is reported as a `term` change of its own, after the
+term's, from the URI it had to the one it has:
+
+```json
+{ "subject": "term", "id": 42, "taxonomy": "category", "before": { "slug": "media", "uri": "/category/media/" }, "after": { "slug": "press", "uri": "/category/press/" } }
+{ "subject": "term", "id": 43, "taxonomy": "category", "before": { "slug": "video", "uri": "/category/media/video/" }, "after": { "slug": "video", "uri": "/category/press/video/" } }
+```
+
+An edit that moves nothing reports the edited term alone.
+
+A post whose *permalink* contains a term — a `%category%` permalink structure,
+or a theme's `post_type_link` filter — also moves when the term's slug changes,
+and is not reported: reading every post of the term before the edit is the
+enumeration a term's change avoids
+([ADR 0040](docs/adr/0040-a-term-reports-itself-and-a-post-the-terms-it-is-in.md)).
+Report such a post with [`nextjs_revalidate_post()`](#nextjs_revalidate_post).
 
 **On a headless site, viewable is not the same as displayed.** A taxonomy
 registered `public => false` and exposed in WPGraphQL is rendered by the
@@ -768,6 +858,27 @@ Nothing else in the `polylang` option reports a change. `hide_default`,
 all, which moves pages between paths rather than changing what every page
 renders; `version` and the rest are Polylang's bookkeeping.
 
+**A language is never reported as a term.** The `language` taxonomy is
+publicly queryable, so it would otherwise be a
+[revalidatable taxonomy](#which-terms-are-revalidated) like any other: adding a
+language would report a `term` change next to its `settings` one, and every
+translated post would list its language in `terms`, so every save would expire
+whatever carries that language's term — a language switcher, or every page of
+the language. The integration declines it through
+[`nextjs_revalidate_should_revalidate_taxonomy`](#nextjs_revalidate_should_revalidate_taxonomy)
+instead, which also leaves it out of the `taxonomies` revalidate all of a post
+type names: what a language changes is reported as the `settings` change above.
+A post's other terms — its categories and tags — are reported as on any site.
+Polylang's other taxonomies, which store translation groups, are not publicly
+queryable and were never revalidatable. A front-end that does tag pages with a
+language's term can admit the taxonomy again from a later priority:
+
+```php
+add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_revalidate, $taxonomy_name ) {
+	return 'language' === $taxonomy_name ? true : $should_revalidate;
+}, 20, 2 );
+```
+
 With **synchronisation** on, Polylang copies what you chose — the parent, the
 order, the date, custom fields, the featured image, terms — to a post's
 translations with direct SQL and the meta and term APIs, and saves none of them:
@@ -899,6 +1010,10 @@ add_filter( 'nextjs_revalidate_should_revalidate_post', function( $should_revali
 Filters whether the archive pages of the given taxonomy's terms are revalidated.
 Applied last, and consulted for every registered taxonomy, so it can admit a
 taxonomy that is not `publicly_queryable` as readily as decline one that is.
+Its verdict covers a term's own `term` change, the post `terms` the taxonomy's
+terms appear in, and the `taxonomies` revalidate all of a post type names.
+The [Polylang](#polylang) integration hooks it at the default priority to
+decline Polylang's `language` taxonomy.
 
 #### Usage
 ```php

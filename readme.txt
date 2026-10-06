@@ -152,6 +152,29 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
+= 2.1.0 =
+
+New subjects and fields in the request to the front-end, which a route written
+for 2.0 ignores. The contract version stays 2. The full notes are in
+CHANGELOG.md on GitHub.
+
+* Added: a `term` change. Creating, editing or deleting a term of a
+  revalidatable taxonomy reports its slug and archive URI before and after,
+  with each descendant whose archive moved, and the default term a delete moved
+  posts into. A term's change never reports the posts in it: tag whatever shows
+  a term with that term's tag. The reference route tags it `term:{id}`.
+* Added: `terms` on each side of a post change — the post's terms in
+  revalidatable taxonomies — so the front-end reaches the archives a post
+  joined and the ones it left. A post's terms written with no save, by an
+  import, a plugin or Polylang's synchronisation, are now reported as that
+  post's change.
+* Changed: with Polylang, its `language` taxonomy is no longer revalidated as
+  a taxonomy. A language is a site setting, reported as a settings change, so it
+  is not reported as a term, not listed in a post's terms, and no longer named
+  by revalidate all of a post type. The Polylang integration declines it through
+  the `nextjs_revalidate_should_revalidate_taxonomy` filter, which a site can
+  use to admit it again.
+
 = 2.0.1 =
 
 * Fixed: a 307 or a 308 to the front-end's own origin whose `Location` is an

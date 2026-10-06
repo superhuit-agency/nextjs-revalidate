@@ -72,6 +72,9 @@ function njr_test_post( $post_id ) {
 	return $GLOBALS['njr_test_posts'][ $post_id ] ?? null;
 }
 
+// A post's term membership (#188): the posts here are in no taxonomy.
+function get_object_taxonomies( $object, $output = 'names' ) { return []; }
+
 function get_post_type( $post_id ) {
 	$post = njr_test_post( $post_id );
 	return $post ? $post['type'] : false;
