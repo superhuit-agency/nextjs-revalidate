@@ -96,6 +96,13 @@ field, which a front-end written for 2.0 ignores (rule 1 of the
   nothing. Each descendant whose URI moved is now reported as its own `post`
   change, from its old URI to its new one, as a save that renames or moves a
   parent already did (#144).
+- **Revalidate all with no referer sends you back instead of printing a
+  warning.** It redirects back to the screen it came from, and to the posts list
+  when the browser sends no referer — a link opened in a new tab with
+  `noreferrer`, a bookmarked action URL. On that fallback it read a post it
+  never names, raising an `Undefined array key "post"` warning; where warnings
+  are displayed, it was printed before the redirect, which then failed, leaving
+  a page of warnings where the notice should have been.
 
 ## 2.0.0
 

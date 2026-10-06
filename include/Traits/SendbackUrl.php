@@ -15,7 +15,11 @@ trait SendbackUrl {
 
 		if ( ! $sendback ) {
 			$sendback = admin_url( 'edit.php' );
-			$post_type = get_post_type($_GET['post']);
+
+			// The post the request names, when it names one: revalidate all
+			// names none, and a bulk action names a list.
+			$post_id   = ( isset( $_GET['post'] ) && is_scalar( $_GET['post'] ) ) ? absint( $_GET['post'] ) : 0;
+			$post_type = $post_id ? get_post_type( $post_id ) : false;
 			if ( ! empty( $post_type ) ) {
 				$sendback = add_query_arg( 'post_type', $post_type, $sendback );
 			}

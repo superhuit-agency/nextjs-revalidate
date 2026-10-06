@@ -223,6 +223,10 @@ CHANGELOG.md on GitHub.
   whose URI that moved, from its old URI to its new one, as a save that renames
   or moves the parent already did. Before, only the parent was reported, and
   deleting a parent already in the trash reported nothing.
+* Fixed: revalidate all, opened with no referer such as from a bookmarked
+  link, raised an `Undefined array key "post"` warning. Where warnings are
+  displayed, it broke the redirect back and left a page of warnings instead of
+  the notice.
 
 = 2.0.0 =
 
