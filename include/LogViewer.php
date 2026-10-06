@@ -160,7 +160,12 @@ class LogViewer implements Hookable {
 		$log     = null === $tail['log'] ? [] : $tail['log']['lines'];
 		$archive = null === $tail['archive'] ? [] : $tail['archive']['lines'];
 
-		if ( [] === $log && [] === $archive ) {
+		// Decided on the files' counts, not on the lines read: a last line too
+		// long for the read cap leaves none to show, and the file is not empty.
+		$log_total     = null === $tail['log'] ? 0 : $tail['log']['total'];
+		$archive_total = null === $tail['archive'] ? 0 : $tail['archive']['total'];
+
+		if ( 0 === $log_total && 0 === $archive_total ) {
 			return sprintf(
 				'<p class="njr-log-viewer__note">%s</p>',
 				esc_html(
@@ -173,8 +178,8 @@ class LogViewer implements Hookable {
 			);
 		}
 
-		if ( [] === $archive ) {
-			// The log alone — non-empty, or the note above would have been
+		if ( 0 === $archive_total ) {
+			// The log alone — holding lines, or the note above would have been
 			// returned: how much of it this is.
 			$status = sprintf(
 				/* translators: 1: how many lines are shown, 2: how many lines the log holds, 3: the size of the log, e.g. 1.2 MB, 4: the time the log was read, e.g. 14:05:09 */
