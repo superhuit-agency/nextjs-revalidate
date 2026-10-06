@@ -155,6 +155,8 @@ require_once __DIR__ . '/../include/Traits/SendbackUrl.php';
 require_once __DIR__ . '/../include/Traits/BlockEditorScreen.php';
 require_once __DIR__ . '/../include/Traits/FrontEndRequest.php';
 require_once __DIR__ . '/../include/Logger.php';
+require_once __DIR__ . '/../include/LogTail.php';
+require_once __DIR__ . '/../include/LogViewer.php';
 require_once __DIR__ . '/../include/I18n.php';
 require_once __DIR__ . '/../include/Assets.php';
 require_once __DIR__ . '/../include/Settings.php';
