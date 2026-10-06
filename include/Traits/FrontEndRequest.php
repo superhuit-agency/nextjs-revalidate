@@ -224,8 +224,12 @@ trait FrontEndRequest {
 	 */
 	protected static function basic_auth( $url ) {
 
-		// `credentials()` keeps the `@`, which is no part of either.
-		$credentials = substr( self::credentials( $url ), 0, -1 );
+		// `credentials()` keeps the `@`, which is no part of either. `rtrim()`
+		// rather than `substr( …, 0, -1 )`, which answers false for '' on PHP
+		// 7.4 — and false is not '', so a URL with no credentials would send
+		// `Basic Og==`. Only the one `@` goes: a user or password cannot end
+		// in an unencoded one.
+		$credentials = rtrim( self::credentials( $url ), '@' );
 		if ( '' === $credentials || ':' === $credentials ) return '';
 
 		// The first `:` ends the user: a user cannot hold one unencoded, and a
