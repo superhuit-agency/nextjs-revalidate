@@ -238,6 +238,13 @@ class Logger {
 	 * that opened the new log finds it small. A rename that fails is left to
 	 * fail: the line is written to whatever log is there, and nothing is lost.
 	 *
+	 * Opened for writing as well as reading, though nothing is written through
+	 * it: where `flock()` is emulated with `fcntl()` locks — NFS on Linux — an
+	 * exclusive lock needs a file open for writing. Where the lock is refused
+	 * anyway, the same check is made without it, which leaves a narrow window
+	 * for two writers but still rotates: a log that never rotates is the
+	 * failure this exists to prevent.
+	 *
 	 * @return void
 	 */
 	private static function rotate() {
@@ -250,23 +257,24 @@ class Logger {
 		clearstatcache( true, $path );
 		if ( ! is_file( $path ) || filesize( $path ) < $limit ) return;
 
-		$handle = @fopen( $path, 'r' );
+		// Never 'w' or 'a': it must neither truncate the log nor create one.
+		$handle = @fopen( $path, 'r+' );
 		if ( false === $handle ) return;
 
-		if ( flock( $handle, LOCK_EX ) ) {
-			clearstatcache( true, $path );
-			$found   = fstat( $handle );
-			$current = @stat( $path );
+		$locked = flock( $handle, LOCK_EX );
 
-			$unmoved = is_array( $found ) && is_array( $current )
-				&& $found['ino'] === $current['ino']
-				&& $found['dev'] === $current['dev']
-				&& $current['size'] >= $limit;
+		clearstatcache( true, $path );
+		$found   = fstat( $handle );
+		$current = @stat( $path );
 
-			if ( $unmoved ) @rename( $path, self::archive_path() );
+		$unmoved = is_array( $found ) && is_array( $current )
+			&& $found['ino'] === $current['ino']
+			&& $found['dev'] === $current['dev']
+			&& $current['size'] >= $limit;
 
-			flock( $handle, LOCK_UN );
-		}
+		if ( $unmoved ) @rename( $path, self::archive_path() );
+
+		if ( $locked ) flock( $handle, LOCK_UN );
 
 		fclose( $handle );
 	}
