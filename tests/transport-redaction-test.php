@@ -4,7 +4,8 @@
  * `Traits\FrontEndRequest`.
  *
  * Every request this plugin makes carries the secret, in the `POST`'s
- * `Authorization` header, and two of the outcomes the trait answers carry a
+ * `Authorization` header — or, for a domain with credentials, in
+ * `X-Nextjs-Revalidate-Secret` — and two of the outcomes the trait answers carry a
  * string of *arbitrary origin* back with them: `unreachable` carries whatever the HTTP transport said, and `exception`
  * carries whatever anything in the request path threw. Those strings reach an
  * admin notice, a REST response and a log file in `wp-content/uploads` that
@@ -299,6 +300,25 @@ foreach (
 
 	njr_test_assert( false === strpos( $message, $secret ), "$what from the POST quoting the Authorization header does not carry the secret out" );
 	njr_test_assert( false !== strpos( $message, 'Bearer ***' ), "$what from the POST keeps the rest of the message" );
+}
+
+// A domain with credentials sends the secret bare, in a header of its own
+// (ADR 0042). The by-value pass is no respecter of header names, so a message
+// quoting that one back loses the secret just the same.
+foreach (
+	[
+		'a transport error' => njr_test_transport_error( "refused: X-Nextjs-Revalidate-Secret: $secret" ),
+		'a throw'           => njr_test_throw( "cannot send header X-Nextjs-Revalidate-Secret: $secret" ),
+	] as $what => $response
+) {
+	$GLOBALS['njr_test_secret']   = $secret;
+	$GLOBALS['njr_test_response'] = $response;
+
+	$outcome = ( new NextJsRevalidate_Test_Transport() )->send_changes( 'https://runbook:p%40ss@front-end.test/api/revalidate' );
+	$message = is_wp_error( $outcome ) ? $outcome->get_error_message() : '';
+
+	njr_test_assert( false === strpos( $message, $secret ), "$what quoting X-Nextjs-Revalidate-Secret does not carry the secret out" );
+	njr_test_assert( false !== strpos( $message, 'X-Nextjs-Revalidate-Secret: ***' ), "$what quoting X-Nextjs-Revalidate-Secret keeps the rest of the message" );
 }
 
 // The seam

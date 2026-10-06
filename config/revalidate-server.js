@@ -23,12 +23,17 @@ app.get('/revalidate', (req, res) => {
 	}
 });
 
-// v2's request: a site's pending changes, all at once, the secret as a bearer
-// token (ADR 0033, ADR 0034). One line per request, naming every change it
-// carried, so "exactly one request" is something the console can show. A real
-// Next.js app maps each change onto the cache tags it expires here.
-app.post('/revalidate', express.json(), (req, res) => {
-	if (req.get('Authorization') !== `Bearer ${secret}`) {
+// v2's request: a site's pending changes, all at once (ADR 0033, ADR 0034). The
+// secret is read from its own header when the request has it, and as a bearer
+// token otherwise, as the README's contract says (ADR 0042). One line per
+// request, naming every change it carried, so "exactly one request" is
+// something the console can show. A real Next.js app maps each change onto the
+// cache tags it expires here.
+const revalidateV2 = (req, res) => {
+	const own = req.get('X-Nextjs-Revalidate-Secret');
+	const authorised = own !== undefined ? own === secret : req.get('Authorization') === `Bearer ${secret}`;
+
+	if (!authorised) {
 		res.status(401).json({ message: 'Invalid token' });
 	} else if (!req.body || req.body.version !== 2 || !Array.isArray(req.body.changes)) {
 		res.status(400).json({ message: 'Not a version 2 request' });
@@ -37,6 +42,23 @@ app.post('/revalidate', express.json(), (req, res) => {
 		console.log(`= Revalidating (v2): ${startGreen}${changes}${endGreen}`);
 		res.status(204).end();
 	}
+};
+
+app.post('/revalidate', express.json(), revalidateV2);
+
+// A front-end behind basic auth, as a password-protected staging host is: the
+// credentials are `runbook` and `p@ss`, so a revalidate domain carries them as
+// `http://runbook:p%40ss@…` and the plugin has to decode them. Without them it
+// answers 401 before the secret is looked at.
+const basicAuth = `Basic ${Buffer.from('runbook:p@ss').toString('base64')}`;
+
+app.post('/behind-basic-auth', express.json(), (req, res) => {
+	if (req.get('Authorization') !== basicAuth) {
+		res.set('WWW-Authenticate', 'Basic realm="staging"').status(401).json({ message: 'Basic auth required' });
+		return;
+	}
+
+	revalidateV2(req, res);
 });
 
 // A front-end whose route moved, as a Next.js app with `trailingSlash: true`

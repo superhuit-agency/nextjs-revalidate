@@ -173,7 +173,7 @@ export interface RevalidateRequest {
 const SECRET = process.env.REVALIDATE_SECRET ?? "";
 
 export async function POST(request: Request): Promise<Response> {
-	if (!authorised(request.headers.get("authorization"))) {
+	if (!authorised(request.headers)) {
 		return answer(401, { error: "The secret does not match." });
 	}
 
@@ -325,16 +325,29 @@ function allTags(change: AllChange): string[] {
 // ====
 
 /**
- * Whether the `Authorization` header carries the secret, compared in constant
- * time. A site with no secret configured here authorises nothing.
+ * Whether the request carries the secret, compared in constant time. A site
+ * with no secret configured here authorises nothing.
+ *
+ * `X-Nextjs-Revalidate-Secret` first, holding the bare secret: the plugin sends
+ * it there when its revalidate domain has basic-auth credentials, which take
+ * `Authorization` — and behind a proxy checking them, `Authorization` is the
+ * proxy's `Basic`. Otherwise `Authorization: Bearer <secret>`.
  */
-function authorised(header: string | null): boolean {
-	if (SECRET === "" || header === null) return false;
+function authorised(headers: Headers): boolean {
+	if (SECRET === "") return false;
 
-	const given = Buffer.from(header);
-	const expected = Buffer.from(`Bearer ${SECRET}`);
+	const own = headers.get("x-nextjs-revalidate-secret");
+	if (own !== null) return matches(own, SECRET);
 
-	return given.length === expected.length && timingSafeEqual(given, expected);
+	const authorization = headers.get("authorization");
+	return authorization !== null && matches(authorization, `Bearer ${SECRET}`);
+}
+
+function matches(given: string, expected: string): boolean {
+	const a = Buffer.from(given);
+	const b = Buffer.from(expected);
+
+	return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

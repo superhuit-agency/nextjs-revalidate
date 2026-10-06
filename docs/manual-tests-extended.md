@@ -56,6 +56,21 @@ published page.
       address starting with http:// or https://, such as https://example.com.",
       no "Settings saved." notice, and the domain field still showing the domain
       held before the save.
+- [ ] **Put the front-end behind basic auth**: set the domain to
+      `http://runbook:p%40ss@host.docker.internal:8083` and the path to
+      `/behind-basic-auth`, which the dev server answers 401 unless the request
+      carries `Authorization: Basic` for `runbook` / `p@ss`. Save, then on
+      **Probe** send a probe of `/runbook-post/`. Expect the success notice
+      "The front-end rebuilt http://localhost:8080/runbook-post/." and
+      `= Revalidating (v2): {"subject":"path","uri":"/runbook-post/"}` in the
+      console: the credentials went as basic auth, decoded, and the secret in
+      its own header. A `http_401` here is the bug 2.1.0 fixed.
+- [ ] **Update a post, with logs on.** Expect `✅ Revalidated 1 change (post)`
+      in the log and the post change in the console.
+- [ ] **Change the domain's password to `wrong`** —
+      `http://runbook:wrong@host.docker.internal:8083` — save, and probe again.
+      Expect "The front-end did not rebuild … The front-end answered 401.
+      (http_401)": the route really is checking the credentials.
 - [ ] **Restore the path to `/revalidate` and the domain to its seeded value.**
 
 ## B. The probe

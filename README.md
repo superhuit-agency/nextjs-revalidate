@@ -47,11 +47,29 @@ Content-Type: application/json
 { "version": 2, "changes": [ … ] }
 ```
 
-- **`Authorization`** carries the site's revalidate secret, after `Bearer `. It
-  is never sent in the URL or the body.
+- **`Authorization`** carries the site's revalidate secret, after `Bearer ` —
+  unless the revalidate domain has basic-auth credentials, below. It is never
+  sent in the URL or the body.
 - **`version`** is the contract version, `2`. See the rules below.
 - **`changes`** is a non-empty array of changes, one object per subject that
   changed.
+
+**A front-end behind basic auth** has its credentials in the revalidate domain —
+`https://user:pass@staging.example.com`. They need `Authorization`, so for that
+domain the request sends them there as `Authorization: Basic …`, and the secret,
+bare, in its own header instead:
+
+```http
+Authorization: Basic <base64(user:pass)>
+X-Nextjs-Revalidate-Secret: <secret>
+```
+
+The secret is in exactly one of the two headers. Read
+`X-Nextjs-Revalidate-Secret` when the request has it, and
+`Authorization: Bearer` otherwise — in that order, because behind a proxy that
+checks the credentials, `Authorization` is the proxy's `Basic`. The
+[reference route](examples/next/app/api/revalidate/route.ts) reads both
+([ADR 0042](docs/adr/0042-a-domain-with-credentials-moves-the-secret-to-its-own-header.md)).
 
 The changes are the **pending changes** of the WordPress request that produced
 them, delivered when that request ends — after the editor has had their answer,

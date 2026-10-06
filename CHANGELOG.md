@@ -8,8 +8,32 @@ site has to do about it. Releases before 2.0.0 are listed in the changelog of
 
 Contract version **2**, unchanged: everything below is a new subject or a new
 field, which a front-end written for 2.0 ignores (rule 1 of the
-[front-end contract](README.md#two-rules)).
+[front-end contract](README.md#two-rules)) — except on a site whose revalidate
+domain has basic-auth credentials, which has to read the secret from a new
+header (the **Act on it** entry below).
 
+- **Fixed:** a front-end behind basic auth, with its credentials in the
+  revalidate domain (`https://user:pass@staging.example.com`), is reached again.
+  Since 2.0.0 every request carried `Authorization: Bearer <secret>`, which
+  replaced the `Authorization: Basic` header the transport would have built from
+  the domain's credentials — on the fsockopen transport they were never sent at
+  all — so the front-end answered every delivery and every probe 401. For a
+  domain with credentials, the plugin now sends them itself as
+  `Authorization: Basic`, percent-decoded, and the secret, bare, in
+  `X-Nextjs-Revalidate-Secret`, on every hop of a followed redirect. That also
+  lets 2.0.1's carrying of the credentials across a redirect (#184) take effect.
+  A domain without credentials sends exactly what 2.0 sent
+  ([ADR 0042](docs/adr/0042-a-domain-with-credentials-moves-the-secret-to-its-own-header.md),
+  #199). The README's reference route reads `X-Nextjs-Revalidate-Secret` first,
+  then `Authorization: Bearer`.
+- **Act on it:** a revalidate domain that **still has credentials its front-end
+  no longer checks** — basic auth lifted, or never checked on the revalidate
+  route — worked on 2.0, because `Bearer` reached a route that read only
+  `Authorization`. From 2.1.0 its secret arrives in
+  `X-Nextjs-Revalidate-Secret`, and that route answers 401. **Before
+  upgrading**, either update the route to read the new header, as the
+  [front-end contract](README.md#the-request) says, or take the credentials out
+  of the domain.
 - **Added:** a `term` change. Creating, editing or deleting a term of a
   revalidatable taxonomy reports its slug and the URI of its archive before and
   after — `null` before a creation and after a delete, equal sides for a name
