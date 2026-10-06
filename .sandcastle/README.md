@@ -82,15 +82,39 @@ that hold when nobody is watching, is
 
 The run narrates itself on stdout: the batch, the plan, a freshness line per
 branch, then an outcome per item. **That summary is the only place the whole pass
-is visible at once, and the only place a failing gate says why** — keep it:
+is visible at once, and the only place a failing gate says why** — so every pass
+keeps it, in a file of its own:
 
-```sh
-npm run sandcastle 2>&1 | tee .sandcastle/logs/run.log
+```
+.sandcastle/logs/run-<timestamp>.log      # e.g. run-2026-09-17T21-04-05.678Z.log
 ```
 
+One new file per pass, `--dry-run` included, named by when the pass started in
+UTC — `ls` lists them oldest first, and no pass touches another's. It holds
+everything the pass printed on stdout and stderr, colour codes removed, and lines
+of its own starting `[run-log <time>]`: the pass starting, each phase it entered
+(`start-up`, `pre-flight`, `plan`, `freshness`, `implement`, `merge`,
+`finalize`), and each item the implement phase started, with its transcript's
+path. The terminal shows none of those; it looks as it always did.
+
+**The last record says how the pass ended, and the last phase it reached:**
+
+| Final record | Meaning |
+| --- | --- |
+| `pass ended normally with exit code <n>` | ran to its end — the exit codes below say how it went |
+| `pass ended by process.exit(<n>)` | a refusal; the line printed just before it says why |
+| `pass ended by an uncaught exception (origin: …)` | a crash; its stack follows. A throw out of the harness reports as `unhandledRejection` |
+| `pass ended by SIGINT` (or `SIGTERM`, `SIGHUP`) | interrupted — Ctrl-C, a `kill`, the terminal closing. With an exit code when sandcastle tore its containers down first |
+
+A run log with no final record means the process got no chance to write one:
+`kill -9`, or the machine going down. Not in it either: output the harness hands
+straight to the terminal rather than printing itself — the sandbox image build's.
+
 Per-item agent transcripts land in `.sandcastle/logs/issue-<n>.log` — what the
-implementer did inside its container. The gate's output is *not* there; the
-transcript ends when the agent stops.
+implementer did inside its container. They are appended to by every pass that
+works the issue; the run log's `implement: #<n> started` line says when this
+pass's share began. The gate's output is *not* there; the transcript ends when
+the agent stops.
 
 Four outcomes per item:
 
@@ -133,8 +157,8 @@ in progress, and gets built on and shipped in that issue's PR. If a
 origin) before the run. A branch with an **open PR** is safe and should be left
 alone; its issue is pruned from the batch.
 
-Killed mid-run: work branches are local until finalize pushes them, so nothing
-is at risk. A bare `sandcastle/epic-<n>` may have been created on origin — leave
+Killed mid-run: the run log's last record names the phase it was in. Work
+branches are local until finalize pushes them, so nothing is at risk. A bare `sandcastle/epic-<n>` may have been created on origin — leave
 it, the next pass adopts it. Leftover containers and worktrees are cleared for
 you at the start of the next pass:
 
