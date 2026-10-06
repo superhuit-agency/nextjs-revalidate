@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: Next.js Revalidate\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/nextjs-"
 "revalidate\n"
-"POT-Creation-Date: 2026-09-28T14:53:17+00:00\n"
+"POT-Creation-Date: 2026-10-06T09:13:51+00:00\n"
 "PO-Revision-Date: 2026-09-24 12:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -77,7 +77,7 @@ msgstr "Dernière erreur : %s."
 msgid "Other errors occurred as well."
 msgstr "D'autres erreurs se sont également produites."
 
-#: include/FailureWindow.php:308 include/Settings.php:786
+#: include/FailureWindow.php:308 include/Settings.php:805
 msgid "Please contact a site administrator."
 msgstr "Veuillez contacter un administrateur du site."
 
@@ -98,6 +98,63 @@ msgstr "le front-end a rejeté le secret"
 #, php-format
 msgid "the front-end answered %s"
 msgstr "le front-end a répondu %s"
+
+#: include/LogViewer.php:75
+msgid "Sorry, you are not allowed to read the log of this site."
+msgstr "Désolé, vous n’êtes pas autorisé(e) à lire le journal de ce site."
+
+#: include/LogViewer.php:85 include/LogViewer.php:111
+msgid "This page has expired. Reload it to refresh the log."
+msgstr "Cette page a expiré. Rechargez-la pour actualiser le journal."
+
+#: include/LogViewer.php:108
+msgid "Live refresh stopped: logging has been switched off."
+msgstr "Actualisation en direct arrêtée : la journalisation a été désactivée."
+
+#: include/LogViewer.php:109
+msgid ""
+"Live refresh stopped: this page has expired. Reload it to refresh the log."
+msgstr "Actualisation en direct arrêtée : cette page a expiré. Rechargez-la pour actualiser le journal."
+
+#: include/LogViewer.php:110
+msgid "Live refresh stopped: the log could not be refreshed."
+msgstr "Actualisation en direct arrêtée : le journal n’a pas pu être actualisé."
+
+#: include/LogViewer.php:112
+msgid "The log could not be refreshed."
+msgstr "Le journal n’a pas pu être actualisé."
+
+#: include/LogViewer.php:123
+msgid "Refresh"
+msgstr "Actualiser"
+
+#: include/LogViewer.php:131
+msgid "Live refresh, every 5 seconds"
+msgstr "Actualisation en direct, toutes les 5 secondes"
+
+#: include/LogViewer.php:153
+msgid ""
+"Logging has been switched off since this page was loaded, so there is no log "
+"to show. Reload the page to see the Debug tab as it is saved."
+msgstr "La journalisation a été désactivée depuis le chargement de cette page : il n’y a aucun journal à afficher. Rechargez la page pour voir l’onglet Débogage tel qu’il est enregistré."
+
+#. translators: %s: the time the log was read, e.g. 14:05:09
+#: include/LogViewer.php:166
+#, php-format
+msgid "Nothing has been logged yet — refreshed %s"
+msgstr "Rien n’a encore été journalisé — actualisé à %s"
+
+#. translators: 1: how many lines are shown, 2: how many lines the log holds, 3: the size of the log, e.g. 1.2 MB, 4: the time the log was read, e.g. 14:05:09
+#: include/LogViewer.php:175
+#, php-format
+msgid "Showing the last %1$s of %2$s line (%3$s) — refreshed %4$s"
+msgid_plural "Showing the last %1$s of %2$s lines (%3$s) — refreshed %4$s"
+msgstr[0] "Affichage de %1$s ligne sur %2$s (%3$s) — actualisé à %4$s"
+msgstr[1] "Affichage des %1$s dernières lignes sur %2$s (%3$s) — actualisé à %4$s"
+
+#: include/LogViewer.php:190
+msgid "The end of the log file"
+msgstr "La fin du fichier journal"
 
 #: include/Probe.php:111
 msgid "Sorry, you are not allowed to probe the front-end of this site."
@@ -168,46 +225,46 @@ msgstr ""
 msgid "Send probe"
 msgstr "Envoyer la sonde"
 
-#: include/Revalidate.php:455
+#: include/Revalidate.php:784
 #, php-format
 msgid "Revalidate post “%s”"
 msgstr "Revalider l’article « %s »"
 
-#: include/Revalidate.php:456 include/Revalidate.php:633
+#: include/Revalidate.php:785 include/Revalidate.php:978
 msgid "Revalidate"
 msgstr "Revalider"
 
-#: include/Revalidate.php:497
+#: include/Revalidate.php:826
 msgid "It is no longer applied: a post change carries no permalink to rewrite."
 msgstr ""
 "Il n’est plus appliqué : un changement d’article ne porte aucun permalien à "
 "réécrire."
 
-#: include/Revalidate.php:527
+#: include/Revalidate.php:872
 msgid "Sorry, you are not allowed to revalidate this post."
 msgstr "Désolé, vous n’êtes pas autorisé(e) à revalider cet article."
 
-#: include/Revalidate.php:555
+#: include/Revalidate.php:900
 msgctxt "Admin top bar menu"
 msgid "Revalidate this page"
 msgstr "Revalider cette page"
 
-#: include/Revalidate.php:563
+#: include/Revalidate.php:908
 msgctxt "Admin top bar menu"
 msgid "Tell the front-end to revalidate the page currently being edited."
 msgstr "Demander au front-end de revalider la page en cours d’édition."
 
-#: include/Revalidate.php:668
+#: include/Revalidate.php:1013
 #, php-format
 msgid "“%s”: the revalidation was sent to the front-end."
 msgstr "« %s » : la revalidation a été envoyée au front-end."
 
-#: include/Revalidate.php:669 include/Revalidate.php:709
+#: include/Revalidate.php:1014 include/Revalidate.php:1054
 msgid "Unable to revalidate. Please try again or contact an administrator."
 msgstr ""
 "Impossible de revalider. Veuillez réessayer ou contacter un administrateur."
 
-#: include/Revalidate.php:708
+#: include/Revalidate.php:1053
 #, php-format
 msgid "%d post: the revalidation was sent to the front-end."
 msgid_plural "%d posts: the revalidation was sent to the front-end."
@@ -322,7 +379,11 @@ msgid "Logs will be saved to file located in <code>%s</code>"
 msgstr ""
 "Les journaux seront sauvegardés dans un fichier stocké dans <code>%s</code>"
 
-#: include/Settings.php:489
+#: include/Settings.php:446
+msgid "Log"
+msgstr "Journal"
+
+#: include/Settings.php:501
 msgid ""
 "The revalidate domain was not saved: it must be a web address starting with "
 "http:// or https://, such as https://example.com."
@@ -330,7 +391,7 @@ msgstr ""
 "Le domaine de revalidation n’a pas été enregistré : il doit s’agir d’une "
 "adresse web commençant par http:// ou https://, comme https://example.com."
 
-#: include/Settings.php:719
+#: include/Settings.php:738
 msgid ""
 "Next.js Revalidate is not configured for this site: the revalidate domain "
 "and secret are both required before anything can be revalidated."
@@ -339,20 +400,20 @@ msgstr ""
 "secrète de revalidation sont tous deux obligatoires avant de pouvoir "
 "procéder à une revalidation."
 
-#: include/Settings.php:764
+#: include/Settings.php:783
 msgid "its revalidate domain and secret are missing"
 msgstr "le domaine et le secret de revalidation sont manquants"
 
-#: include/Settings.php:765
+#: include/Settings.php:784
 msgid "its revalidate domain is missing"
 msgstr "le domaine de revalidation est manquant"
 
-#: include/Settings.php:766
+#: include/Settings.php:785
 msgid "its secret is missing"
 msgstr "le secret de revalidation est manquant"
 
 #. translators: %s: which of the two required settings are missing.
-#: include/Settings.php:771
+#: include/Settings.php:790
 #, php-format
 msgid ""
 "Next.js Revalidate is not configured for this site — %s. Content is still "
@@ -363,12 +424,12 @@ msgstr ""
 "toujours enregistré, mais chaque revalidation est refusée : le front-end "
 "n'est jamais invité à reconstruire ses pages."
 
-#: include/Settings.php:782
+#: include/Settings.php:801
 msgid "Configure Next.js Revalidate"
 msgstr "Configurer Next.js Revalidate"
 
 #. translators: %s: number of sites on the network.
-#: include/Settings.php:828
+#: include/Settings.php:847
 #, php-format
 msgid ""
 "Next.js Revalidate cannot migrate the %s sites of this network in a single "
@@ -387,24 +448,24 @@ msgctxt "Admin top bar menu"
 msgid "Revalidate"
 msgstr "Revalider"
 
-#: include/Traits/FrontEndRequest.php:125
+#: include/Traits/FrontEndRequest.php:163
 msgid "The front-end answered without a status code."
 msgstr "Le front-end a répondu sans code d'état."
 
 #. translators: %d: the HTTP status code the front-end answered with.
-#: include/Traits/FrontEndRequest.php:131
+#: include/Traits/FrontEndRequest.php:169
 #, php-format
 msgid "The front-end answered %d."
 msgstr "The front-end answered %d."
 
-#: nextjs-revalidate.php:79
+#: nextjs-revalidate.php:82
 msgid "Please install composer dependencies for Next.js Revalidate to work"
 msgstr ""
 "Veuillez installer les dépendances du compositeur pour que Next.js "
 "Revalidate fonctionne"
 
 #. translators: %s: number of sites on the network.
-#: nextjs-revalidate.php:387
+#: nextjs-revalidate.php:401
 #, php-format
 msgid ""
 "Next.js Revalidate cannot set up the %s sites of this network in a single "
@@ -416,6 +477,6 @@ msgstr ""
 "les autres dans l’incapacité de revalider. Activez plutôt le plugin sur "
 "chaque site individuellement."
 
-#: nextjs-revalidate.php:390
+#: nextjs-revalidate.php:404
 msgid "Plugin could not be activated"
 msgstr "Impossible d'activer le plugin"

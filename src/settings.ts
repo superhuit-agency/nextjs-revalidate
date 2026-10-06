@@ -1,4 +1,5 @@
 import "./settings.css";
+import { initLogViewer, revealLogViewer } from "./log-viewer";
 
 function changeTabs(target: HTMLElement) {
 	const nav = target.parentNode;
@@ -23,9 +24,13 @@ function changeTabs(target: HTMLElement) {
 		);
 
 	window.location.hash = `#${target.getAttribute('id')}`;
+
+	revealLogViewer();
 }
 
 function init() {
+	initLogViewer();
+
 	const tabs = document.querySelectorAll('[role="tab"]');
 	const tabList = document.querySelector('[role="tablist"]');
 

@@ -38,6 +38,7 @@ use NextJsRevalidate\Change;
 use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
+use NextJsRevalidate\LogViewer;
 use NextJsRevalidate\Integrations\NestedPages;
 use NextJsRevalidate\Integrations\Polylang;
 use NextJsRevalidate\Integrations\Redirection;
@@ -102,6 +103,7 @@ require_once __DIR__ . '/vendor/autoload.php';
  * @property-read Assets                $assets
  * @property-read Revalidate            $revalidate
  * @property-read Probe                 $probe
+ * @property-read LogViewer             $logViewer
  * @property-read Settings              $settings
  * @property-read FailureWindow         $failureWindow
  * @property-read PendingChanges        $pendingChanges
@@ -122,6 +124,7 @@ class NextJsRevalidate {
 	private Assets $assets;
 	private Revalidate $revalidate;
 	private Probe $probe;
+	private LogViewer $logViewer;
 	private Settings $settings;
 	private FailureWindow $failureWindow;
 	private PendingChanges $pendingChanges;
@@ -176,6 +179,7 @@ class NextJsRevalidate {
 		$this->pendingChanges      = $this->hookable( new PendingChanges() );
 		$this->revalidate          = $this->hookable( new Revalidate() );
 		$this->probe               = $this->hookable( new Probe() );
+		$this->logViewer           = $this->hookable( new LogViewer() );
 		$this->cronScheduledPurges = $this->hookable( new ScheduledPurges() );
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
 		$this->fseSnapshot         = $this->hookable( new FseSnapshot() );
