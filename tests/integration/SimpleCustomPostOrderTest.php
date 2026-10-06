@@ -111,6 +111,8 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 		$first  = $this->published( 'post', 'first', 0, 1 );
 		$second = $this->published( 'post', 'second', 0, 2 );
 
+		$this->stop_before_the_plugin( 'update-menu-order' );
+
 		$built = $this->permalinks_built( function () use ( $first, $second ) {
 			$this->ajax( 'update-menu-order', [
 				'nonce' => wp_create_nonce( 'scporder_nonce_action' ),
@@ -118,7 +120,8 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 			] );
 		} );
 
-		$this->assertGreaterThan( 0, $built );
+		$this->assertSame( 2, get_post( $second )->menu_order, 'The plugin handled the request.' );
+		$this->assertSame( 2, $built, 'Each post the request names was not looked up once.' );
 	}
 
 	/**

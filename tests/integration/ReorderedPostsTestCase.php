@@ -83,6 +83,21 @@ abstract class ReorderedPostsTestCase extends PendingChangesTestCase {
 	}
 
 	/**
+	 * End an AJAX action after the integrations' reads, which hang on it at
+	 * priority 1, and before the plugin's own handler: what the request has
+	 * looked up by then is the integration's doing alone, not what reporting
+	 * the plugin's write builds.
+	 *
+	 * @param string $action The action, without its `wp_ajax_` prefix.
+	 * @return void
+	 */
+	protected function stop_before_the_plugin( $action ) {
+		add_action( "wp_ajax_$action", function () {
+			throw new WPDieException( '' );
+		}, 2 );
+	}
+
+	/**
 	 * How many post permalinks were built while a callback ran — one for each
 	 * post an integration looks up to remember where it stands.
 	 *

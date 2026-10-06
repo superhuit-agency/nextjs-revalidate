@@ -143,11 +143,14 @@ class NestedPagesOrderTest extends ReorderedPostsTestCase {
 		$first  = $this->published( 'page', 'first', 0, 0 );
 		$second = $this->published( 'page', 'second', 0, 1 );
 
+		$this->stop_before_the_plugin( 'npsort' );
+
 		$built = $this->permalinks_built( function () use ( $first, $second ) {
 			$this->sort( [ [ 'id' => $second ], [ 'id' => $first ] ] );
 		} );
 
-		$this->assertGreaterThan( 0, $built );
+		$this->assertSame( 1, get_post( $second )->menu_order, 'Nested Pages handled the sort.' );
+		$this->assertSame( 2, $built, 'Each page the sort names was not looked up once.' );
 	}
 
 	/**
@@ -173,9 +176,13 @@ class NestedPagesOrderTest extends ReorderedPostsTestCase {
 		];
 		if ( null !== $nonce ) $body['nonce'] = $nonce;
 
-		// Nested Pages reads its nonce without asking whether there is one.
-		set_error_handler( function ( $errno, $errstr ) {
-			return E_WARNING === $errno && false !== strpos( $errstr, 'nonce' );
+		// Nested Pages reads its nonce without asking whether there is one — a
+		// warning on PHP 8, a notice on 7.4. Only its own is tolerated: one
+		// raised by this plugin's code still fails the test.
+		set_error_handler( function ( $errno, $errstr, $errfile ) {
+			return in_array( $errno, [ E_WARNING, E_NOTICE ], true )
+				&& false !== strpos( $errstr, 'nonce' )
+				&& 0 === strpos( $errfile, NESTEDPAGES_DIR . DIRECTORY_SEPARATOR );
 		} );
 
 		$answer = null;
