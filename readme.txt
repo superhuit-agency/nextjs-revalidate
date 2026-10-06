@@ -165,6 +165,11 @@ so returning `true` there revalidates nothing.
   stopped at the limit with a warning: printed with `display_errors` on, it broke
   the drag and drop's answer, and the posts past the limit were never reported.
   A list whose `[]` arrives percent-encoded is read too.
+* Fixed: the Simple Custom Post Order and Nested Pages integrations read a
+  reorder request only when it carries the plugin's own nonce. They looked up
+  every post a drag and drop named before the plugin checked its nonce, so any
+  logged-in user, a subscriber included, could have as many posts looked up as
+  one request named, although the plugin then refused it.
 
 = 2.0.0 =
 

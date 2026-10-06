@@ -24,6 +24,14 @@ site has to do about it. Releases before 2.0.0 are listed in the changelog of
   now read by hand, the way Simple Custom Post Order 2.8.9 reads it, so the
   posts reported are the ones it writes; a list whose `[]` arrives
   percent-encoded is read too (#186).
+- **A reorder request is read only when it carries the plugin's own nonce.**
+  The Simple Custom Post Order and Nested Pages integrations read the posts a
+  drag and drop names, and looked each one up, before the plugin checked its
+  nonce. Any logged-in user, a subscriber included, could send one request
+  naming as many posts as they liked and have every one looked up, although
+  the plugin then refused it. Each integration now checks the nonce the plugin
+  is about to check first, and reads nothing when it fails; the plugin still
+  answers the request its own way (#187).
 
 ## 2.0.0
 

@@ -61,6 +61,12 @@ class SimpleCustomPostOrder extends Base implements Hookable {
 	const POSITION_ACTION = 'wp_ajax_scpo_set_position';
 
 	/**
+	 * The nonce action both AJAX actions are sent with, in their `nonce`
+	 * field — the one the plugin checks before it handles either.
+	 */
+	const NONCE_ACTION = 'scporder_nonce_action';
+
+	/**
 	 * The option the plugin's settings are stored in, the types it orders
 	 * among them.
 	 */
@@ -110,14 +116,17 @@ class SimpleCustomPostOrder extends Base implements Hookable {
 	 * of the posts it sends.
 	 *
 	 * Read the way the plugin reads it — the body's `order` is a serialised
-	 * form, `post[]=12&post[]=7`, read by `order_ids()`. Only read: whether the
-	 * request is allowed is the plugin's question, and nothing is reported
+	 * form, `post[]=12&post[]=7`, read by `order_ids()`. Read only when the
+	 * request carries the nonce the plugin is about to check; whether it is
+	 * allowed beyond that is the plugin's question, and nothing is reported
 	 * unless it goes on to write the order.
 	 *
 	 * @return void
 	 */
 	public function before_list_reorder() {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- read only; the plugin checks the nonce before it writes.
+		if ( ! self::has_valid_nonce() ) return;
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- checked by has_valid_nonce(), above.
 		$order = isset( $_POST['order'] ) && is_string( $_POST['order'] ) ? wp_unslash( $_POST['order'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- order_ids() keeps positive integers only; sanitize_text_field() would strip an encoded `[]`.
 
 		$this->remember_posts_to_report( self::order_ids( $order ) );
@@ -158,12 +167,15 @@ class SimpleCustomPostOrder extends Base implements Hookable {
 
 	/**
 	 * The order column's "move to position" is about to be handled: read the
-	 * order of the post it places.
+	 * order of the post it places — when the request carries the plugin's
+	 * nonce.
 	 *
 	 * @return void
 	 */
 	public function before_set_position() {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- read only; the plugin checks the nonce before it writes.
+		if ( ! self::has_valid_nonce() ) return;
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- checked by has_valid_nonce(), above.
 		$post_id = isset( $_POST['id'] ) && is_scalar( $_POST['id'] ) ? (int) $_POST['id'] : 0;
 
 		if ( $post_id > 0 ) $this->remember_posts_to_report( [ $post_id ] );
@@ -243,6 +255,22 @@ class SimpleCustomPostOrder extends Base implements Hookable {
 		return array_values( array_filter( $objects, function ( $type ) {
 			return is_string( $type ) && '' !== $type;
 		} ) );
+	}
+
+	/**
+	 * Whether the request carries the nonce the plugin is about to check.
+	 *
+	 * Checked first, so that a request the plugin refuses — one anyone logged
+	 * in can send, naming as many posts as they like — has none of them looked
+	 * up. Checked without dying, so that the plugin still answers it its own
+	 * way. The plugin's capability is not guessed at: it is the plugin's to
+	 * filter and narrow, and a guess that refused a reorder the plugin went on
+	 * to write would leave it reported wrong.
+	 *
+	 * @return bool
+	 */
+	private static function has_valid_nonce() {
+		return false !== check_ajax_referer( self::NONCE_ACTION, 'nonce', false );
 	}
 
 	/**
