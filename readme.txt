@@ -168,6 +168,10 @@ CHANGELOG.md on GitHub.
   joined and the ones it left. A post's terms written with no save, by an
   import, a plugin or Polylang's synchronisation, are now reported as that
   post's change.
+* Added: the Debug tab shows the end of the log file while logging is on — its
+  last 200 lines, with how many lines the file holds and how big it is. Refresh
+  reads it again without reloading the page, and Live refresh does so every
+  five seconds. With logging off the tab is unchanged.
 * Changed: with Polylang, its `language` taxonomy is no longer revalidated as
   a taxonomy. A language is a site setting, reported as a settings change, so it
   is not reported as a term, not listed in a post's terms, and no longer named

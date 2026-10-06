@@ -156,6 +156,20 @@ class Logger {
 	}
 
 	/**
+	 * The full path of this site's log if it has one, and null if it cannot.
+	 *
+	 * `path()` for anything that only reads the log: a site that has never
+	 * been handed a suffix has never written a line, so there is nothing to
+	 * read, and asking `path()` would generate and store the suffix a site
+	 * that never logged must not gain (ADR-0024).
+	 *
+	 * @return string|null
+	 */
+	public static function existing_path() {
+		return null !== self::stored_suffix() ? self::path() : null;
+	}
+
+	/**
 	 * Where the settings screen tells the operator the log is written.
 	 *
 	 * The full path whenever this site has one — logging is on, or it has

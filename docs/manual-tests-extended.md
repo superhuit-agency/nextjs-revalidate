@@ -307,6 +307,39 @@ The oracle here is the **revalidate server console**: an FSE change is a
       that has never logged, its absence is the normal state. The next logged
       line recreates it.
 
+### The log viewer
+
+Precondition: logs on, and a few lines in the log — update a post twice, and
+break the secret for a third so one line is an `[ERROR]`. Restore the secret.
+
+- [ ] **Open the Debug tab.** Expect a **Log** row under **Enable logs**: the
+      status line `Showing the last N of N lines (size) — refreshed HH:MM:SS`
+      over a monospace box scrolled to its last line, the `[ERROR]` line in red
+      and no other line coloured, and a long line wrapped rather than scrolling
+      sideways.
+- [ ] **Update a post, then click Refresh.** Expect the new line at the bottom,
+      the refreshed time moved on, and the page not reloaded — the API tab's
+      fields keep anything typed into them.
+- [ ] **Delete the log file, then click Refresh.** Expect `Nothing has been
+      logged yet`, and no file recreated at the path under **Enable logs** by
+      the viewing.
+- [ ] **Turn logging off and save.** Expect the Debug tab as it was before the
+      viewer: the switch and the path under it, and no **Log** row.
+- [ ] **Turn logging back on, reload, and tick Live refresh.** Expect the
+      refreshed time to move on every five seconds, and a post updated in
+      another tab to appear within five seconds. Reload: the box is unticked.
+- [ ] **Scroll the box up while live refresh is on, and update a post.** Expect
+      the box to stay where you scrolled it. Scroll back to the bottom: the next
+      new line is followed.
+- [ ] **With live refresh on, switch to another browser tab for a minute.**
+      Expect no `admin-ajax.php` requests for `nextjs_revalidate_log_tail` while
+      it is hidden (the browser's network panel), and a refresh as soon as you
+      come back.
+- [ ] **With live refresh on, turn logging off in another tab and save.** Expect
+      the toggle to untick itself within five seconds, with `Live refresh
+      stopped: logging has been switched off.` beside it, and the box replaced
+      by the note that logging is off. No further requests follow.
+
 ## K. Who sees the notices
 
 Create a subscriber once:
@@ -541,6 +574,8 @@ Precondition: Q done, main site configured, `second` not.
 - [ ] **Expect a separate log file** for `second`, at the path its own Debug
       tab reports: beneath `wp-content/uploads/sites/2/nextjs-revalidate/`, and
       under a different filename from the main site's.
+- [ ] **Open `second`'s Debug tab.** Expect its log viewer to show `second`'s
+      lines — the post published above — and none of the main site's.
 - [ ] **Break the main site's secret and fail three times.** Expect the degraded
       notice on the main site and **not** on `second` — the failure window is per
       site. Restore the main site's secret.

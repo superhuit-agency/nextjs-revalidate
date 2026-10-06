@@ -34,6 +34,11 @@ field, which a front-end written for 2.0 ignores (rule 1 of the
   equal URIs; 2.0 reported nothing for them. The posts a term's delete moves are
   still not reported: the term's own change covers them. The reference route
   expires `term:{id}` for every term on either side of a post change.
+- **Added:** the Debug tab shows the end of the log file while logging is on:
+  its last 200 lines, with how many lines the file holds and how big it is.
+  **Refresh** reads it again without reloading the page, and **Live refresh**
+  does so every five seconds. Nothing to do: with logging off the tab is
+  unchanged.
 - **Changed:** with Polylang, its `language` taxonomy is no longer a
   revalidatable taxonomy. A language is a site setting, already reported as a
   `settings` change; as a taxonomy it would have put a `term` change next to

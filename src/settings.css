@@ -70,3 +70,53 @@
 		display: none;
 	}
 }
+
+.njr-log-viewer {
+	max-width: 960px;
+
+	.njr-log-viewer__controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 16px;
+		margin-top: 0;
+	}
+
+	.njr-log-viewer__status {
+		margin: 0 0 8px;
+		color: #646970;
+	}
+
+	.njr-log-viewer__log {
+		box-sizing: border-box;
+		height: 400px;
+		margin: 0;
+		padding: 8px 12px;
+		overflow-x: hidden;
+		overflow-y: auto;
+		/* Long lines wrap: no horizontal scroll. */
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		font-family: Menlo, Consolas, Monaco, "Liberation Mono", monospace;
+		font-size: 12px;
+		line-height: 1.5;
+		background-color: #f6f7f7;
+		border: 1px solid #dcdcde;
+		border-radius: 2px;
+	}
+
+	.njr-log-viewer__log:focus-visible {
+		outline: 2px solid #2271b1;
+		outline-offset: 1px;
+	}
+
+	/* The WP admin error colour, and the only colour a line takes. */
+	.njr-log-viewer__error {
+		color: #d63638;
+	}
+
+	.njr-log-viewer__body[aria-busy="true"] .njr-log-viewer__status {
+		opacity: 0.6;
+	}
+}

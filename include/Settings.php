@@ -437,6 +437,18 @@ class Settings extends Base implements Hookable {
 				),
 			]
 		);
+
+		// The end of the log, while logging is saved as on. With it off the
+		// tab only says where the log is, as it did before the viewer existed.
+		if ( LogViewer::is_shown() ) {
+			add_settings_field(
+				LogViewer::FIELD_ID,
+				__('Log', 'nextjs-revalidate'),
+				[ LogViewer::class, 'render' ],
+				self::PAGE_NAME,
+				'nextjs-revalidate-section-debug'
+			);
+		}
 	}
 
 	/**
