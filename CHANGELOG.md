@@ -4,6 +4,19 @@ What changed in each release of Next.js Revalidate, newest first, and what a
 site has to do about it. Releases before 2.0.0 are listed in the changelog of
 [`readme.txt`](readme.txt).
 
+## 2.0.1
+
+### Fixed
+
+- **A redirect to the front-end's own URL keeps the basic-auth credentials.** A
+  307 or a 308 to the same origin was followed with the credentials of the
+  revalidate domain only when its `Location` was a path, the shape Next.js
+  answers with. One given as an absolute URL — the shape a proxy rewriting
+  `Location` answers with — was followed without them, so a staging front-end
+  behind basic auth answered it 401 and the delivery failed. The credentials now
+  carry over to both; a `Location` naming credentials of its own keeps them, and
+  a redirect to another origin is still not followed (#184).
+
 ## 2.0.0
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a

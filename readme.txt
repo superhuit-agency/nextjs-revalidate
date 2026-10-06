@@ -152,6 +152,14 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
+= 2.0.1 =
+
+* Fixed: a 307 or a 308 to the front-end's own origin whose `Location` is an
+  absolute URL, as a proxy rewriting `Location` sends it, keeps the basic-auth
+  credentials of the revalidate domain, as a `Location` that is a path already
+  did. Without them, a staging front-end behind basic auth answered the
+  redirected request 401 and the delivery failed.
+
 = 2.0.0 =
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a
