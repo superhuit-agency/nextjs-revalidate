@@ -168,6 +168,12 @@ CHANGELOG.md on GitHub.
   joined and the ones it left. A post's terms written with no save, by an
   import, a plugin or Polylang's synchronisation, are now reported as that
   post's change.
+* Changed: with Polylang, its `language` taxonomy is no longer revalidated as
+  a taxonomy. A language is a site setting, reported as a settings change, so it
+  is not reported as a term, not listed in a post's terms, and no longer named
+  by revalidate all of a post type. The Polylang integration declines it through
+  the `nextjs_revalidate_should_revalidate_taxonomy` filter, which a site can
+  use to admit it again.
 
 = 2.0.0 =
 

@@ -187,11 +187,14 @@ never candidates.
 
 The site has the last word here too, through a filter of its own rather than the
 post one — the same escape hatch, for the same headless reason, and it can admit
-a whole taxonomy as readily as decline one.
+a whole taxonomy as readily as decline one. An **integration** can use it too:
+Polylang's declines the `language` taxonomy, which is viewable but holds the
+language list, a **site setting** rather than terms the front-end shows.
 
-Asked by **revalidate all**, once per taxonomy, and by a term's own lifecycle: a
+Asked by **revalidate all**, once per taxonomy, by a term's own lifecycle — a
 term created, edited or deleted is reported as a `term` change when its taxonomy
-is revalidatable, along with its **dependent terms** (ADR 0040).
+is revalidatable, along with its **dependent terms** — and by a post's **term
+membership** (ADR 0040).
 _Avoid_: Public taxonomy — `public` is a different setting and the two disagree
 in both directions, which is the whole of the bug this names the fix for.
 

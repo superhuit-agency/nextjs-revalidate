@@ -835,9 +835,7 @@ change is reported when:
 
 - a language is **added, edited or deleted** — a language is a term of
   Polylang's `language` taxonomy, not an option, so no option list could catch
-  it. That taxonomy is publicly queryable, so the same save also reports the
-  language's own [`term` change](#which-terms-are-revalidated), like any other
-  term's;
+  it;
 - the **default language** changes, from Polylang's Languages screen or by a
   write of the `polylang` option whose `default_lang` differs.
 
@@ -849,6 +847,27 @@ Nothing else in the `polylang` option reports a change. `hide_default`,
 `force_lang` and `rewrite` decide whether a language prefix is in the path at
 all, which moves pages between paths rather than changing what every page
 renders; `version` and the rest are Polylang's bookkeeping.
+
+**A language is never reported as a term.** The `language` taxonomy is
+publicly queryable, so it would otherwise be a
+[revalidatable taxonomy](#which-terms-are-revalidated) like any other: adding a
+language would report a `term` change next to its `settings` one, and every
+translated post would list its language in `terms`, so every save would expire
+whatever carries that language's term — a language switcher, or every page of
+the language. The integration declines it through
+[`nextjs_revalidate_should_revalidate_taxonomy`](#nextjs_revalidate_should_revalidate_taxonomy)
+instead, which also leaves it out of the `taxonomies` revalidate all of a post
+type names: what a language changes is reported as the `settings` change above.
+A post's other terms — its categories and tags — are reported as on any site.
+Polylang's other taxonomies, which store translation groups, are not publicly
+queryable and were never revalidatable. A front-end that does tag pages with a
+language's term can admit the taxonomy again from a later priority:
+
+```php
+add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_revalidate, $taxonomy_name ) {
+	return 'language' === $taxonomy_name ? true : $should_revalidate;
+}, 20, 2 );
+```
 
 With **synchronisation** on, Polylang copies what you chose — the parent, the
 order, the date, custom fields, the featured image, terms — to a post's
@@ -981,6 +1000,10 @@ add_filter( 'nextjs_revalidate_should_revalidate_post', function( $should_revali
 Filters whether the archive pages of the given taxonomy's terms are revalidated.
 Applied last, and consulted for every registered taxonomy, so it can admit a
 taxonomy that is not `publicly_queryable` as readily as decline one that is.
+Its verdict covers a term's own `term` change, the post `terms` the taxonomy's
+terms appear in, and the `taxonomies` revalidate all of a post type names.
+The [Polylang](#polylang) integration hooks it at the default priority to
+decline Polylang's `language` taxonomy.
 
 #### Usage
 ```php

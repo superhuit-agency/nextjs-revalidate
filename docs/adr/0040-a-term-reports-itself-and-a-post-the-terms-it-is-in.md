@@ -106,6 +106,21 @@ tag.
   when the two sides are equal.
 - A front-end that does not tag the pages showing a term with that term misses
   them on a rename or a delete. The README contract says so.
+- **Polylang's `language` taxonomy is declined** by the Polylang integration,
+  through `nextjs_revalidate_should_revalidate_taxonomy`. It is publicly
+  queryable, so ADR 0022's gate admits it, but a language is a site setting,
+  already reported as a `settings` change. Admitted, it would add a `term`
+  change to every language added, edited or deleted, and list every translated
+  post's language in its `terms`: every save would expire `term:{language}`,
+  which a front-end following the rule above puts on a language switcher, or
+  on every page of the language. Declining it through the gate rather than
+  further down also keeps Polylang setting a post's language from reading as a
+  write of its terms. It also drops `language` from the `taxonomies` revalidate
+  all of a post type names, so `type:language` is no longer expired there:
+  a language's listing of posts is a listing of their type, which
+  `type:{type}` reaches, and what changes a language is the `settings` change.
+  Polylang's other taxonomies (`term_language`, `post_translations`,
+  `term_translations`) are registered `public => false` and never pass the gate.
 - **Not covered:** a post whose permalink contains a term (`%category%`, or a
   theme's `post_type_link` filter) moves when the term's slug changes, and is not
   reported. Reading every member's permalink before the edit is exactly the

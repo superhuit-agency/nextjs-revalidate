@@ -34,6 +34,16 @@ field, which a front-end written for 2.0 ignores (rule 1 of the
   equal URIs; 2.0 reported nothing for them. The posts a term's delete moves are
   still not reported: the term's own change covers them. The reference route
   expires `term:{id}` for every term on either side of a post change.
+- **Changed:** with Polylang, its `language` taxonomy is no longer a
+  revalidatable taxonomy. A language is a site setting, already reported as a
+  `settings` change; as a taxonomy it would have put a `term` change next to
+  that one, and listed every translated post's language in its `terms`, so
+  every save would have expired whatever carries the language's term. The
+  Polylang integration declines it through
+  `nextjs_revalidate_should_revalidate_taxonomy`, so revalidate all of a post
+  type no longer names `language` in its `taxonomies`, as 2.0 did. A site that
+  does tag pages with a language's term can admit it again from a later
+  priority of that filter.
 
 ## 2.0.0
 
