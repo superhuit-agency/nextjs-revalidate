@@ -314,10 +314,23 @@ foreach ( [ 'http://user@localhost:8083/revalidate', 'http://user:@localhost:808
 	njr_test_assert( [ njr_basic_headers( 'user:' ) ] === njr_sent_headers(), "a user with no password — $userless — is sent as user:" );
 }
 
-// An `@` with nothing before it names no credentials.
-$empty = 'http://@localhost:8083/revalidate';
-njr_deliver( $empty, [ $empty => $ok ] );
-njr_test_assert( [ $bearer_headers ] === njr_sent_headers(), 'an empty userinfo is no credentials, and sends the bearer token' );
+// An empty user with a password is still credentials, sent as `:pass`, as
+// libcurl sends it.
+$no_user = 'http://:pass@localhost:8083/revalidate';
+njr_deliver( $no_user, [ $no_user => $ok ] );
+njr_test_assert( [ njr_basic_headers( ':pass' ) ] === njr_sent_headers(), 'an empty user with a password is sent as :pass' );
+
+// An `@` with nothing before it, or only a `:`, names no credentials: libcurl
+// sends no `Basic` for either.
+foreach ( [ 'http://@localhost:8083/revalidate', 'http://:@localhost:8083/revalidate' ] as $empty ) {
+	njr_deliver( $empty, [ $empty => $ok ] );
+	njr_test_assert( [ $bearer_headers ] === njr_sent_headers(), "an empty userinfo — $empty — is no credentials, and sends the bearer token" );
+}
+
+// An IPv6 host is bracketed, and the credentials in front of the bracket are
+// read all the same.
+njr_deliver( $ipv6, [ $ipv6 => $ok ] );
+njr_test_assert( [ njr_basic_headers( 'user:pass' ) ] === njr_sent_headers(), 'a URL with credentials on an IPv6 host sends them as basic auth' );
 
 // An `@` past the authority is not credentials either.
 $at_in_path = 'http://localhost:8083/by/a@b/';

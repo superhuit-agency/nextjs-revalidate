@@ -214,7 +214,9 @@ trait FrontEndRequest {
 	 * transport never builds it at all. The user and the password are
 	 * percent-decoded first, as libcurl decodes them, and a user with no
 	 * password is sent as `user:`. An `@` with nothing before it names no
-	 * credentials.
+	 * credentials, and neither does one with only a `:` before it: libcurl
+	 * sends no `Basic` for either, so on 2.0 such a domain went out with
+	 * `Bearer`, and it still does.
 	 *
 	 * @param string $url
 	 *
@@ -224,7 +226,7 @@ trait FrontEndRequest {
 
 		// `credentials()` keeps the `@`, which is no part of either.
 		$credentials = substr( self::credentials( $url ), 0, -1 );
-		if ( '' === $credentials ) return '';
+		if ( '' === $credentials || ':' === $credentials ) return '';
 
 		// The first `:` ends the user: a user cannot hold one unencoded, and a
 		// password can.
