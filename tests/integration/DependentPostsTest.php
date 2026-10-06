@@ -284,17 +284,25 @@ class DependentPostsTest extends PendingChangesTestCase {
 		$post  = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'a-post' ] );
 		$other = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'other', 'post_parent' => $post ] );
 
+		$started = $this->ids_the_filter_starts_with( $post );
+
 		$this->reset_pending_changes();
 
 		wp_trash_post( $post );
 
 		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', null ) ] );
 		$this->assertNotContains( $other, array_column( $this->pending_changes()->pending(), 'id' ) );
+
+		// A post's permalink is not built from its parent's, so `$other` stays
+		// put either way: what pins the walk is what the filter is handed.
+		$this->assertSame( [ [], [] ], $started->ids, 'The trash walked the tree of a type that has none.' );
 	}
 
 	public function test_deleting_a_post_reports_no_other_post() {
 		$post  = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'a-post' ] );
 		$other = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'other', 'post_parent' => $post ] );
+
+		$started = $this->ids_the_filter_starts_with( $post );
 
 		$this->reset_pending_changes();
 
@@ -302,6 +310,11 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', null ) ] );
 		$this->assertNotContains( $other, array_column( $this->pending_changes()->pending(), 'id' ) );
+
+		// Core reattaches no child of a type that is not hierarchical, so
+		// `$other` stays put either way: what pins the walk is what the filter
+		// is handed.
+		$this->assertSame( [ [] ], $started->ids, 'The delete walked the tree of a type that has none.' );
 	}
 
 	/**
@@ -606,6 +619,25 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 			return trailingslashit( get_permalink( $page ) ) . $post->post_name . '/';
 		}, 10, 2 );
+	}
+
+	/**
+	 * Record the IDs `nextjs_revalidate_dependent_posts` starts with each time
+	 * it is asked about a post from here on: the descendants the plugin walked,
+	 * before any callback adds to them.
+	 *
+	 * @param int $post_id
+	 * @return \stdClass Its `ids`, one list per ask, kept up to date.
+	 */
+	private function ids_the_filter_starts_with( $post_id ) {
+		$started = (object) [ 'ids' => [] ];
+
+		add_filter( 'nextjs_revalidate_dependent_posts', function ( $post_ids, $asked_id ) use ( $post_id, $started ) {
+			if ( $post_id === $asked_id ) $started->ids[] = $post_ids;
+			return $post_ids;
+		}, PHP_INT_MIN, 2 );
+
+		return $started;
 	}
 
 	/**
