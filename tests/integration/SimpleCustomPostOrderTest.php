@@ -85,6 +85,33 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 		$this->assertPendingChanges( [ Change::post( $second, 'post', '/second/', '/second/' ) ] );
 	}
 
+	/**
+	 * The list is read as the plugin reads it, by hand: a key whose `[]` is
+	 * percent-encoded is the same key, and its posts are reported, not lost
+	 * to a sanitisation that strips encoded octets (#186).
+	 */
+	public function test_a_list_whose_brackets_are_encoded_reports_its_posts() {
+		$first  = $this->published( 'post', 'first', 0, 1 );
+		$second = $this->published( 'post', 'second', 0, 2 );
+
+		$this->reset_pending_changes();
+
+		$this->ajax( 'update-menu-order', [
+			'nonce' => wp_create_nonce( 'scporder_nonce_action' ),
+			'order' => "post%5B%5D=$second&post%5B%5D=$first",
+		] );
+
+		$this->assertSame( 1, get_post( $second )->menu_order, 'Simple Custom Post Order did not reorder the posts.' );
+
+		$this->assertEqualSets(
+			[
+				Change::post( $first, 'post', '/first/', '/first/' ),
+				Change::post( $second, 'post', '/second/', '/second/' ),
+			],
+			$this->pending_changes()->pending()
+		);
+	}
+
 	public function test_a_refused_request_reports_nothing() {
 		$first  = $this->published( 'post', 'first', 0, 1 );
 		$second = $this->published( 'post', 'second', 0, 2 );
@@ -222,8 +249,7 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 
 	/**
 	 * The list, as jQuery UI's `sortable( 'serialize' )` sends it from the
-	 * list screen: unencoded, since the plugin runs it through
-	 * `sanitize_text_field()`, which strips percent-encoded octets.
+	 * list screen.
 	 *
 	 * @param int[] $post_ids In their new order.
 	 * @return string

@@ -154,6 +154,17 @@ so returning `true` there revalidates nothing.
 
 = 2.0.1 =
 
+* Fixed: a 307 or a 308 to the front-end's own origin whose `Location` is an
+  absolute URL, as a proxy rewriting `Location` sends it, keeps the basic-auth
+  credentials of the revalidate domain, as a `Location` that is a path already
+  did. Without them, a staging front-end behind basic auth answered the
+  redirected request 401 and the delivery failed.
+* Fixed: a Simple Custom Post Order drag and drop is read the way that plugin
+  reads it, by hand, rather than with `parse_str()`. On a host whose
+  `max_input_vars` is lower than the number of posts dragged, `parse_str()`
+  stopped at the limit with a warning: printed with `display_errors` on, it broke
+  the drag and drop's answer, and the posts past the limit were never reported.
+  A list whose `[]` arrives percent-encoded is read too.
 * Fixed: the Simple Custom Post Order and Nested Pages integrations read a
   reorder request only when it carries the plugin's own nonce. They looked up
   every post a drag and drop named before the plugin checked its nonce, so any

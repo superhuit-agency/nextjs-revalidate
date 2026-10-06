@@ -46,10 +46,12 @@ type Recorded = {
 	execCommands: string[];
 	aheadQueries: { branch: string; base: string }[];
 	closed: number;
+	/** Run-log records, in order, interleaved with a marker for each sandbox call. */
+	events: string[];
 };
 
 function fakeDeps(options: FakeOptions = {}): { deps: ImplementDeps; recorded: Recorded } {
-	const recorded: Recorded = { runOptions: [], execCommands: [], aheadQueries: [], closed: 0 };
+	const recorded: Recorded = { runOptions: [], execCommands: [], aheadQueries: [], closed: 0, events: [] };
 
 	const deps: ImplementDeps = {
 		repoRoot: '/repo',
@@ -60,9 +62,11 @@ function fakeDeps(options: FakeOptions = {}): { deps: ImplementDeps; recorded: R
 			return options.ahead ?? options.commits ?? 1;
 		},
 		log: () => {},
+		record: (message) => recorded.events.push(`record: ${message}`),
 		createSandbox: async ({ branch }) => ({
 			branch,
 			async run(runOptions) {
+				recorded.events.push('sandbox.run');
 				recorded.runOptions.push(runOptions);
 				if (options.runThrows) throw new Error(options.runThrows);
 				const commits = options.commits ?? 1;
@@ -251,6 +255,22 @@ describe('implementItem — one bad item never takes the batch down', () => {
 		assert.equal(runOptions?.maxIterations, MAX_ITERATIONS);
 		assert.equal(runOptions?.idleTimeoutSeconds, IDLE_TIMEOUT_SECONDS);
 		assert.equal(runOptions?.completionSignal, COMPLETION_SIGNAL);
+	});
+});
+
+describe('implementItem — the run log', () => {
+	it('records the item and its transcript path before the agent starts', async () => {
+		const { deps, recorded } = fakeDeps();
+
+		await implementItem(deps, ITEM, 'body');
+
+		// The transcript is append-only across passes; this line is what ties
+		// one of its runs to this pass.
+		assert.deepEqual(recorded.events, [
+			'record: implement: #7 started on sandcastle/issue-7 — transcript /repo/.sandcastle/logs/issue-7.log',
+			'sandbox.run',
+		]);
+		assert.equal(recorded.runOptions[0]?.logging.path, '/repo/.sandcastle/logs/issue-7.log');
 	});
 });
 
