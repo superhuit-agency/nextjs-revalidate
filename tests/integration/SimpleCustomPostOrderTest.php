@@ -85,6 +85,33 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 		$this->assertPendingChanges( [ Change::post( $second, 'post', '/second/', '/second/' ) ] );
 	}
 
+	/**
+	 * The list is read as the plugin reads it, by hand: a key whose `[]` is
+	 * percent-encoded is the same key, and its posts are reported, not lost
+	 * to a sanitisation that strips encoded octets (#186).
+	 */
+	public function test_a_list_whose_brackets_are_encoded_reports_its_posts() {
+		$first  = $this->published( 'post', 'first', 0, 1 );
+		$second = $this->published( 'post', 'second', 0, 2 );
+
+		$this->reset_pending_changes();
+
+		$this->ajax( 'update-menu-order', [
+			'nonce' => wp_create_nonce( 'scporder_nonce_action' ),
+			'order' => "post%5B%5D=$second&post%5B%5D=$first",
+		] );
+
+		$this->assertSame( 1, get_post( $second )->menu_order, 'Simple Custom Post Order did not reorder the posts.' );
+
+		$this->assertEqualSets(
+			[
+				Change::post( $first, 'post', '/first/', '/first/' ),
+				Change::post( $second, 'post', '/second/', '/second/' ),
+			],
+			$this->pending_changes()->pending()
+		);
+	}
+
 	public function test_a_refused_request_reports_nothing() {
 		$first  = $this->published( 'post', 'first', 0, 1 );
 		$second = $this->published( 'post', 'second', 0, 2 );
@@ -101,6 +128,77 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 		] );
 
 		$this->assertNoPendingChanges();
+	}
+
+	/**
+	 * The posts a request names are looked up before the plugin handles it —
+	 * which is what the requests below must not reach.
+	 */
+	public function test_a_request_with_the_plugins_nonce_has_its_posts_looked_up() {
+		$first  = $this->published( 'post', 'first', 0, 1 );
+		$second = $this->published( 'post', 'second', 0, 2 );
+
+		$this->stop_before_the_plugin( 'update-menu-order' );
+
+		$built = $this->permalinks_built( function () use ( $first, $second ) {
+			$this->ajax( 'update-menu-order', [
+				'nonce' => wp_create_nonce( 'scporder_nonce_action' ),
+				'order' => $this->serialized( [ $second, $first ] ),
+			] );
+		} );
+
+		$this->assertSame( 2, get_post( $second )->menu_order, 'The plugin handled the request.' );
+		$this->assertSame( 2, $built, 'Each post the request names was not looked up once.' );
+	}
+
+	/**
+	 * A request without the plugin's nonce is one the plugin refuses, and one
+	 * anyone logged in can send, naming as many posts as they like. None is
+	 * looked up, nothing is reported, and the plugin still answers it its own
+	 * way: nothing here dies or answers in its place (#187).
+	 *
+	 * @dataProvider requests_without_the_nonce
+	 *
+	 * @param string      $action The AJAX action, without its prefix.
+	 * @param string|null $nonce  The nonce sent, or null for none.
+	 */
+	public function test_a_request_without_the_plugins_nonce_looks_up_no_post_and_reports_nothing( $action, $nonce ) {
+		$first  = $this->published( 'post', 'first', 0, 1 );
+		$second = $this->published( 'post', 'second', 0, 2 );
+
+		$this->reset_pending_changes();
+
+		$body = 'update-menu-order' === $action
+			? [ 'order' => $this->serialized( [ $second, $first ] ) ]
+			: [ 'id' => $second, 'position' => 1 ];
+		if ( null !== $nonce ) $body['nonce'] = $nonce;
+
+		$went_on = 0;
+		add_action( "wp_ajax_$action", function () use ( &$went_on ) {
+			$went_on++;
+		}, 2 );
+
+		$answer = null;
+		$built  = $this->permalinks_built( function () use ( $action, $body, &$answer ) {
+			$answer = $this->ajax( $action, $body );
+		} );
+
+		$this->assertSame( 0, $built, 'A post was looked up.' );
+		$this->assertNoPendingChanges();
+
+		$this->assertSame( 1, $went_on, 'The request did not go on to the plugin.' );
+		$this->assertSame( [ -1, 403 ], $this->died_with, 'The plugin did not refuse the request with its own nonce check.' );
+		$this->assertSame( '', $answer );
+		$this->assertSame( 2, get_post( $second )->menu_order );
+	}
+
+	public function requests_without_the_nonce() {
+		return [
+			'drag and drop, no nonce'          => [ 'update-menu-order', null ],
+			'drag and drop, a forged nonce'    => [ 'update-menu-order', 'forged1234' ],
+			'move to position, no nonce'       => [ 'scpo_set_position', null ],
+			'move to position, a forged nonce' => [ 'scpo_set_position', 'forged1234' ],
+		];
 	}
 
 	/**
@@ -151,8 +249,7 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 
 	/**
 	 * The list, as jQuery UI's `sortable( 'serialize' )` sends it from the
-	 * list screen: unencoded, since the plugin runs it through
-	 * `sanitize_text_field()`, which strips percent-encoded octets.
+	 * list screen.
 	 *
 	 * @param int[] $post_ids In their new order.
 	 * @return string

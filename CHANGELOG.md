@@ -8,6 +8,30 @@ site has to do about it. Releases before 2.0.0 are listed in the changelog of
 
 ### Fixed
 
+- **A redirect to the front-end's own URL keeps the basic-auth credentials.** A
+  307 or a 308 to the same origin was followed with the credentials of the
+  revalidate domain only when its `Location` was a path, the shape Next.js
+  answers with. One given as an absolute URL — the shape a proxy rewriting
+  `Location` answers with — was followed without them, so a staging front-end
+  behind basic auth answered it 401 and the delivery failed. The credentials now
+  carry over to both; a `Location` naming credentials of its own keeps them, and
+  a redirect to another origin is still not followed (#184).
+- **A Simple Custom Post Order drag and drop is read whole.** Its list of posts
+  was read with `parse_str()`, which stops at `max_input_vars` and warns as it
+  does. On a host whose limit is lower than the number of posts dragged, the
+  warning — printed with `display_errors` on — broke the JSON the drag and drop
+  answers with, and the posts past the limit were never reported. The list is
+  now read by hand, the way Simple Custom Post Order 2.8.9 reads it, so the
+  posts reported are the ones it writes; a list whose `[]` arrives
+  percent-encoded is read too (#186).
+- **A reorder request is read only when it carries the plugin's own nonce.**
+  The Simple Custom Post Order and Nested Pages integrations read the posts a
+  drag and drop names, and looked each one up, before the plugin checked its
+  nonce. Any logged-in user, a subscriber included, could send one request
+  naming as many posts as they liked and have every one looked up, although
+  the plugin then refused it. Each integration now checks the nonce the plugin
+  is about to check first, and reads nothing when it fails; the plugin still
+  answers the request its own way (#187).
 - **Trashing or deleting a parent reports the descendants it moves.** Trashing
   a page adds `__trashed` to its slug, and deleting one reattaches its children
   to its own parent, so every descendant's URI changes — `/about/team/` becomes
