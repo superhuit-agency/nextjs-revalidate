@@ -135,6 +135,73 @@ class NestedPagesOrderTest extends ReorderedPostsTestCase {
 		$this->assertStringContainsString( "Post #$first was reordered or reparented", $this->log() );
 	}
 
+	/**
+	 * The pages a sort names are looked up before Nested Pages handles it —
+	 * which is what the sorts below must not reach.
+	 */
+	public function test_a_sort_with_nested_pages_nonce_has_its_pages_looked_up() {
+		$first  = $this->published( 'page', 'first', 0, 0 );
+		$second = $this->published( 'page', 'second', 0, 1 );
+
+		$built = $this->permalinks_built( function () use ( $first, $second ) {
+			$this->sort( [ [ 'id' => $second ], [ 'id' => $first ] ] );
+		} );
+
+		$this->assertGreaterThan( 0, $built );
+	}
+
+	/**
+	 * A sort without Nested Pages' nonce is one it refuses, and one anyone
+	 * logged in can send, naming as many pages as they like. None is looked
+	 * up, nothing is reported, and Nested Pages still answers it its own way:
+	 * nothing here dies or answers in its place (#187).
+	 *
+	 * @dataProvider nonces_nested_pages_refuses
+	 *
+	 * @param string|null $nonce The nonce sent, or null for none.
+	 */
+	public function test_a_sort_without_nested_pages_nonce_looks_up_no_page_and_reports_nothing( $nonce ) {
+		$first  = $this->published( 'page', 'first', 0, 0 );
+		$second = $this->published( 'page', 'second', 0, 1 );
+
+		$this->reset_pending_changes();
+
+		$body = [
+			'list'      => [ [ 'id' => $second ], [ 'id' => $first ] ],
+			'post_type' => 'page',
+			'syncmenu'  => 'nosync',
+		];
+		if ( null !== $nonce ) $body['nonce'] = $nonce;
+
+		// Nested Pages reads its nonce without asking whether there is one.
+		set_error_handler( function ( $errno, $errstr ) {
+			return E_WARNING === $errno && false !== strpos( $errstr, 'nonce' );
+		} );
+
+		$answer = null;
+		try {
+			$built = $this->permalinks_built( function () use ( $body, &$answer ) {
+				$answer = $this->ajax( 'npsort', $body );
+			} );
+		} finally {
+			restore_error_handler();
+		}
+
+		$this->assertSame( 0, $built, 'A page was looked up.' );
+		$this->assertNoPendingChanges();
+
+		$this->assertSame( [ 'status' => 'error', 'message' => 'Invalid Nonce' ], json_decode( $answer, true ) );
+		$this->assertSame( 1, get_post( $second )->menu_order );
+	}
+
+	public function nonces_nested_pages_refuses() {
+		return [
+			'no nonce'       => [ null ],
+			'an empty nonce' => [ '' ],
+			'a forged nonce' => [ 'forged1234' ],
+		];
+	}
+
 	public function test_an_unconfigured_site_refuses_a_sort() {
 		$first  = $this->published( 'page', 'first', 0, 0 );
 		$second = $this->published( 'page', 'second', 0, 1 );

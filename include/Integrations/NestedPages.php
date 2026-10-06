@@ -42,6 +42,12 @@ class NestedPages extends Base implements Hookable {
 	const SORT_ACTION = 'wp_ajax_npsort';
 
 	/**
+	 * The nonce action a sort is sent with, in its `nonce` field — the one
+	 * Nested Pages checks before it handles it.
+	 */
+	const NONCE_ACTION = 'nestedpages-nonce';
+
+	/**
 	 * Register the integration's hooks, once every plugin has declared itself
 	 * — the same deferral, and for the same reason, as `Redirection`'s.
 	 *
@@ -71,13 +77,20 @@ class NestedPages extends Base implements Hookable {
 	/**
 	 * A sort is about to be handled: read where every page in its list stands.
 	 *
-	 * Only read. Whether the request is allowed is Nested Pages' question, and
-	 * nothing is reported unless it goes on to write the tree.
+	 * Read only when the request carries the nonce Nested Pages is about to
+	 * check, so that a sort it refuses — one anyone logged in can send, naming
+	 * as many pages as they like — has none of them looked up. Checked without
+	 * dying, so that Nested Pages still answers it its own way. Nothing is
+	 * reported unless it goes on to write the tree. No capability is checked:
+	 * Nested Pages checks none when it sorts, and one guessed here could refuse
+	 * a sort it then writes, which would leave that sort reported wrong.
 	 *
 	 * @return void
 	 */
 	public function before_sort() {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- read only; Nested Pages checks the nonce before it writes.
+		$nonce = isset( $_POST['nonce'] ) && is_string( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
+		if ( ! wp_verify_nonce( $nonce, self::NONCE_ACTION ) ) return;
+
 		$list = isset( $_POST['list'] ) ? wp_unslash( $_POST['list'] ) : [];
 
 		$this->revalidate->remember_positions( self::post_ids( $list, true ) );

@@ -22,6 +22,14 @@ use WPDieException;
  */
 abstract class ReorderedPostsTestCase extends PendingChangesTestCase {
 
+	/**
+	 * What the handler last answered with through `wp_die()`: the message and
+	 * the status it was given, or null when it did not.
+	 *
+	 * @var array|null
+	 */
+	protected $died_with;
+
 	public function set_up() {
 		parent::set_up();
 
@@ -31,7 +39,9 @@ abstract class ReorderedPostsTestCase extends PendingChangesTestCase {
 
 		add_filter( 'wp_doing_ajax', '__return_true' );
 		add_filter( 'wp_die_ajax_handler', function () {
-			return function ( $message ) {
+			return function ( $message, $title = '', $args = [] ) {
+				$this->died_with = [ $message, is_array( $args ) ? ( $args['response'] ?? null ) : null ];
+
 				throw new WPDieException( is_string( $message ) ? $message : '' );
 			};
 		} );
@@ -60,6 +70,8 @@ abstract class ReorderedPostsTestCase extends PendingChangesTestCase {
 		$_POST    = $post;
 		$_REQUEST = $post;
 
+		$this->died_with = null;
+
 		ob_start();
 		try {
 			do_action( "wp_ajax_$action" );
@@ -68,6 +80,32 @@ abstract class ReorderedPostsTestCase extends PendingChangesTestCase {
 		}
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * How many post permalinks were built while a callback ran — one for each
+	 * post an integration looks up to remember where it stands.
+	 *
+	 * @param callable $callback
+	 * @return int
+	 */
+	protected function permalinks_built( callable $callback ) {
+		$built = 0;
+		$count = function ( $permalink ) use ( &$built ) {
+			$built++;
+			return $permalink;
+		};
+
+		$filters = [ 'post_link', 'page_link', 'post_type_link' ];
+		foreach ( $filters as $filter ) add_filter( $filter, $count );
+
+		try {
+			$callback();
+		} finally {
+			foreach ( $filters as $filter ) remove_filter( $filter, $count );
+		}
+
+		return $built;
 	}
 
 	/**

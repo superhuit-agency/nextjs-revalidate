@@ -104,6 +104,74 @@ class SimpleCustomPostOrderTest extends ReorderedPostsTestCase {
 	}
 
 	/**
+	 * The posts a request names are looked up before the plugin handles it —
+	 * which is what the requests below must not reach.
+	 */
+	public function test_a_request_with_the_plugins_nonce_has_its_posts_looked_up() {
+		$first  = $this->published( 'post', 'first', 0, 1 );
+		$second = $this->published( 'post', 'second', 0, 2 );
+
+		$built = $this->permalinks_built( function () use ( $first, $second ) {
+			$this->ajax( 'update-menu-order', [
+				'nonce' => wp_create_nonce( 'scporder_nonce_action' ),
+				'order' => $this->serialized( [ $second, $first ] ),
+			] );
+		} );
+
+		$this->assertGreaterThan( 0, $built );
+	}
+
+	/**
+	 * A request without the plugin's nonce is one the plugin refuses, and one
+	 * anyone logged in can send, naming as many posts as they like. None is
+	 * looked up, nothing is reported, and the plugin still answers it its own
+	 * way: nothing here dies or answers in its place (#187).
+	 *
+	 * @dataProvider requests_without_the_nonce
+	 *
+	 * @param string      $action The AJAX action, without its prefix.
+	 * @param string|null $nonce  The nonce sent, or null for none.
+	 */
+	public function test_a_request_without_the_plugins_nonce_looks_up_no_post_and_reports_nothing( $action, $nonce ) {
+		$first  = $this->published( 'post', 'first', 0, 1 );
+		$second = $this->published( 'post', 'second', 0, 2 );
+
+		$this->reset_pending_changes();
+
+		$body = 'update-menu-order' === $action
+			? [ 'order' => $this->serialized( [ $second, $first ] ) ]
+			: [ 'id' => $second, 'position' => 1 ];
+		if ( null !== $nonce ) $body['nonce'] = $nonce;
+
+		$went_on = 0;
+		add_action( "wp_ajax_$action", function () use ( &$went_on ) {
+			$went_on++;
+		}, 2 );
+
+		$answer = null;
+		$built  = $this->permalinks_built( function () use ( $action, $body, &$answer ) {
+			$answer = $this->ajax( $action, $body );
+		} );
+
+		$this->assertSame( 0, $built, 'A post was looked up.' );
+		$this->assertNoPendingChanges();
+
+		$this->assertSame( 1, $went_on, 'The request did not go on to the plugin.' );
+		$this->assertSame( [ -1, 403 ], $this->died_with, 'The plugin did not refuse the request with its own nonce check.' );
+		$this->assertSame( '', $answer );
+		$this->assertSame( 2, get_post( $second )->menu_order );
+	}
+
+	public function requests_without_the_nonce() {
+		return [
+			'drag and drop, no nonce'          => [ 'update-menu-order', null ],
+			'drag and drop, a forged nonce'    => [ 'update-menu-order', 'forged1234' ],
+			'move to position, no nonce'       => [ 'scpo_set_position', null ],
+			'move to position, a forged nonce' => [ 'scpo_set_position', 'forged1234' ],
+		];
+	}
+
+	/**
 	 * The plugin's action says a reorder happened, not which posts. Should
 	 * its request no longer be read the way it is sent, the posts are not
 	 * known: each type it orders is reported whole, and the log says why.
