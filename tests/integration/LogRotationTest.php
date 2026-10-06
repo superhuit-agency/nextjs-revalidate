@@ -1,7 +1,7 @@
 <?php
 /**
  * Log rotation through real WordPress — Logger::log() and the
- * `nextjs_revalidate_log_max_size` filter (ADR 0040).
+ * `nextjs_revalidate_log_max_size` filter (ADR 0041).
  *
  * What only this suite can see: the filter answered by a real `add_filter()`
  * callback, the logs setting read from a real option, and the archive written

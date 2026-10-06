@@ -1,7 +1,7 @@
 <?php
 /**
  * Log rotation — Logger::log() moving the log into its one archive once it
- * reaches the size limit (ADR 0040).
+ * reaches the size limit (ADR 0041).
  *
  * Pinned here, without WordPress:
  *

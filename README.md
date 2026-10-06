@@ -1059,7 +1059,7 @@ add_filter( 'nextjs_revalidate_show_unconfigured_notice', function( $show, $miss
 Filters the size, in bytes, at which the log file is rotated. A line written to
 a log at or past it first renames the log to its one archive beside it —
 `nextjs-revalidate-<suffix>.1.log`, replacing the previous archive — and then
-starts a new log ([ADR 0040](docs/adr/0040-the-log-rotates-at-a-size-and-keeps-one-archive.md)).
+starts a new log ([ADR 0041](docs/adr/0041-the-log-rotates-at-a-size-and-keeps-one-archive.md)).
 Asked only as a line is written, so a site with logging off never rotates.
 
 Return `0` or less to never rotate. Anything that is not an integer — `'10MB'`,

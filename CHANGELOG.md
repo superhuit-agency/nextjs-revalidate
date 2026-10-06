@@ -11,7 +11,7 @@ site has to do about it. Releases before 2.0.0 are listed in the changelog of
   reads it again without reloading the page, and **Live refresh** does so every
   five seconds. Nothing to do: with logging off the tab is unchanged.
 - **The log file is rotated at 5 MB**, keeping one archive
-  ([ADR 0040](docs/adr/0040-the-log-rotates-at-a-size-and-keeps-one-archive.md)).
+  ([ADR 0041](docs/adr/0041-the-log-rotates-at-a-size-and-keeps-one-archive.md)).
   A line written to a log at or past the limit first renames it to
   `nextjs-revalidate-<suffix>.1.log` beside it, replacing the previous archive,
   and then starts a new log. The new

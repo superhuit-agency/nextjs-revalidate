@@ -52,7 +52,7 @@ class Logger {
 	 * The filter that sets the size, in bytes, at which the log is rotated.
 	 *
 	 * `0` or less never rotates. Anything that is not an integer — `'10MB'`,
-	 * `null`, an array — falls back to the default, silently. See ADR 0040.
+	 * `null`, an array — falls back to the default, silently. See ADR 0041.
 	 */
 	public const MAX_SIZE_FILTER = 'nextjs_revalidate_log_max_size';
 
@@ -119,7 +119,7 @@ class Logger {
 
 		// Checked here, as a line is about to be written, and nowhere else: a
 		// site that is not logging never rotates, and nothing that only reads
-		// the log ever does (ADR 0040). After the migration, so a legacy log
+		// the log ever does (ADR 0041). After the migration, so a legacy log
 		// over the limit is moved into place first and rotated by this line.
 		self::rotate();
 
@@ -227,7 +227,7 @@ class Logger {
 	 * line about to be written starts a new log.
 	 *
 	 * Renamed, never trimmed: a `rename()` is atomic and moves no data, and it
-	 * replaces the previous archive, so there is only ever one (ADR 0040).
+	 * replaces the previous archive, so there is only ever one (ADR 0041).
 	 *
 	 * Two writers can find the log over the limit together. The first to rename
 	 * it wins; the other must not then rename the *new* log — holding the first
