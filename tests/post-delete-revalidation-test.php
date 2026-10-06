@@ -72,6 +72,9 @@ function njr_test_post( $post_id ) {
 	return $GLOBALS['njr_test_posts'][ $post_id ] ?? null;
 }
 
+// A post's term membership (#188): the posts here are in no taxonomy.
+function get_object_taxonomies( $object, $output = 'names' ) { return []; }
+
 function get_post_type( $post_id ) {
 	$post = njr_test_post( $post_id );
 	return $post ? $post['type'] : false;
@@ -84,6 +87,12 @@ function get_post_status( $post_id ) {
 
 function is_post_type_viewable( $post_type ) {
 	return in_array( $post_type, $GLOBALS['njr_test_viewable_types'], true );
+}
+
+// No fixture type has descendants: what a delete reports for them is
+// `tests/integration/DependentPostsTest.php`'s, which has a real tree.
+function is_post_type_hierarchical( $post_type ) {
+	return false;
 }
 
 function wp_is_post_revision( $post_id ) {

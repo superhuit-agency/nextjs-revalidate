@@ -3,9 +3,11 @@
  * What Polylang's languages report — NextJsRevalidate\Integrations\Polylang.
  *
  * A language created, edited or deleted, and the default language changed,
- * each report one `settings` change; the `polylang` option's other keys, which
- * move paths or are bookkeeping, report nothing (ADR 0037). Languages are
- * driven through Polylang's own model, as its admin screens drive them. Runs
+ * each report one `settings` change, and no `term` change: the integration
+ * declines Polylang's `language` taxonomy (ADR 0040). The `polylang` option's
+ * other keys, which move paths or are bookkeeping, report nothing (ADR 0037).
+ * Languages are driven through Polylang's own model, as its admin screens
+ * drive them. Runs
  * with Polylang loaded, which `.wp-env.tests.json` installs; without it, the
  * integration registers nothing, which
  * `tests/settings-integration-registration-test.php` asserts instead.

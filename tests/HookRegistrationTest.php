@@ -117,6 +117,7 @@ require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
 require_once __DIR__ . '/../include/BlockMenus.php';
+require_once __DIR__ . '/../include/Terms.php';
 require_once __DIR__ . '/../include/SiteSettings.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
@@ -135,6 +136,7 @@ use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\SiteSettings;
+use NextJsRevalidate\Terms;
 
 // The expectations
 // ====
@@ -178,9 +180,18 @@ $expected_per_class = [
 
 	Revalidate::class => [
 		[ 'pre_post_update',      'on_pre_post_update',              10, 2 ],
+		[ 'wp_trash_post',        'on_trash_post',                   10, 1 ],
+		[ 'wp_insert_post_data',  'on_insert_post_data',             10, 4 ],
+		[ 'wp_insert_post',       'on_post_inserted',                10, 3 ],
 		[ 'post_updated',         'on_post_updated',                  1, 1 ],
 		[ 'wp_after_insert_post', 'on_post_save',                    99, 4 ],
 		[ 'before_delete_post',   'on_post_delete',                  10, 1 ],
+		[ 'deleted_post',         'on_post_delete_ended',            10, 1 ],
+		[ 'after_delete_post',    'on_post_deleted',                 10, 1 ],
+		[ 'add_term_relationship',      'on_term_relationship_write',    10, 3 ],
+		[ 'delete_term_relationships',  'on_term_relationship_write',    10, 3 ],
+		[ 'set_object_terms',           'on_object_terms_set',           10, 4 ],
+		[ 'deleted_term_relationships', 'on_term_relationships_deleted', 10, 3 ],
 		[ 'page_row_actions',     'add_revalidate_row_action',       20, 2 ],
 		[ 'post_row_actions',     'add_revalidate_row_action',       20, 2 ],
 		[ 'admin_init',           'revalidate_row_action',           10, 1 ],
@@ -220,6 +231,15 @@ $expected_per_class = [
 	BlockMenus::class => [
 		[ 'save_post_wp_navigation', 'on_block_menu_save', 10, 2 ],
 		[ 'deleted_post',            'on_post_delete',     10, 2 ],
+	],
+
+	Terms::class => [
+		[ 'created_term',     'on_term_created',     10, 3 ],
+		[ 'edit_terms',       'on_term_edit',        10, 3 ],
+		[ 'edited_term',      'on_term_edited',      10, 3 ],
+		[ 'pre_delete_term',  'on_term_delete',      10, 2 ],
+		[ 'set_object_terms', 'on_object_terms_set', 10, 6 ],
+		[ 'delete_term',      'on_term_deleted',     10, 3 ],
 	],
 
 	SiteSettings::class => [

@@ -151,7 +151,8 @@ The oracle is the revalidate server console, which prints each post change as
       action beside Edit and Trash.
 - [ ] **Click it.** Expect to land back on the posts list with "“Runbook post”:
       the revalidation was sent to the front-end.", a post change in the console
-      whose `before` and `after` are both `{"uri":"/runbook-post/"}`, and the
+      whose `before` and `after` are both `{"uri":"/runbook-post/","terms":[…]}`,
+      the post's categories on both sides, and the
       query arg gone from the URL once the notice has been shown.
 - [ ] **Hover a draft.** Expect **no** Revalidate action.
 - [ ] **Select both published posts → Bulk actions → Revalidate → Apply.**
@@ -506,7 +507,7 @@ server console**.
 
 - [ ] **Nested Pages → drag "Team" under "About", and wait for its "updated"
       message.** Expect one request carrying
-      `{"subject":"post",…,"before":{"uri":"/team/"},"after":{"uri":"/about/team/"}}`.
+      `{"subject":"post",…,"before":{"uri":"/team/","terms":[]},"after":{"uri":"/about/team/","terms":[]}}`.
 - [ ] **Drag "Team" back to the top level.** Expect one request carrying its
       change from `/about/team/` to `/team/`.
 - [ ] **Posts → drag a published post above another one.** Expect one request
@@ -599,7 +600,7 @@ Precondition: Q done, main site configured, `second` not.
 - [ ] **Change the main site's secret to something else.** Expect `second`'s
       secret unchanged.
 - [ ] **Publish a post on `second`.** Expect a post change in the console whose
-      `after` is `second`'s URI — `{"uri":"/second/<slug>/"}` — and
+      `after` is `second`'s URI — `{"uri":"/second/<slug>/","terms":[…]}` — and
       `✅ Revalidated 1 change (post)` in `second`'s log: it travelled with
       `second`'s secret, not the main site's.
 - [ ] **Expect a separate log file** for `second`, at the path its own Debug

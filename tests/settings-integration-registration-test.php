@@ -110,6 +110,7 @@ $polylang_hooks = [
 	'created_language',
 	'edited_language',
 	'delete_language',
+	'nextjs_revalidate_should_revalidate_taxonomy',
 	'pll_update_default_lang',
 	'update_option_polylang',
 	'added_term_meta',
@@ -156,6 +157,13 @@ njr_test_registered( 'a site running Yoast SEO adds to the site setting options'
 $GLOBALS['njr_test_hooks'] = [];
 ( new Polylang() )->register_hooks();
 njr_test_registered( 'a site running Polylang listens to its languages, its default language, its string translations and its translations', $polylang_hooks );
+
+// Polylang's `language` taxonomy is publicly queryable, and a site setting
+// rather than a term the front-end shows: the integration declines it, and
+// leaves every other verdict as it found it (ADR 0040).
+njr_test_same( 'Polylang declines its `language` taxonomy', false, ( new Polylang() )->decline_language_taxonomy( true, 'language' ) );
+njr_test_same( 'Polylang leaves a viewable taxonomy admitted', true, ( new Polylang() )->decline_language_taxonomy( true, 'category' ) );
+njr_test_same( 'Polylang leaves a declined taxonomy declined', false, ( new Polylang() )->decline_language_taxonomy( false, 'post_translations' ) );
 
 // What Yoast adds, and what it leaves out: `wpseo` is Yoast's own bookkeeping
 // (ADR 0037).

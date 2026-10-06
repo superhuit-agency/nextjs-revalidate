@@ -20,6 +20,17 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * option, so no site setting option can catch it: creating, editing or
  * deleting one reports a `settings` change from the term's own hooks.
  *
+ * That taxonomy is `publicly_queryable`, so it would pass the taxonomy gate
+ * like any other, and it is declined through
+ * `nextjs_revalidate_should_revalidate_taxonomy`. A language is a site setting,
+ * not a term the front-end shows: as a revalidatable taxonomy, every
+ * translated post would list its language in `terms`, so every save would
+ * expire the term every page of that language may carry, and a language added
+ * or edited would report a `term` change next to its `settings` one.
+ * Polylang's other taxonomies — `term_language`, `post_translations` and
+ * `term_translations` — are registered `public => false` and are not viewable,
+ * so the gate declines them already.
+ *
  * The default language lives in the `polylang` option, alongside keys that are
  * not site settings: `hide_default`, `force_lang` and `rewrite` decide whether a
  * language prefix is in the path at all, which moves paths (#172), and
@@ -102,6 +113,8 @@ class Polylang extends Base implements Hookable {
 		add_action( 'edited_' . self::LANGUAGE_TAXONOMY,  [$this, 'report_settings_change'] );
 		add_action( 'delete_' . self::LANGUAGE_TAXONOMY,  [$this, 'report_settings_change'] );
 
+		add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', [$this, 'decline_language_taxonomy'], 10, 2 );
+
 		add_action( 'pll_update_default_lang', [$this, 'report_settings_change'] );
 		add_action( 'update_option_' . self::OPTION, [$this, 'on_option_update'], 10, 2 );
 
@@ -125,6 +138,23 @@ class Polylang extends Base implements Hookable {
 	 */
 	public function report_settings_change() {
 		$this->pendingChanges->report( Change::settings() );
+	}
+
+	/**
+	 * Leave Polylang's `language` taxonomy out of the revalidatable taxonomies
+	 * — see the class docblock.
+	 *
+	 * So no language is reported as a `term` change, listed in a post's
+	 * `terms`, or named by revalidate all of a post type. At the default
+	 * priority, so a site that does tag pages with a language's term can admit
+	 * it again from a later one.
+	 *
+	 * @param mixed $should_revalidate Whether the taxonomy's terms are revalidated.
+	 * @param mixed $taxonomy_name     The taxonomy name.
+	 * @return mixed
+	 */
+	public function decline_language_taxonomy( $should_revalidate, $taxonomy_name ) {
+		return self::LANGUAGE_TAXONOMY === $taxonomy_name ? false : $should_revalidate;
 	}
 
 	/**

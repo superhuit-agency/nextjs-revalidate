@@ -79,6 +79,9 @@ function get_post( $post_id ) {
 	return isset( $GLOBALS['njr_test_posts'][ $post_id ] ) ? clone $GLOBALS['njr_test_posts'][ $post_id ] : null;
 }
 
+// A post's term membership (#188): the posts here are in no taxonomy.
+function get_object_taxonomies( $object, $output = 'names' ) { return []; }
+
 function get_post_type( $post_id ) {
 	$post = get_post( $post_id );
 	return $post ? $post->post_type : false;

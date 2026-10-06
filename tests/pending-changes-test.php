@@ -315,8 +315,25 @@ function njr_test_remove_logs() {
 
 // The six subjects of ADR 0033, each in the shape the table gives it.
 njr_test_assert(
-	[ 'subject' => 'post', 'id' => 12, 'type' => 'page', 'before' => null, 'after' => [ 'uri' => '/about/' ] ] === Change::post( 12, 'page', null, '/about/' ),
-	'a post change carries its id, type, and the uri before and after — null where it is not on the front-end'
+	[ 'subject' => 'post', 'id' => 12, 'type' => 'page', 'before' => null, 'after' => [ 'uri' => '/about/', 'terms' => [] ] ] === Change::post( 12, 'page', null, '/about/' ),
+	'a post change carries its id, type, and the uri and terms before and after — null where it is not on the front-end'
+);
+njr_test_assert(
+	[
+		'subject' => 'post', 'id' => 12, 'type' => 'post',
+		'before'  => [ 'uri' => '/hello/', 'terms' => [ [ 'id' => 3, 'taxonomy' => 'category', 'slug' => 'news' ], [ 'id' => 9, 'taxonomy' => 'category', 'slug' => 'video' ], [ 'id' => 2, 'taxonomy' => 'post_tag', 'slug' => 'live' ] ] ],
+		'after'   => null,
+	] === Change::post(
+		12, 'post', '/hello/', null,
+		[ Change::post_term( 2, 'post_tag', 'live' ), Change::post_term( 9, 'category', 'video' ), Change::post_term( 3, 'category', 'news' ) ],
+		[ Change::post_term( 4, 'category', 'ignored' ) ]
+	),
+	'a post side lists its terms sorted by taxonomy then id, and a side the post is not on carries none'
+);
+njr_test_assert(
+	[ 'subject' => 'term', 'id' => 7, 'taxonomy' => 'category', 'before' => null, 'after' => [ 'slug' => 'video', 'uri' => '/category/video/' ] ]
+		=== Change::term( 7, 'category', null, Change::term_side( 'video', '/category/video/' ) ),
+	'a term change carries its id, taxonomy, and the slug and uri before and after — null where it is not there'
 );
 njr_test_assert( [ 'subject' => 'redirect', 'uri' => '/old/' ] === Change::redirect( '/old/' ), 'a redirect change carries its source uri' );
 njr_test_assert( [ 'subject' => 'path', 'uri' => '/named/' ] === Change::path( '/named/' ), 'a path change carries its uri' );
@@ -340,8 +357,24 @@ $pending->report( Change::post( 12, 'post', '/first-title/', '/second-title/' ) 
 $pending->report( Change::post( 12, 'post', '/second-title/', '/final-title/' ) );
 $held = $pending->pending();
 njr_test_assert( 1 === count( $held ), 'three changes to one post are held as one' );
-njr_test_assert( [ 'uri' => '/draft-title/' ] === ( $held[0]['before'] ?? null ), 'the merged change keeps the state before the first' );
-njr_test_assert( [ 'uri' => '/final-title/' ] === ( $held[0]['after'] ?? null ), 'the merged change keeps the state after the last' );
+njr_test_assert( [ 'uri' => '/draft-title/', 'terms' => [] ] === ( $held[0]['before'] ?? null ), 'the merged change keeps the state before the first' );
+njr_test_assert( [ 'uri' => '/final-title/', 'terms' => [] ] === ( $held[0]['after'] ?? null ), 'the merged change keeps the state after the last' );
+
+// The terms are inside the sides, so merging needs no rule of its own for
+// them: a post whose terms were swapped, then whose title was edited, keeps
+// the terms it had before the first and the ones it has after the last.
+$video   = Change::post_term( 7, 'category', 'video' );
+$podcast = Change::post_term( 9, 'category', 'podcast' );
+$pending = njr_test_subject();
+$pending->report( Change::post( 14, 'post', '/hello/', '/hello/', [ $video ], [ $podcast ] ) );
+$pending->report( Change::post( 14, 'post', '/hello/', '/hello/', [ $podcast ], [ $podcast ] ) );
+$held = $pending->pending();
+njr_test_assert(
+	1 === count( $held )
+		&& [ 'uri' => '/hello/', 'terms' => [ $video ] ] === $held[0]['before']
+		&& [ 'uri' => '/hello/', 'terms' => [ $podcast ] ] === $held[0]['after'],
+	'a post\'s merged change keeps the terms before the first and after the last'
+);
 
 // A post published and then unpublished in one request was never on the
 // front-end on either side of it: there is nothing to tell anybody.
@@ -351,6 +384,23 @@ $pending->report( Change::post( 13, 'post', '/brief/', null ) );
 njr_test_assert( [] === $pending->pending(), 'a post published and unpublished in one request merges into no change at all' );
 $pending->deliver();
 njr_test_assert( [] === $GLOBALS['njr_test_posts'], 'and nothing is sent for it' );
+
+// A term renamed twice in a request is one change, as a post is; the same ID
+// in another taxonomy is another term.
+$pending = njr_test_subject();
+$pending->report( Change::term( 7, 'category', Change::term_side( 'video', '/category/video/' ), Change::term_side( 'videos', '/category/videos/' ) ) );
+$pending->report( Change::term( 7, 'post_tag', Change::term_side( 'video', '/tag/video/' ), Change::term_side( 'video', '/tag/video/' ) ) );
+$pending->report( Change::term( 7, 'category', Change::term_side( 'videos', '/category/videos/' ), Change::term_side( 'films', '/category/films/' ) ) );
+$held = $pending->pending();
+njr_test_assert( 2 === count( $held ), 'two changes to one term are held as one, and a term of another taxonomy apart' );
+njr_test_assert( [ 'slug' => 'video', 'uri' => '/category/video/' ] === ( $held[0]['before'] ?? null ), 'the merged term change keeps the state before the first' );
+njr_test_assert( [ 'slug' => 'films', 'uri' => '/category/films/' ] === ( $held[0]['after'] ?? null ), 'the merged term change keeps the state after the last' );
+
+// A term created and deleted in one request had no archive on either side of it.
+$pending = njr_test_subject();
+$pending->report( Change::term( 8, 'category', null, Change::term_side( 'brief', '/category/brief/' ) ) );
+$pending->report( Change::term( 8, 'category', Change::term_side( 'brief', '/category/brief/' ), null ) );
+njr_test_assert( [] === $pending->pending(), 'a term created and deleted in one request merges into no change at all' );
 
 // A subject without sides collapses only when the changes are identical.
 $pending = njr_test_subject();
@@ -545,7 +595,7 @@ njr_test_assert( [ 'version', 'changes' ] === array_keys( (array) $body ), 'the 
 njr_test_assert( 2 === ( $body['version'] ?? null ), 'the version is 2' );
 njr_test_assert(
 	[
-		[ 'subject' => 'post', 'id' => 12, 'type' => 'post', 'before' => null, 'after' => [ 'uri' => '/hello/' ] ],
+		[ 'subject' => 'post', 'id' => 12, 'type' => 'post', 'before' => null, 'after' => [ 'uri' => '/hello/', 'terms' => [] ] ],
 		[ 'subject' => 'templates' ],
 	] === ( $body['changes'] ?? null ),
 	'the changes are a list of every pending change, in the order they were produced'

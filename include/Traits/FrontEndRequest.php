@@ -185,12 +185,19 @@ trait FrontEndRequest {
 	 * the secret, and a redirect is the front-end naming a URL the operator
 	 * never typed.
 	 *
-	 * A `Location` that is a path is joined to the URL the request went to,
-	 * credentials and all: it is the shape Next.js answers a trailing-slash
-	 * redirect with, and a staging front-end behind basic auth would answer the
-	 * next hop 401 without them. A relative path, or a `Location` given more
-	 * than once, is not followed — neither is anything a front-end has a reason
-	 * to send, and guessing at one is worse than reporting it.
+	 * The credentials of the URL the request went to carry over, whichever shape
+	 * the `Location` takes, because a staging front-end behind basic auth would
+	 * answer the next hop 401 without them. A `Location` that is a path — the
+	 * shape Next.js answers a trailing-slash redirect with — is joined to that
+	 * URL, credentials and all. One that is an absolute URL on the same origin —
+	 * the shape a proxy rewriting `Location` answers with — is given its
+	 * credentials, and is otherwise followed exactly as spelt; one naming
+	 * credentials of its own keeps them, because the front-end named them. The
+	 * origin leaves the credentials out, so neither shape is refused for them.
+	 *
+	 * A relative path, or a `Location` given more than once, is not followed —
+	 * neither is anything a front-end has a reason to send, and guessing at one
+	 * is worse than reporting it.
 	 *
 	 * @param string $from     The URL the request was sent to.
 	 * @param int    $status   The status it was answered with.
@@ -217,8 +224,35 @@ trait FrontEndRequest {
 		}
 
 		$origin = self::origin( $from );
+		if ( '' === $origin || self::origin( $location ) !== $origin ) return '';
 
-		return '' !== $origin && self::origin( $location ) === $origin ? $location : '';
+		// An absolute URL on the same origin: as spelt, with the credentials of
+		// `$from` after its scheme unless it names credentials of its own.
+		// `origin()` has already proved both are `scheme://host` URLs.
+		$credentials = self::credentials( $from );
+		if ( '' === $credentials || '' !== self::credentials( $location ) ) return $location;
+
+		if ( ! preg_match( '#^[a-z][a-z0-9+.-]*://#i', $location, $scheme ) ) return '';
+
+		return $scheme[0] . $credentials . substr( $location, strlen( $scheme[0] ) );
+	}
+
+	/**
+	 * A URL's credentials as spelt in it, `@` included — `user:pass@` — or ''
+	 * for a URL that names none.
+	 *
+	 * Read off the authority rather than out of `wp_parse_url()`'s `user` and
+	 * `pass`, so they carry over exactly as typed, percent-encoding and all.
+	 * Everything up to the last `@` before the path is the credentials: a host
+	 * cannot hold one.
+	 *
+	 * @param string $url
+	 *
+	 * @return string
+	 */
+	protected static function credentials( $url ) {
+
+		return preg_match( '#^[a-z][a-z0-9+.-]*://([^/?\#]*@)#i', $url, $match ) ? $match[1] : '';
 	}
 
 	/**

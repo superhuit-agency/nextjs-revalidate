@@ -7,6 +7,7 @@
 
 namespace NextJsRevalidate\Tests;
 
+use NextJsRevalidate\Change;
 use NextJsRevalidate\Logger;
 use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Settings;
@@ -124,6 +125,18 @@ abstract class PendingChangesTestCase extends WP_UnitTestCase {
 		return strpos( $permalink, $home ) === 0
 			? substr( $permalink, strlen( $home ) )
 			: $permalink;
+	}
+
+	/**
+	 * The terms a side of a `post` change lists for a post saved in no
+	 * category: WordPress puts it in the default one, *Uncategorized*.
+	 *
+	 * @return array[]
+	 */
+	protected function uncategorized() {
+		$default = get_term( (int) get_option( 'default_category' ), 'category' );
+
+		return [ Change::post_term( (int) $default->term_id, 'category', (string) $default->slug ) ];
 	}
 
 	/**
