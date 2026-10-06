@@ -152,6 +152,13 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
+= 2.0.1 =
+
+* Fixed: trashing or permanently deleting a parent page reports each descendant
+  whose URI that moved, from its old URI to its new one, as a save that renames
+  or moves the parent already did. Before, only the parent was reported, and
+  deleting a parent already in the trash reported nothing.
+
 = 2.0.0 =
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a
