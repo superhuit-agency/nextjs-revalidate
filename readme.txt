@@ -171,9 +171,22 @@ add_filter( 'nextjs_revalidate_log_max_size', function( $bytes ) {
 = 2.1.0 =
 
 New subjects and fields in the request to the front-end, which a route written
-for 2.0 ignores. The contract version stays 2. The full notes are in
-CHANGELOG.md on GitHub.
+for 2.0 ignores. The contract version stays 2. A site whose revalidate domain has
+basic-auth credentials has to read the secret from a new header: see the first
+two entries. The full notes are in CHANGELOG.md on GitHub.
 
+* Fixed: a front-end behind basic auth, with its credentials in the revalidate
+  domain, is reached again. Since 2.0.0 the secret's `Authorization: Bearer`
+  header took the place of the credentials, so such a front-end answered every
+  delivery 401. For a domain with credentials, the plugin now sends them as
+  `Authorization: Basic`, and the secret in `X-Nextjs-Revalidate-Secret`. This
+  also lets the 2.0.1 fix for credentials across a redirect take effect. A
+  domain without credentials sends what 2.0 sent.
+* Act on it: a revalidate domain that still has credentials its front-end no
+  longer checks answers 401 from 2.1.0, because the secret is no longer in
+  `Authorization` there. Before upgrading, update the route to read
+  `X-Nextjs-Revalidate-Secret` first, as the README's reference route does, or
+  take the credentials out of the domain.
 * Added: a `term` change. Creating, editing or deleting a term of a
   revalidatable taxonomy reports its slug and archive URI before and after,
   with each descendant whose archive moved, and the default term a delete moved

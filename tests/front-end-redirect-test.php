@@ -19,8 +19,14 @@
  *    answer the next hop 401 without them, whether the `Location` is a path or
  *    an absolute URL on the same origin. They stay on that origin, as the
  *    secret does.
+ *  - **The credentials are sent, on every hop.** A request carries one
+ *    `Authorization` header, so a URL with credentials sends them there, as
+ *    `Basic`, and moves the secret to `X-Nextjs-Revalidate-Secret`. Worked out
+ *    from each hop's own URL, so they follow the credentials it carries.
  *
- * See `docs/adr/0039-a-delivery-follows-a-redirect-that-keeps-the-request.md`.
+ * See `docs/adr/0039-a-delivery-follows-a-redirect-that-keeps-the-request.md`,
+ * and `docs/adr/0042-a-domain-with-credentials-moves-the-secret-to-its-own-header.md`
+ * for the headers.
  *
  * Reachable by stubbing a handful of WordPress functions, so it is a standalone
  * script rather than a PHPUnit test — see `docs/adr/0008-two-testing-idioms.md`.
@@ -258,6 +264,91 @@ njr_test_assert( 'ok' === $code && 'http://us%3Aer:p%40ss@localhost:8083/revalid
 $ipv6 = 'http://user:pass@[::1]:8083/revalidate';
 list( $code, $urls ) = njr_deliver( $ipv6, [ $ipv6 => njr_redirect( 308, 'http://[::1]:8083/revalidate/' ), 'http://user:pass@[::1]:8083/revalidate/' => $ok ] );
 njr_test_assert( 'ok' === $code && 'http://user:pass@[::1]:8083/revalidate/' === ( $urls[1] ?? '' ), 'an absolute URL on an IPv6 host is given the credentials too' );
+
+// The headers
+// ====
+
+/** The headers of each request the last delivery sent, in turn. */
+function njr_sent_headers() {
+	return array_map( function ( $post ) { return $post[1]['headers'] ?? null; }, $GLOBALS['njr_test_posts'] );
+}
+
+/** The headers a request carries to a front-end behind basic auth. */
+function njr_basic_headers( $user_pass ) {
+	return [
+		'Authorization'              => 'Basic ' . base64_encode( $user_pass ),
+		'X-Nextjs-Revalidate-Secret' => 'sup3r-s3cret',
+		'Content-Type'               => 'application/json',
+	];
+}
+
+$bearer_headers = [ 'Authorization' => 'Bearer sup3r-s3cret', 'Content-Type' => 'application/json' ];
+
+// A domain without credentials sends exactly what it always has.
+njr_deliver( $endpoint, [ $endpoint => $ok ] );
+njr_test_assert( [ $bearer_headers ] === njr_sent_headers(), 'a URL without credentials sends the secret as a bearer token, and nothing else' );
+
+// A domain with credentials: they are the `Authorization`, and the secret has a
+// header of its own. Never both in `Authorization`, and never the secret twice.
+njr_deliver( $staging, [ $staging => $ok ] );
+njr_test_assert( [ njr_basic_headers( 'user:pass' ) ] === njr_sent_headers(), 'a URL with credentials sends them as basic auth, and the secret in its own header' );
+
+// Percent-decoded first, as libcurl decodes them: the `:` and `@` a user and a
+// password cannot hold unencoded in a URL are what the front-end checks.
+njr_deliver( $encoded, [ $encoded => $ok ] );
+njr_test_assert( [ njr_basic_headers( 'us:er:p@ss' ) ] === njr_sent_headers(), 'percent-encoded credentials are sent decoded' );
+
+// A `+` is a plus in a URL's userinfo, not a space.
+$plus = 'http://user:p+ss@localhost:8083/revalidate';
+njr_deliver( $plus, [ $plus => $ok ] );
+njr_test_assert( [ njr_basic_headers( 'user:p+ss' ) ] === njr_sent_headers(), 'a + in the password is sent as a +' );
+
+// A password may hold a `:`; only the first one ends the user.
+$colon = 'http://user:pa:ss@localhost:8083/revalidate';
+njr_deliver( $colon, [ $colon => $ok ] );
+njr_test_assert( [ njr_basic_headers( 'user:pa:ss' ) ] === njr_sent_headers(), 'a : in the password stays in the password' );
+
+// A user with no password, with or without the `:`, is sent as `user:`.
+foreach ( [ 'http://user@localhost:8083/revalidate', 'http://user:@localhost:8083/revalidate' ] as $userless ) {
+	njr_deliver( $userless, [ $userless => $ok ] );
+	njr_test_assert( [ njr_basic_headers( 'user:' ) ] === njr_sent_headers(), "a user with no password — $userless — is sent as user:" );
+}
+
+// An `@` with nothing before it names no credentials.
+$empty = 'http://@localhost:8083/revalidate';
+njr_deliver( $empty, [ $empty => $ok ] );
+njr_test_assert( [ $bearer_headers ] === njr_sent_headers(), 'an empty userinfo is no credentials, and sends the bearer token' );
+
+// An `@` past the authority is not credentials either.
+$at_in_path = 'http://localhost:8083/by/a@b/';
+njr_deliver( $at_in_path, [ $at_in_path => $ok ] );
+njr_test_assert( [ $bearer_headers ] === njr_sent_headers(), 'an @ in the path is no credentials' );
+
+// The credentials ride every hop: a same-origin redirect, whether its
+// `Location` is a path or an absolute URL, sends `Basic` again.
+foreach (
+	[
+		'a path'          => '/revalidate/',
+		'an absolute URL' => 'http://localhost:8083/revalidate/',
+	] as $what => $location
+) {
+	foreach ( [ 307, 308 ] as $status ) {
+		list( $code ) = njr_deliver( $staging, [ $staging => njr_redirect( $status, $location ), 'http://user:pass@localhost:8083/revalidate/' => $ok ] );
+
+		njr_test_assert(
+			'ok' === $code && [ njr_basic_headers( 'user:pass' ), njr_basic_headers( 'user:pass' ) ] === njr_sent_headers(),
+			"a $status to $what keeps basic auth, and the secret in its own header, on the next hop"
+		);
+	}
+}
+
+// A `Location` naming credentials of its own is sent with those: the headers
+// are the next hop's URL's, not the first one's.
+list( $code ) = njr_deliver( $staging, [ $staging => njr_redirect( 308, $own ), $own => $ok ] );
+njr_test_assert(
+	'ok' === $code && [ njr_basic_headers( 'user:pass' ), njr_basic_headers( 'other:word' ) ] === njr_sent_headers(),
+	'a Location with credentials of its own is sent with them as basic auth'
+);
 
 // Not followed
 // ====

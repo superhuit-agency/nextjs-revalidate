@@ -9,8 +9,8 @@ use WP_Error;
  *
  * Every request this plugin makes goes to the same app, over the same
  * transport, carrying the same secret: the v2 `POST` of a site's **pending
- * changes**, with the secret in an `Authorization` header — whether they are
- * delivered when a request ends or as a probe. What must not differ between
+ * changes**, with the secret in a header — whether they are delivered when a
+ * request ends or as a probe. What must not differ between
  * those callers is the answer: `unreachable` and `http_401` send an operator to
  * completely different places, and a second caller that collapsed them into a
  * bare false would be a second thing to learn.
@@ -60,6 +60,9 @@ trait FrontEndRequest {
 	 * `Authorization: Bearer <secret>` rather than a query arg: it is the
 	 * header most logging and tracing tools already redact, and it keeps the
 	 * secret out of every access log the URL would have landed in (ADR 0034).
+	 * A URL with basic-auth credentials needs `Authorization` for those, so
+	 * there the secret moves to a header of its own — see
+	 * `front_end_headers()` and ADR 0042.
 	 *
 	 * Any 2xx is a success, because a `POST` may answer 202 or 204 as readily as
 	 * 200. A 307 or a 308 to the same origin is followed — it is how a Next.js
@@ -119,10 +122,6 @@ trait FrontEndRequest {
 			$args = [
 				'timeout'     => $timeout,
 				'redirection' => 0,
-				'headers'     => [
-					'Authorization' => 'Bearer ' . $secret,
-					'Content-Type'  => 'application/json',
-				],
 				'body'        => $json,
 			];
 
@@ -130,6 +129,11 @@ trait FrontEndRequest {
 			$hops     = 0;
 
 			while ( true ) {
+				// Worked out for each hop, from the URL it goes to: which
+				// credentials that URL carries is `redirect_to_follow()`'s call,
+				// and they decide where the secret goes (ADR 0042).
+				$args['headers'] = self::front_end_headers( $url, $secret );
+
 				$response = wp_remote_post( $url, $args );
 
 				// The request never got an answer — DNS, TLS, a timeout. What the
@@ -173,6 +177,60 @@ trait FrontEndRequest {
 		} catch (\Throwable $th) {
 			return new WP_Error( 'exception', self::redact_secret( $th->getMessage(), $secret ) );
 		}
+	}
+
+	/**
+	 * The headers a request to `$url` carries, the secret among them.
+	 *
+	 * A URL without credentials sends the secret as `Authorization: Bearer`.
+	 * A URL with credentials is a front-end behind basic auth, which reads
+	 * `Authorization` for them, and a request carries one `Authorization`
+	 * header: so the credentials go there, as `Basic`, and the secret goes
+	 * bare in `X-Nextjs-Revalidate-Secret`. The secret is in exactly one header
+	 * either way (ADR 0042).
+	 *
+	 * @param string $url    The URL the request goes to.
+	 * @param string $secret The configured secret.
+	 *
+	 * @return array<string, string>
+	 */
+	protected static function front_end_headers( $url, $secret ) {
+
+		$basic = self::basic_auth( $url );
+
+		$secret_headers = '' === $basic
+			? [ 'Authorization' => 'Bearer ' . $secret ]
+			: [ 'Authorization' => 'Basic ' . $basic, 'X-Nextjs-Revalidate-Secret' => $secret ];
+
+		return $secret_headers + [ 'Content-Type' => 'application/json' ];
+	}
+
+	/**
+	 * A URL's credentials as a basic-auth token — `base64(user:pass)` — or ''
+	 * for a URL that names none.
+	 *
+	 * Built here rather than left to the transport: libcurl builds it from the
+	 * URL only when no `Authorization` header is set, and the fsockopen
+	 * transport never builds it at all. The user and the password are
+	 * percent-decoded first, as libcurl decodes them, and a user with no
+	 * password is sent as `user:`. An `@` with nothing before it names no
+	 * credentials.
+	 *
+	 * @param string $url
+	 *
+	 * @return string
+	 */
+	protected static function basic_auth( $url ) {
+
+		// `credentials()` keeps the `@`, which is no part of either.
+		$credentials = substr( self::credentials( $url ), 0, -1 );
+		if ( '' === $credentials ) return '';
+
+		// The first `:` ends the user: a user cannot hold one unencoded, and a
+		// password can.
+		$parts = explode( ':', $credentials, 2 );
+
+		return base64_encode( rawurldecode( $parts[0] ) . ':' . rawurldecode( $parts[1] ?? '' ) );
 	}
 
 	/**

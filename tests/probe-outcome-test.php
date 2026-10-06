@@ -56,6 +56,12 @@ $GLOBALS['njr_test_posts'] = [];
 $GLOBALS['njr_test_configured'] = true;
 
 /**
+ * The endpoint URL the fixture site composes.
+ * @var string
+ */
+$GLOBALS['njr_test_endpoint'] = 'https://front-end.test/api/revalidate';
+
+/**
  * Every option written since the last reset, keyed by name.
  * @var array
  */
@@ -164,7 +170,7 @@ class NextJsRevalidate_Test_Settings {
 
 	public function is_configured() { return $GLOBALS['njr_test_configured']; }
 	public function missing_settings() { return $GLOBALS['njr_test_configured'] ? [] : [ 'secret' ]; }
-	public function endpoint_url() { return 'https://front-end.test/api/revalidate'; }
+	public function endpoint_url() { return $GLOBALS['njr_test_endpoint']; }
 
 	public function not_configured_error() {
 		return new WP_Error( 'not_configured', 'Next.js Revalidate is not configured for this site. Missing: secret.' );
@@ -295,6 +301,19 @@ njr_test_assert(
 njr_test_assert(
 	\NextJsRevalidate\PendingChanges::REQUEST_TIMEOUT === ( $GLOBALS['njr_test_posts'][0][1]['timeout'] ?? null ),
 	'within the same timeout an ordinary delivery waits'
+);
+
+// A front-end behind basic auth, its credentials in the domain: the probe sends
+// the request a delivery sends there, the credentials as basic auth and the
+// secret in its own header (ADR 0042).
+$GLOBALS['njr_test_endpoint'] = 'https://runbook:p%40ss@front-end.test/api/revalidate';
+$probe = njr_test_probe( '/hello-world/', $answered( 204 ) );
+$GLOBALS['njr_test_endpoint'] = 'https://front-end.test/api/revalidate';
+njr_test_assert( 'success' === $probe['result']['status'], 'a probe of a front-end behind basic auth succeeds' );
+njr_test_assert(
+	[ 'Authorization' => 'Basic ' . base64_encode( 'runbook:p@ss' ), 'X-Nextjs-Revalidate-Secret' => 'fixture-secret', 'Content-Type' => 'application/json' ]
+		=== ( $GLOBALS['njr_test_posts'][0][1]['headers'] ?? null ),
+	'with the credentials of the domain as basic auth, and the secret in its own header'
 );
 
 // Whatever the operator typed, what reaches `home_url()` is a path.
