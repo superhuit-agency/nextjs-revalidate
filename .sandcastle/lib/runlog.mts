@@ -168,11 +168,25 @@ export function startRunLog(repoRoot: string, startedAt: Date = new Date()): Run
 		exception = { kind: 'exception', origin, stack: stackOf(error) };
 	});
 
-	process.on('exit', (code) => {
+	const onExit = (code: number): void => {
 		if (exception) end(exception);
 		else if (signalled) end({ kind: 'signal', signal: signalled, code });
 		else if (drained) end({ kind: 'normal', code });
 		else end({ kind: 'exit', code });
+	};
+	process.on('exit', onExit);
+
+	// The final record waits for every other `exit` listener. Sandcastle adds
+	// one of its own once a sandbox is up, and it prints where it left the
+	// worktree — terminal output like any other, which belongs above the final
+	// record rather than after the file is closed. `newListener` fires before
+	// the new listener is attached, so moving this one behind it waits a tick.
+	process.on('newListener', (event, listener) => {
+		if (event !== 'exit' || listener === onExit) return;
+		process.nextTick(() => {
+			process.removeListener('exit', onExit);
+			process.on('exit', onExit);
+		});
 	});
 
 	for (const signal of RECORDED_SIGNALS) {

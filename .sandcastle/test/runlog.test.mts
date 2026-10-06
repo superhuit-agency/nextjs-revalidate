@@ -152,6 +152,18 @@ describe('a pass with a run log', () => {
 		assert.match(final, /Error: a crash in a callback\n\s+at /);
 	});
 
+	it('keeps what a later exit listener prints — sandcastle saying where it left a worktree — above the final record', () => {
+		const { result, content, final } = pass('throw-after-exit-listener');
+
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /Worktree preserved at \/tmp\/worktree/);
+		assert.match(final, /pass ended by an uncaught exception \(origin: unhandledRejection\) — last phase: plan\n/);
+
+		const preserved = content.indexOf('Worktree preserved at /tmp/worktree');
+		assert.ok(preserved !== -1, 'the line printed on the way out is in the file');
+		assert.ok(preserved < content.indexOf(final));
+	});
+
 	it('records an unhandled rejection, with its stack', () => {
 		const { result, final } = pass('reject');
 

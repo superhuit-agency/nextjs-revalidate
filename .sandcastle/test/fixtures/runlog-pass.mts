@@ -49,6 +49,16 @@ switch (ending) {
 		}, 0);
 		break;
 
+	case 'throw-after-exit-listener':
+		// What sandcastle's shutdown registry does once a sandbox is up: an
+		// `exit` listener of its own, added after the run log's, that says where
+		// it left the worktree.
+		process.on('exit', () => {
+			console.error('\nWorktree preserved at /tmp/worktree');
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		throw new Error('a crash with a sandbox up');
+
 	case 'reject':
 		// What `await main()` does when `main()` rejects.
 		await Promise.reject(new Error('a rejection mid-phase'));
