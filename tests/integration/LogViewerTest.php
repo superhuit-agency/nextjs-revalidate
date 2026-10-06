@@ -17,6 +17,7 @@ namespace NextJsRevalidate\Tests;
 
 use NextJsRevalidate;
 use NextJsRevalidate\Logger;
+use NextJsRevalidate\LogTail;
 use NextJsRevalidate\LogViewer;
 use NextJsRevalidate\Settings;
 use WPAjaxDieContinueException;
@@ -150,6 +151,17 @@ class LogViewerTest extends \WP_Ajax_UnitTestCase {
 		$this->assertStringContainsString( 'Showing the last 3 of 3 lines', LogViewer::body() );
 	}
 
+	public function test_a_log_whose_last_line_is_too_long_to_read_is_not_called_empty() {
+		$this->enable_logs();
+		Logger::log( 'a short line', 'test.php' );
+		Logger::log( str_repeat( 'x', LogTail::MAX_BYTES + 1 ), 'test.php' );
+
+		$body = LogViewer::body();
+
+		$this->assertStringNotContainsString( 'Nothing has been logged yet', $body );
+		$this->assertStringContainsString( 'Showing the last 0 of 2 lines', $body );
+	}
+
 	public function test_a_line_is_escaped_exactly_as_it_was_written() {
 		$this->enable_logs();
 		Logger::log( '<script>alert("x")</script> & &amp;', 'test.php' );
@@ -240,6 +252,11 @@ class LogViewerTest extends \WP_Ajax_UnitTestCase {
 		$answer = $this->refresh( wp_create_nonce( LogViewer::ACTION ) );
 
 		$this->assertStringContainsString( 'Nothing has been logged yet', $answer['data']['html'] );
+		// No suffix is asserted here, unlike for `body()` above: `admin-ajax.php`
+		// fires `admin_init`, where the Enable logs help line asks
+		// `Logger::reported_location()` for the full path, which hands a site
+		// that is logging its suffix (ADR 0024). That is the settings screen's,
+		// not the viewer's.
 		$this->assertDirectoryDoesNotExist( Logger::directory() );
 	}
 

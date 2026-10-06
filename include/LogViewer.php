@@ -157,7 +157,9 @@ class LogViewer implements Hookable {
 		$refreshed = wp_date( 'H:i:s' );
 		$tail      = self::tail();
 
-		if ( null === $tail || [] === $tail['lines'] ) {
+		// Decided on the file's count, not on the lines read: a last line too
+		// long for the read cap leaves none to show, and the log is not empty.
+		if ( null === $tail || 0 === $tail['total'] ) {
 			return sprintf(
 				'<p class="njr-log-viewer__note">%s</p>',
 				esc_html(
