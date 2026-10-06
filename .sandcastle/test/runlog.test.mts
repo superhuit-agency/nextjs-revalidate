@@ -110,7 +110,6 @@ describe('a pass with a run log', () => {
 
 		assert.match(content, /^\[run-log \S+\] pass started — pid \d+/);
 		assert.match(content, /\] phase: pre-flight\n/);
-		// A record after a partial line still starts a line of its own.
 		assert.match(content, /\] implement: #7 started — transcript \/repo\/\.sandcastle\/logs\/issue-7\.log\n/);
 		assert.match(final, /\] pass ended normally with exit code 0 — last phase: plan$/);
 		assert.ok(content.endsWith(`${final}\n`), 'the final record is the last thing in the file');
@@ -173,10 +172,12 @@ describe('a pass with a run log', () => {
 	});
 
 	it('records SIGINT, and the signal still kills the pass', () => {
-		const { result, final } = pass('signal');
+		const { result, content, final } = pass('signal');
 
 		assert.equal(result.signal, 'SIGINT');
 		assert.match(final, /pass ended by SIGINT — last phase: plan$/);
+		// The signal lands mid-line: the final record still starts a line of its own.
+		assert.match(content, /no newline yet\n\[run-log \S+\] pass ended by SIGINT/);
 	});
 
 	it('records SIGINT under tsx, which still stops the pass with the conventional 130', () => {
