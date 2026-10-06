@@ -176,9 +176,11 @@ $expected_per_class = [
 
 	Revalidate::class => [
 		[ 'pre_post_update',      'on_pre_post_update',              10, 2 ],
+		[ 'wp_trash_post',        'on_trash_post',                   10, 1 ],
 		[ 'post_updated',         'on_post_updated',                  1, 1 ],
 		[ 'wp_after_insert_post', 'on_post_save',                    99, 4 ],
 		[ 'before_delete_post',   'on_post_delete',                  10, 1 ],
+		[ 'after_delete_post',    'on_post_deleted',                 10, 1 ],
 		[ 'page_row_actions',     'add_revalidate_row_action',       20, 2 ],
 		[ 'post_row_actions',     'add_revalidate_row_action',       20, 2 ],
 		[ 'admin_init',           'revalidate_row_action',           10, 1 ],
