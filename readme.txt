@@ -161,6 +161,10 @@ so returning `true` there revalidates nothing.
   waited — for hours, on a host with a long `max_execution_time` — until
   something new was enqueued. The queue now stays scheduled for as long as it
   holds entries.
+* Fixed: revalidate all, opened with no referer such as from a bookmarked
+  link, raised an `Undefined array key "post"` warning. Where warnings are
+  displayed, it broke the redirect back and left a page of warnings instead of
+  the notice.
 
 = 1.7.0 =
 
