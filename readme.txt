@@ -152,6 +152,18 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
+= 2.1.0 =
+
+New subjects and fields in the request to the front-end, which a route written
+for 2.0 ignores. The contract version stays 2. The full notes are in
+CHANGELOG.md on GitHub.
+
+* Added: a `term` change. Creating, editing or deleting a term of a
+  revalidatable taxonomy reports its slug and archive URI before and after,
+  with each descendant whose archive moved, and the default term a delete moved
+  posts into. A term's change never reports the posts in it: tag whatever shows
+  a term with that term's tag. The reference route tags it `term:{id}`.
+
 = 2.0.0 =
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a

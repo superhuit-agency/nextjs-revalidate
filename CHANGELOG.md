@@ -4,7 +4,7 @@ What changed in each release of Next.js Revalidate, newest first, and what a
 site has to do about it. Releases before 2.0.0 are listed in the changelog of
 [`readme.txt`](readme.txt).
 
-## 2.1.0 (unreleased)
+## 2.1.0
 
 Contract version **2**, unchanged: everything below is a new subject or a new
 field, which a front-end written for 2.0 ignores (rule 1 of the
