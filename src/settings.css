@@ -116,6 +116,17 @@
 		color: #d63638;
 	}
 
+	/* Where the log archive ends and the log starts: not a line of either. */
+	.njr-log-viewer__separator {
+		display: block;
+		margin: 4px 0;
+		padding-top: 4px;
+		border-top: 1px dashed #8c8f94;
+		color: #646970;
+		font-style: italic;
+		text-align: center;
+	}
+
 	.njr-log-viewer__body[aria-busy="true"] .njr-log-viewer__status {
 		opacity: 0.6;
 	}

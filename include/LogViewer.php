@@ -157,9 +157,15 @@ class LogViewer implements Hookable {
 		$refreshed = wp_date( 'H:i:s' );
 		$tail      = self::tail();
 
-		// Decided on the file's count, not on the lines read: a last line too
-		// long for the read cap leaves none to show, and the log is not empty.
-		if ( null === $tail || 0 === $tail['total'] ) {
+		$log     = null === $tail['log'] ? [] : $tail['log']['lines'];
+		$archive = null === $tail['archive'] ? [] : $tail['archive']['lines'];
+
+		// Decided on the files' counts, not on the lines read: a last line too
+		// long for the read cap leaves none to show, and the file is not empty.
+		$log_total     = null === $tail['log'] ? 0 : $tail['log']['total'];
+		$archive_total = null === $tail['archive'] ? 0 : $tail['archive']['total'];
+
+		if ( 0 === $log_total && 0 === $archive_total ) {
 			return sprintf(
 				'<p class="njr-log-viewer__note">%s</p>',
 				esc_html(
@@ -172,37 +178,83 @@ class LogViewer implements Hookable {
 			);
 		}
 
-		$status = sprintf(
-			/* translators: 1: how many lines are shown, 2: how many lines the log holds, 3: the size of the log, e.g. 1.2 MB, 4: the time the log was read, e.g. 14:05:09 */
-			_n(
-				'Showing the last %1$s of %2$s line (%3$s) — refreshed %4$s',
-				'Showing the last %1$s of %2$s lines (%3$s) — refreshed %4$s',
-				$tail['total'],
-				'nextjs-revalidate'
-			),
-			number_format_i18n( count( $tail['lines'] ) ),
-			number_format_i18n( $tail['total'] ),
-			size_format( $tail['size'], 1 ),
-			$refreshed
-		);
+		if ( 0 === $archive_total ) {
+			// The log alone — holding lines, or the note above would have been
+			// returned: how much of it this is.
+			$status = sprintf(
+				/* translators: 1: how many lines are shown, 2: how many lines the log holds, 3: the size of the log, e.g. 1.2 MB, 4: the time the log was read, e.g. 14:05:09 */
+				_n(
+					'Showing the last %1$s of %2$s line (%3$s) — refreshed %4$s',
+					'Showing the last %1$s of %2$s lines (%3$s) — refreshed %4$s',
+					$tail['log']['total'],
+					'nextjs-revalidate'
+				),
+				number_format_i18n( count( $log ) ),
+				number_format_i18n( $tail['log']['total'] ),
+				size_format( $tail['log']['size'], 1 ),
+				$refreshed
+			);
+
+			$lines = array_map( [ self::class, 'line' ], $log );
+		} else {
+			// Topped up from the archive: where each part comes from.
+			$status = sprintf(
+				/* translators: 1: how many lines are shown, 2: how many of them come from the log, 3: how many from the log archive, 4: the time the log was read, e.g. 14:05:09 */
+				_n(
+					'Showing the last %1$s line (%2$s in the log, %3$s from the archive) — refreshed %4$s',
+					'Showing the last %1$s lines (%2$s in the log, %3$s from the archive) — refreshed %4$s',
+					count( $log ) + count( $archive ),
+					'nextjs-revalidate'
+				),
+				number_format_i18n( count( $log ) + count( $archive ) ),
+				number_format_i18n( count( $log ) ),
+				number_format_i18n( count( $archive ) ),
+				$refreshed
+			);
+
+			// A block of its own, so no newline sits either side of it: one
+			// would show as an empty line in the box.
+			$lines = implode( "\n", array_map( [ self::class, 'line' ], $archive ) )
+				. sprintf(
+					'<span class="njr-log-viewer__separator" role="separator">%s</span>',
+					esc_html__( 'The log archive ends here, and the log starts below.', 'nextjs-revalidate' )
+				)
+				. implode( "\n", array_map( [ self::class, 'line' ], $log ) );
+		}
 
 		return sprintf(
 			'<p class="njr-log-viewer__status">%s</p><pre class="njr-log-viewer__log" tabindex="0" aria-label="%s">%s</pre>',
 			esc_html( $status ),
 			esc_attr__( 'The end of the log file', 'nextjs-revalidate' ),
-			implode( "\n", array_map( [ self::class, 'line' ], $tail['lines'] ) )
+			is_array( $lines ) ? implode( "\n", $lines ) : $lines
 		);
 	}
 
 	/**
-	 * The end of this site's log, or null when it has none.
+	 * The end of this site's log, continued into the end of its **log archive**
+	 * when the log alone holds fewer lines than the view — so a rotation never
+	 * shows up as a gap.
 	 *
-	 * @return array{lines: string[], total: int, size: int}|null
+	 * Each part is null when there is no such file. The archive is read only
+	 * when the log is short, and only for the lines the log leaves over.
+	 * Read-only, like the first read: nothing here rotates anything.
+	 *
+	 * @return array{log: array{lines: string[], total: int, size: int}|null, archive: array{lines: string[], total: int, size: int}|null}
 	 */
 	public static function tail() {
 		$path = Logger::existing_path();
+		if ( null === $path ) return [ 'log' => null, 'archive' => null ];
 
-		return null === $path ? null : LogTail::read( $path, self::LINES );
+		$log  = LogTail::read( $path, self::LINES );
+		$left = self::LINES - ( null === $log ? 0 : $log['total'] );
+
+		$archive = null;
+		if ( $left > 0 ) {
+			$archive_path = Logger::existing_archive_path();
+			if ( null !== $archive_path ) $archive = LogTail::read( $archive_path, $left );
+		}
+
+		return [ 'log' => $log, 'archive' => $archive ];
 	}
 
 	/**

@@ -396,10 +396,26 @@ it runs in.
 **Log viewer**:
 The read-only view of the end of the **log file**, on the settings screen's Debug
 tab, shown only while logging is switched on. It shows the file and never changes
-it: reading it writes nothing and removes nothing. With logging off, the screen
-still says where the log file is, and the viewer is not shown.
+it: reading it writes nothing and removes nothing. When the log file alone is too
+short to fill the view, it continues into the **log archive**, so a rotation
+never shows up as a gap. With logging off, the screen still says where the log
+file is, and the viewer is not shown.
 _Avoid_: Debug log — suggests a mode; log console — suggests something that
 takes input.
+
+**Log rotation**:
+Moving the **log file** aside once it grows past a size limit, so the next line
+starts a new one. Done as a line is written, so a site that is not logging never
+rotates. It keeps exactly one **log archive**, and destroys the previous one to
+make room — the one point at which the plugin gives up evidence by rule.
+_Avoid_: Truncation, pruning, cleanup — each suggests trimming lines from the
+file, when rotation moves the whole file.
+
+**Log archive**:
+The **log file** as it stood at its last rotation, kept beside it under the same
+guards and the same site-unique name. It still holds evidence, and is left behind
+on uninstall as the log file is.
+_Avoid_: Backup — suggests a copy kept to restore from; old log.
 
 **Redaction**:
 Taking the secret out of a message the plugin did not write itself, at the moment

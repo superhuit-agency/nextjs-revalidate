@@ -340,6 +340,35 @@ break the secret for a third so one line is an `[ERROR]`. Restore the secret.
       stopped: logging has been switched off.` beside it, and the box replaced
       by the note that logging is off. No further requests follow.
 
+### Log rotation
+
+Precondition: logs on, and the log at the path under **Enable logs** already
+holding a few lines.
+
+- [ ] **Shrink the limit to 2 KB and fill the log:**
+      ```sh
+      npx wp-env run cli -- bash -c 'mkdir -p wp-content/mu-plugins && cat > wp-content/mu-plugins/njr-runbook-log-size.php <<PHP
+      <?php add_filter("nextjs_revalidate_log_max_size", function () { return 2048; });
+      PHP'
+      ```
+      Then update a post until the log passes 2 KB, about fifteen times. Expect a
+      `nextjs-revalidate-<suffix>.1.log` beside the log in
+      `wp-content/uploads/nextjs-revalidate/`, holding the older lines, and a log
+      that restarted with the line written after the rotation.
+- [ ] **Keep updating until it rotates again.** Expect still exactly one
+      `.1.log` — `ls` the directory — now holding the lines the first rotation
+      left in the log.
+- [ ] **Request the archive over HTTP**:
+      `curl -sI http://localhost:8080/wp-content/uploads/nextjs-revalidate/<archive filename>`.
+      Expect `403 Forbidden`, as for the log.
+- [ ] **Open the Debug tab right after a rotation.** Expect the status line
+      `Showing the last N lines (M in the log, K from the archive)`, the
+      archived lines above a separator reading "The log archive ends here, and
+      the log starts below.", and the log's lines under it. Expect no `.1.log`
+      to change by viewing or refreshing.
+- [ ] **Remove the mu-plugin:**
+      `npx wp-env run cli -- rm wp-content/mu-plugins/njr-runbook-log-size.php`.
+
 ## K. Who sees the notices
 
 Create a subscriber once:
@@ -516,6 +545,9 @@ Run this last in Part 1 — it destroys the site's plugin data.
       `nextjs_revalidate-debug`, `nextjs_revalidate-db_version`,
       `nextjs_revalidate-log_suffix`, `nextjs_revalidate-failure_window`,
       `nextjs-revalidate-scheduled_purges`. Expect all "could not be found".
+- [ ] **List `wp-content/uploads/nextjs-revalidate/`.** Expect the log and, if
+      the rotation steps in J ran, its `.1.log` archive still there, with the
+      guards: both are the operator's evidence, and uninstalling keeps them.
 - [ ] **Restore the install**: `npm run stop && npm start`. Deleting the plugin
       removed its registration, not the mounted working tree.
 

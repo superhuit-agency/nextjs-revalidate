@@ -39,6 +39,16 @@ field, which a front-end written for 2.0 ignores (rule 1 of the
   **Refresh** reads it again without reloading the page, and **Live refresh**
   does so every five seconds. Nothing to do: with logging off the tab is
   unchanged.
+- **Added:** the log file is rotated at 5 MB, keeping one archive
+  ([ADR 0041](docs/adr/0041-the-log-rotates-at-a-size-and-keeps-one-archive.md)).
+  A line written to a log at or past the limit first renames it to
+  `nextjs-revalidate-<suffix>.1.log` beside it, replacing the previous archive,
+  and then starts a new log. The new
+  [`nextjs_revalidate_log_max_size`](README.md#nextjs_revalidate_log_max_size)
+  filter changes the limit, in bytes; `0` or less never rotates. A site whose
+  log is already over 5 MB has it archived by its first line under 2.1.0. The
+  Debug tab's viewer continues into the archive when the log is short, and
+  uninstalling leaves both files behind.
 - **Changed:** with Polylang, its `language` taxonomy is no longer a
   revalidatable taxonomy. A language is a site setting, already reported as a
   `settings` change; as a taxonomy it would have put a `term` change next to

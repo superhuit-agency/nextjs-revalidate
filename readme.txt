@@ -150,6 +150,22 @@ The filter declines; it cannot admit. A redirect that was never a candidate —
 one whose source is a regular expression — returns before the filter is reached,
 so returning `true` there revalidates nothing.
 
+= nextjs_revalidate_log_max_size =
+
+Filters the size, in bytes, at which the log file is rotated: a line written to
+a log at or past it first renames the log to its one archive beside it,
+replacing the previous archive, and then starts a new log. The default is 5 MB.
+Return `0` or less to never rotate. An integer written as a string of digits,
+such as `'1048576'`, counts as one; anything else, such as `'10MB'`, falls back
+to the default. Asked only as a line is written, so a site with logging off
+never rotates.
+
+```php
+add_filter( 'nextjs_revalidate_log_max_size', function( $bytes ) {
+	return 20 * MB_IN_BYTES;
+} );
+```
+
 == Changelog ==
 
 = 2.1.0 =
@@ -172,6 +188,12 @@ CHANGELOG.md on GitHub.
   last 200 lines, with how many lines the file holds and how big it is. Refresh
   reads it again without reloading the page, and Live refresh does so every
   five seconds. With logging off the tab is unchanged.
+* Added: the log file is rotated at 5 MB, keeping one archive. A line written
+  to a log at or past the limit first renames it to
+  `nextjs-revalidate-<suffix>.1.log` beside it, replacing the previous archive,
+  then starts a new log. The `nextjs_revalidate_log_max_size` filter changes the
+  limit; `0` or less never rotates. The Debug tab's viewer continues into the
+  archive when the log is short.
 * Changed: with Polylang, its `language` taxonomy is no longer revalidated as
   a taxonomy. A language is a site setting, reported as a settings change, so it
   is not reported as a term, not listed in a post's terms, and no longer named

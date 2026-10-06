@@ -59,6 +59,9 @@ class NextJsRevalidate {
 	}
 }
 
+// The logger asks its size limit through a filter (ADR 0041); unhooked here.
+function apply_filters( $name, $value, ...$args ) { return $value; }
+
 require_once __DIR__ . '/../include/Logger.php';
 
 use NextJsRevalidate\Logger;

@@ -271,6 +271,13 @@ page, and **Live refresh** does so every five seconds while the tab is visible;
 it is off whenever the page loads. Viewing the log is read-only: it never
 creates the file, and with logging off the tab only says where the file is.
 
+The log is rotated once it reaches 5 MB: the line that finds it there renames it
+to a single archive beside it, replacing the previous one, and starts a new log.
+When the log holds fewer than 200 lines, the viewer continues into the end of
+the archive, with a separator between the two. The limit is
+[`nextjs_revalidate_log_max_size`](#nextjs_revalidate_log_max_size). Uninstalling
+leaves both files behind.
+
 ## Requirements
 
 - Requires PHP 7.4+
@@ -1177,6 +1184,32 @@ add_filter( 'nextjs_revalidate_show_unconfigured_notice', function( $show, $miss
 | --- | --- | --- |
 | show | bool | Whether the notice is shown. Defaults to `true` |
 | missing_settings | string[] | The settings the site is missing: any of `domain` and `secret` |
+
+### nextjs_revalidate_log_max_size
+
+Filters the size, in bytes, at which the log file is rotated. A line written to
+a log at or past it first renames the log to its one archive beside it —
+`nextjs-revalidate-<suffix>.1.log`, replacing the previous archive — and then
+starts a new log ([ADR 0041](docs/adr/0041-the-log-rotates-at-a-size-and-keeps-one-archive.md)).
+Asked only as a line is written, so a site with logging off never rotates.
+
+Return `0` or less to never rotate. An integer written as a string of digits,
+such as `'1048576'`, counts as that integer. Anything else — `'10MB'`, `null`, a
+float, an array — falls back to the 5 MB default, silently. There is no minimum.
+
+#### Usage
+```php
+// Keep up to 20 MB of log, and as much again in the archive.
+add_filter( 'nextjs_revalidate_log_max_size', function( $bytes ) {
+	return 20 * MB_IN_BYTES;
+} );
+```
+
+#### Arguments
+
+| Name | Type | Description |
+| --- | --- | --- |
+| bytes | int | The size the log is rotated at. Defaults to `5242880` (5 MB) |
 
 
 ## Tests
