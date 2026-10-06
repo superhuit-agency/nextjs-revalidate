@@ -110,29 +110,50 @@ class SimpleCustomPostOrder extends Base implements Hookable {
 	 * of the posts it sends.
 	 *
 	 * Read the way the plugin reads it — the body's `order` is a serialised
-	 * form, `post[]=12&post[]=7`. Only read: whether the request is allowed is
-	 * the plugin's question, and nothing is reported unless it goes on to
-	 * write the order.
+	 * form, `post[]=12&post[]=7`, read by `order_ids()`. Only read: whether the
+	 * request is allowed is the plugin's question, and nothing is reported
+	 * unless it goes on to write the order.
 	 *
 	 * @return void
 	 */
 	public function before_list_reorder() {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- read only; the plugin checks the nonce before it writes.
-		$order = isset( $_POST['order'] ) && is_string( $_POST['order'] ) ? sanitize_text_field( wp_unslash( $_POST['order'] ) ) : '';
+		$order = isset( $_POST['order'] ) && is_string( $_POST['order'] ) ? wp_unslash( $_POST['order'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- order_ids() keeps positive integers only; sanitize_text_field() would strip an encoded `[]`.
 
-		$data = [];
-		parse_str( $order, $data );
+		$this->remember_posts_to_report( self::order_ids( $order ) );
+	}
 
-		$post_ids = [];
-		foreach ( $data as $values ) {
-			if ( ! is_array( $values ) ) continue;
+	/**
+	 * The posts the list screen's drag and drop sends, in their new order.
+	 *
+	 * The plugin's own private `parse_order_ids()`, step for step, so the
+	 * posts read are the ones it writes. Read by hand rather than with
+	 * `parse_str()`, which stops at `max_input_vars` and warns as it does: the
+	 * warning broke the JSON the drag and drop answers with, and the posts past
+	 * the limit went unreported.
+	 *
+	 * A pair is read when its key, decoded, ends in `[]`, and its value, decoded,
+	 * is a positive whole number — which skips the `bulk[]=edit` an open Bulk
+	 * Edit row adds. A post repeated keeps its first position.
+	 *
+	 * @param string $order The body's `order`, unslashed.
+	 * @return int[]
+	 */
+	public static function order_ids( string $order ): array {
+		$ids = [];
 
-			foreach ( $values as $post_id ) {
-				if ( is_scalar( $post_id ) && (int) $post_id > 0 ) $post_ids[] = (int) $post_id;
-			}
+		foreach ( explode( '&', $order ) as $pair ) {
+			$parts = explode( '=', $pair, 2 );
+			if ( 2 !== count( $parts ) || '[]' !== substr( rawurldecode( $parts[0] ), -2 ) ) continue;
+
+			$value = rawurldecode( $parts[1] );
+			if ( '' === $value || ! ctype_digit( $value ) ) continue;
+
+			$id = (int) $value;
+			if ( $id > 0 && ! isset( $ids[ $id ] ) ) $ids[ $id ] = $id;
 		}
 
-		$this->remember_posts_to_report( $post_ids );
+		return array_values( $ids );
 	}
 
 	/**

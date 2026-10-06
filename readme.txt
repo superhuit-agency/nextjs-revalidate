@@ -152,6 +152,15 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
+= 2.0.1 =
+
+* Fixed: a Simple Custom Post Order drag and drop is read the way that plugin
+  reads it, by hand, rather than with `parse_str()`. On a host whose
+  `max_input_vars` is lower than the number of posts dragged, `parse_str()`
+  stopped at the limit with a warning: printed with `display_errors` on, it broke
+  the drag and drop's answer, and the posts past the limit were never reported.
+  A list whose `[]` arrives percent-encoded is read too.
+
 = 2.0.0 =
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a
