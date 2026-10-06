@@ -17,7 +17,8 @@
  *    are capped, and the last redirect is the outcome.
  *  - **Basic-auth credentials go with the request.** A staging front-end would
  *    answer the next hop 401 without them, whether the `Location` is a path or
- *    an absolute URL on the same origin.
+ *    an absolute URL on the same origin. They stay on that origin, as the
+ *    secret does.
  *
  * See `docs/adr/0039-a-delivery-follows-a-redirect-that-keeps-the-request.md`.
  *
@@ -233,6 +234,31 @@ list( $code, $urls ) = njr_deliver(
 );
 njr_test_assert( 'ok' === $code && [ $staging, 'http://user:pass@localhost:8083/revalidate/', 'http://user:pass@localhost:8083/v2/revalidate/' ] === $urls, 'a path then an absolute URL on the same origin both carry the credentials' );
 
+// Only an `@` in the authority names credentials: one in the Location's path,
+// query or fragment is the front-end's to spell, and the credentials still go
+// in front of the host.
+foreach (
+	[
+		'its path'     => [ 'http://localhost:8083/by/a@b/', 'http://user:pass@localhost:8083/by/a@b/' ],
+		'its query'    => [ 'http://localhost:8083?by=a@b', 'http://user:pass@localhost:8083?by=a@b' ],
+		'its fragment' => [ 'http://localhost:8083/revalidate/#a@b', 'http://user:pass@localhost:8083/revalidate/#a@b' ],
+	] as $what => list( $location, $next )
+) {
+	list( $code, $urls ) = njr_deliver( $staging, [ $staging => njr_redirect( 308, $location ), $next => $ok ] );
+
+	njr_test_assert( 'ok' === $code && [ $staging, $next ] === $urls, "an @ in $what is not taken for credentials of the Location's own" );
+}
+
+// The credentials carry over exactly as typed, percent-encoding and all.
+$encoded = 'http://us%3Aer:p%40ss@localhost:8083/revalidate';
+list( $code, $urls ) = njr_deliver( $encoded, [ $encoded => njr_redirect( 308, 'http://localhost:8083/revalidate/' ), 'http://us%3Aer:p%40ss@localhost:8083/revalidate/' => $ok ] );
+njr_test_assert( 'ok' === $code && 'http://us%3Aer:p%40ss@localhost:8083/revalidate/' === ( $urls[1] ?? '' ), 'percent-encoded credentials carry over as typed' );
+
+// An IPv6 host is bracketed, and the credentials go in front of the bracket.
+$ipv6 = 'http://user:pass@[::1]:8083/revalidate';
+list( $code, $urls ) = njr_deliver( $ipv6, [ $ipv6 => njr_redirect( 308, 'http://[::1]:8083/revalidate/' ), 'http://user:pass@[::1]:8083/revalidate/' => $ok ] );
+njr_test_assert( 'ok' === $code && 'http://user:pass@[::1]:8083/revalidate/' === ( $urls[1] ?? '' ), 'an absolute URL on an IPv6 host is given the credentials too' );
+
 // Not followed
 // ====
 
@@ -251,6 +277,22 @@ foreach (
 	list( $code, $urls ) = njr_deliver( $endpoint, [ $endpoint => njr_redirect( 308, $location ), $location => $ok ] );
 
 	njr_test_assert( 'http_308' === $code && [ $endpoint ] === $urls, "a 308 to $what is not followed, and is the outcome" );
+}
+
+// Nor do the credentials leave the origin: carrying them over comes after the
+// origin is checked, so a request that has some is refused the same redirects.
+foreach (
+	[
+		'another host'                         => 'http://elsewhere.test/revalidate/',
+		'another port'                         => 'http://localhost:8084/revalidate/',
+		'another scheme'                       => 'https://localhost:8083/revalidate/',
+		'another host, naming the credentials' => 'http://user:pass@elsewhere.test/revalidate/',
+		'a protocol-relative URL'              => '//elsewhere.test/revalidate/',
+	] as $what => $location
+) {
+	list( $code, $urls ) = njr_deliver( $staging, [ $staging => njr_redirect( 308, $location ), $location => $ok ] );
+
+	njr_test_assert( 'http_308' === $code && [ $staging ] === $urls, "a 308 to $what is not followed with the credentials either" );
 }
 
 // A 301 or a 302 would turn the POST into a GET of some other page.
