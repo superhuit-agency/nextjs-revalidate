@@ -315,6 +315,18 @@ class LogViewerTest extends \WP_Ajax_UnitTestCase {
 		$this->assertFileDoesNotExist( Logger::path(), 'Viewing recreated the log.' );
 	}
 
+	public function test_an_archive_whose_last_line_is_too_long_to_read_is_not_called_empty() {
+		$this->enable_logs();
+		Logger::log( 'soon gone', 'test.php' );
+		file_put_contents( Logger::archive_path(), str_repeat( 'x', LogTail::MAX_BYTES + 1 ) . "\n" );
+		unlink( Logger::path() );
+
+		$body = LogViewer::body();
+
+		$this->assertStringNotContainsString( 'Nothing has been logged yet', $body );
+		$this->assertStringContainsString( '(0 in the log, 0 from the archive)', $body );
+	}
+
 	public function test_a_refresh_continues_into_the_archive_as_the_page_does() {
 		$this->enable_logs();
 		Logger::log( 'live line 1.', 'test.php' );
