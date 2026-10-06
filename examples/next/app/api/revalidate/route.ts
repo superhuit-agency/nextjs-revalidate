@@ -12,6 +12,7 @@
  * | ----------------- | ----------------------------------------------------------------- |
  * | `node:{id}`       | a single post's own data, keyed by its WordPress ID               |
  * | `type:{type}`     | listings and archives of one post type, or of one taxonomy's terms |
+ * | `term:{id}`       | one term's archive, and every entry that shows the term — a badge, a term list |
  * | `nodes`           | every single-node entry, whatever its ID                          |
  * | `uris`            | the resolution of a URI to what is there — routing and redirects  |
  * | `menu:{id}`       | one menu's items, keyed by its WordPress ID                       |
@@ -53,6 +54,26 @@ export interface PostChange {
 	type: string;
 	before: PostSide | null;
 	after: PostSide | null;
+}
+
+/** One side of a term change: the term's slug, and where its archive is. */
+export interface TermSide {
+	slug: string;
+	uri: Uri;
+}
+
+/**
+ * A term — created, edited or deleted — as the front-end sees it before and
+ * after. `null` means the term is not there on that side: `before` is null for
+ * a term just created, `after` for one deleted. Never both null. A term's
+ * change never names the posts in it: whatever shows a term carries its tag.
+ */
+export interface TermChange {
+	subject: "term";
+	id: number;
+	taxonomy: string;
+	before: TermSide | null;
+	after: TermSide | null;
 }
 
 /** A redirect's source path — one change per path a redirect change affects. */
@@ -110,11 +131,13 @@ export interface TypeAllChange {
 export type AllChange = SiteAllChange | TypeAllChange;
 
 /**
- * Every subject v2.0 sends. A later 2.x may send a subject or a field this
- * union does not name (rule 1): ignore it, as `tagsFor()` does.
+ * Every subject this version of the contract sends. A later 2.x may send a
+ * subject or a field this union does not name (rule 1): ignore it, as
+ * `tagsFor()` does.
  */
 export type Change =
 	| PostChange
+	| TermChange
 	| RedirectChange
 	| PathChange
 	| MenuChange
@@ -182,12 +205,16 @@ export async function POST(request: Request): Promise<Response> {
 /**
  * The tags one change expires, in the example scheme above.
  *
- * Every subject v2.0 sends has a case; anything else is ignored (rule 1).
+ * Every subject this contract names has a case; anything else is ignored
+ * (rule 1).
  */
 export function tagsFor(change: Change): string[] {
 	switch (change.subject) {
 		case "post":
 			return postTags(change);
+
+		case "term":
+			return termTags(change);
 
 		// The redirect is resolved with the URI it redirects from.
 		case "redirect":
@@ -236,6 +263,25 @@ function postTags(change: PostChange): string[] {
 
 	// Published (no before), left the front-end (no after), or moved: the old
 	// URI must stop resolving to this post, the new one must start.
+	if (before !== after) tags.push("uris");
+
+	return tags;
+}
+
+/**
+ * A term: its own tag always — its archive, and every entry that shows its
+ * name — and the URI resolution whenever the two sides disagree about where
+ * its archive is: a term created, deleted, or moved by a slug or a parent.
+ *
+ * One change however many posts the term holds: a page showing the term
+ * carries `term:{id}`, so a rename reaches it without the plugin naming it.
+ */
+function termTags(change: TermChange): string[] {
+	const tags = [`term:${change.id}`];
+
+	const before = change.before?.uri ?? null;
+	const after = change.after?.uri ?? null;
+
 	if (before !== after) tags.push("uris");
 
 	return tags;

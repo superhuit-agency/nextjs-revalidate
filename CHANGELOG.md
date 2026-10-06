@@ -4,6 +4,25 @@ What changed in each release of Next.js Revalidate, newest first, and what a
 site has to do about it. Releases before 2.0.0 are listed in the changelog of
 [`readme.txt`](readme.txt).
 
+## 2.1.0 (unreleased)
+
+Contract version **2**, unchanged: everything below is a new subject or a new
+field, which a front-end written for 2.0 ignores (rule 1 of the
+[front-end contract](README.md#two-rules)).
+
+- **Added:** a `term` change. Creating, editing or deleting a term of a
+  revalidatable taxonomy reports its slug and the URI of its archive before and
+  after — `null` before a creation and after a delete, equal sides for a name
+  or description edit. Changing a term's slug or parent, or deleting it, also
+  reports each descendant whose archive moved, and a delete that moved posts
+  into *Uncategorized*, or another taxonomy's default term, reports that term
+  once. A term's change never reports the posts in it: **tag whatever shows a
+  term with that term's tag**, so one change reaches it all. 2.0 reported no
+  term at all, and a term's archive stayed stale until somebody ran revalidate
+  all ([ADR 0040](docs/adr/0040-a-term-reports-itself-and-a-post-the-terms-it-is-in.md)).
+  The README's reference route tags a term's archive, and every entry showing
+  it, `term:{id}`, and expires `uris` too when the term's URI moved.
+
 ## 2.0.0
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a

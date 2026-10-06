@@ -318,6 +318,11 @@ njr_test_assert(
 	[ 'subject' => 'post', 'id' => 12, 'type' => 'page', 'before' => null, 'after' => [ 'uri' => '/about/' ] ] === Change::post( 12, 'page', null, '/about/' ),
 	'a post change carries its id, type, and the uri before and after — null where it is not on the front-end'
 );
+njr_test_assert(
+	[ 'subject' => 'term', 'id' => 7, 'taxonomy' => 'category', 'before' => null, 'after' => [ 'slug' => 'video', 'uri' => '/category/video/' ] ]
+		=== Change::term( 7, 'category', null, Change::term_side( 'video', '/category/video/' ) ),
+	'a term change carries its id, taxonomy, and the slug and uri before and after — null where it is not there'
+);
 njr_test_assert( [ 'subject' => 'redirect', 'uri' => '/old/' ] === Change::redirect( '/old/' ), 'a redirect change carries its source uri' );
 njr_test_assert( [ 'subject' => 'path', 'uri' => '/named/' ] === Change::path( '/named/' ), 'a path change carries its uri' );
 njr_test_assert( [ 'subject' => 'menu', 'id' => 3, 'locations' => [ 'primary', 'footer' ] ] === Change::menu( 3, [ 'primary', 'footer' ] ), 'a menu change carries its id and locations' );
@@ -351,6 +356,23 @@ $pending->report( Change::post( 13, 'post', '/brief/', null ) );
 njr_test_assert( [] === $pending->pending(), 'a post published and unpublished in one request merges into no change at all' );
 $pending->deliver();
 njr_test_assert( [] === $GLOBALS['njr_test_posts'], 'and nothing is sent for it' );
+
+// A term renamed twice in a request is one change, as a post is; the same ID
+// in another taxonomy is another term.
+$pending = njr_test_subject();
+$pending->report( Change::term( 7, 'category', Change::term_side( 'video', '/category/video/' ), Change::term_side( 'videos', '/category/videos/' ) ) );
+$pending->report( Change::term( 7, 'post_tag', Change::term_side( 'video', '/tag/video/' ), Change::term_side( 'video', '/tag/video/' ) ) );
+$pending->report( Change::term( 7, 'category', Change::term_side( 'videos', '/category/videos/' ), Change::term_side( 'films', '/category/films/' ) ) );
+$held = $pending->pending();
+njr_test_assert( 2 === count( $held ), 'two changes to one term are held as one, and a term of another taxonomy apart' );
+njr_test_assert( [ 'slug' => 'video', 'uri' => '/category/video/' ] === ( $held[0]['before'] ?? null ), 'the merged term change keeps the state before the first' );
+njr_test_assert( [ 'slug' => 'films', 'uri' => '/category/films/' ] === ( $held[0]['after'] ?? null ), 'the merged term change keeps the state after the last' );
+
+// A term created and deleted in one request had no archive on either side of it.
+$pending = njr_test_subject();
+$pending->report( Change::term( 8, 'category', null, Change::term_side( 'brief', '/category/brief/' ) ) );
+$pending->report( Change::term( 8, 'category', Change::term_side( 'brief', '/category/brief/' ), null ) );
+njr_test_assert( [] === $pending->pending(), 'a term created and deleted in one request merges into no change at all' );
 
 // A subject without sides collapses only when the changes are identical.
 $pending = njr_test_subject();

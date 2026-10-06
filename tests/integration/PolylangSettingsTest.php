@@ -3,7 +3,9 @@
  * What Polylang's languages report — NextJsRevalidate\Integrations\Polylang.
  *
  * A language created, edited or deleted, and the default language changed,
- * each report one `settings` change; the `polylang` option's other keys, which
+ * each report one `settings` change — a language created, edited or deleted
+ * also reports the `term` change of its term, since Polylang's `language`
+ * taxonomy is publicly queryable and so revalidatable (ADR 0040); the `polylang` option's other keys, which
  * move paths or are bookkeeping, report nothing (ADR 0037). Languages are
  * driven through Polylang's own model, as its admin screens drive them. Runs
  * with Polylang loaded, which `.wp-env.tests.json` installs; without it, the
@@ -44,9 +46,12 @@ class PolylangSettingsTest extends PendingChangesTestCase {
 	// ====
 
 	public function test_adding_a_language_reports_a_change() {
-		$this->add_language( 'en_US', 'en' );
+		$english = $this->add_language( 'en_US', 'en' );
 
-		$this->assertPendingChanges( [ Change::settings() ] );
+		$this->assertPendingChanges( [
+			Change::term( $english->term_id, 'language', null, $this->side_of( $english->term_id ) ),
+			Change::settings(),
+		] );
 	}
 
 	public function test_editing_a_language_reports_a_change() {
@@ -56,17 +61,26 @@ class PolylangSettingsTest extends PendingChangesTestCase {
 		$updated = $this->model->languages->update( [ 'lang_id' => $english->term_id, 'name' => 'Anglais' ] );
 
 		$this->assertNotWPError( $updated );
-		$this->assertPendingChanges( [ Change::settings() ] );
+
+		$side = $this->side_of( $english->term_id );
+		$this->assertPendingChanges( [
+			Change::term( $english->term_id, 'language', $side, $side ),
+			Change::settings(),
+		] );
 	}
 
 	public function test_deleting_a_language_reports_a_change() {
 		$this->add_language( 'en_US', 'en' );
 		$french = $this->add_language( 'fr_FR', 'fr' );
+		$side   = $this->side_of( $french->term_id );
 		$this->reset_pending_changes();
 
 		$this->assertTrue( $this->model->languages->delete( $french->term_id ), 'The language was not deleted.' );
 
-		$this->assertPendingChanges( [ Change::settings() ] );
+		$this->assertPendingChanges( [
+			Change::term( $french->term_id, 'language', $side, null ),
+			Change::settings(),
+		] );
 	}
 
 	// The default language
@@ -168,6 +182,19 @@ class PolylangSettingsTest extends PendingChangesTestCase {
 
 	// Fixtures
 	// ====
+
+	/**
+	 * A language's term as a `term` change's side reports it.
+	 *
+	 * @param int $term_id
+	 * @return array
+	 */
+	private function side_of( $term_id ) {
+		$term = get_term( $term_id, 'language' );
+		$this->assertInstanceOf( \WP_Term::class, $term, 'The language\'s term cannot be read back.' );
+
+		return Change::term_side( $term->slug, Change::uri_of( get_term_link( $term ) ) );
+	}
 
 	/**
 	 * Add a language through Polylang's model.

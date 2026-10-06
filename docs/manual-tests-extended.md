@@ -393,7 +393,11 @@ option only once the request is over.
 
 The oracle is the **revalidate server console**: every save below that reports
 anything reports one `= Revalidating (v2): {"subject":"settings"}` line, and
-`✅ Revalidated 1 change (settings)` in the log.
+`✅ Revalidated 1 change (settings)` in the log — except a language added or
+deleted, whose line also carries the language's own `{"subject":"term",…}`
+change, before the `settings` one, and logs `✅ Revalidated 2 changes (term,
+settings)`: Polylang's `language` taxonomy is publicly queryable, so its terms
+are reported like any other (ADR 0040).
 
 - [ ] **Settings → General → change both the Site Title and the Tagline, then
       Save Changes.** Expect **one** `{"subject":"settings"}` request for the
@@ -406,9 +410,10 @@ anything reports one `= Revalidating (v2): {"subject":"settings"}` line, and
 - [ ] **Yoast SEO → Settings → General → Site basics → change the title
       separator, and Save changes.** Expect one `{"subject":"settings"}`
       request.
-- [ ] **Languages → Languages → add English.** Expect one
-      `{"subject":"settings"}` request.
-- [ ] **Add French.** Expect one `{"subject":"settings"}` request.
+- [ ] **Languages → Languages → add English.** Expect one request carrying a
+      `{"subject":"term",…,"taxonomy":"language","before":null,…}` change and
+      `{"subject":"settings"}`.
+- [ ] **Add French.** Expect the same, for French.
 - [ ] **Click the star beside French**, making it the default language. Expect one
       `{"subject":"settings"}` request — Polylang writes its option after this
       plugin has delivered, so a missing request here means the change was
@@ -419,8 +424,9 @@ anything reports one `= Revalidating (v2): {"subject":"settings"}` line, and
 - [ ] **Languages → Translations → translate the Site Title into French, and
       Save Changes.** Expect one `{"subject":"settings"}` request: Polylang keeps
       string translations in the language's term meta, not in an option.
-- [ ] **Delete both languages.** Expect one `{"subject":"settings"}` request for
-      each deletion. Before going on, the post's permalink must carry no language
+- [ ] **Delete both languages.** Expect one request for each deletion, carrying
+      the language's `term` change with `"after":null` and
+      `{"subject":"settings"}`. Before going on, the post's permalink must carry no language
       prefix again; if it does, a language is left behind.
 
 ## O. Reorders, and synchronised translations

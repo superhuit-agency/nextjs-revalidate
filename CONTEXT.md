@@ -148,6 +148,8 @@ it stands on every save, since Polylang may have written any field of it.
 A post moved by a plugin's direct write, with no save at all — a Nested Pages
 drag and drop — is not a dependent post: nothing was saved for it to depend on.
 Its integration reads it before the write and reports it after, the same way.
+_Avoid_: Child post, related post — the first is one kind of it, and the second
+says nothing about why its page moved.
 
 **Dependent term**:
 A term whose URI is built from another term's: a child term in a hierarchical
@@ -168,8 +170,6 @@ one change however many posts are in it. Deleting a term reports the term, and
 the taxonomy's default term when the delete moved posts into it — never the
 posts.
 _Avoid_: Categories, tags — two taxonomies among many.
-_Avoid_: Child post, related post — the first is one kind of it, and the second
-says nothing about why its page moved.
 
 **Revalidatable taxonomy**:
 A taxonomy whose terms' archive pages the front-end could hold, and whose terms
@@ -189,9 +189,9 @@ The site has the last word here too, through a filter of its own rather than the
 post one — the same escape hatch, for the same headless reason, and it can admit
 a whole taxonomy as readily as decline one.
 
-Only **revalidate all** asks the question today: nothing in this plugin reacts to
-a term being created, edited or deleted, so a term archive goes stale until
-somebody revalidates all. That gap is an enhancement, not a property of the taxonomy.
+Asked by **revalidate all**, once per taxonomy, and by a term's own lifecycle: a
+term created, edited or deleted is reported as a `term` change when its taxonomy
+is revalidatable, along with its **dependent terms** (ADR 0040).
 _Avoid_: Public taxonomy — `public` is a different setting and the two disagree
 in both directions, which is the whole of the bug this names the fix for.
 

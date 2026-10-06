@@ -49,6 +49,7 @@ use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\SiteSettings;
+use NextJsRevalidate\Terms;
 use NextJsRevalidate\Cron\ScheduledPurges;
 use NextJsRevalidate\Interfaces\Hookable;
 use NextJsRevalidate\RestApi;
@@ -109,6 +110,7 @@ require_once __DIR__ . '/vendor/autoload.php';
  * @property-read RevalidateAll         $revalidateAll
  * @property-read FseSnapshot           $fseSnapshot
  * @property-read BlockMenus            $blockMenus
+ * @property-read Terms                 $terms
  * @property-read SiteSettings          $siteSettings
  * @property-read RestApi               $restApi
  * @property-read Redirection           $redirection
@@ -129,6 +131,7 @@ class NextJsRevalidate {
 	private RevalidateAll $revalidateAll;
 	private FseSnapshot $fseSnapshot;
 	private BlockMenus $blockMenus;
+	private Terms $terms;
 	private SiteSettings $siteSettings;
 	private RestApi $restApi;
 	private Redirection $redirection;
@@ -180,6 +183,7 @@ class NextJsRevalidate {
 		$this->revalidateAll       = $this->hookable( new RevalidateAll() );
 		$this->fseSnapshot         = $this->hookable( new FseSnapshot() );
 		$this->blockMenus          = $this->hookable( new BlockMenus() );
+		$this->terms               = $this->hookable( new Terms() );
 		$this->siteSettings        = $this->hookable( new SiteSettings() );
 		$this->restApi             = $this->hookable( new RestApi() );
 

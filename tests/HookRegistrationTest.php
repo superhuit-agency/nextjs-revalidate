@@ -116,6 +116,7 @@ require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
 require_once __DIR__ . '/../include/BlockMenus.php';
+require_once __DIR__ . '/../include/Terms.php';
 require_once __DIR__ . '/../include/SiteSettings.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
@@ -133,6 +134,7 @@ use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\RevalidateAll;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\SiteSettings;
+use NextJsRevalidate\Terms;
 
 // The expectations
 // ====
@@ -214,6 +216,15 @@ $expected_per_class = [
 	BlockMenus::class => [
 		[ 'save_post_wp_navigation', 'on_block_menu_save', 10, 2 ],
 		[ 'deleted_post',            'on_post_delete',     10, 2 ],
+	],
+
+	Terms::class => [
+		[ 'created_term',     'on_term_created',     10, 3 ],
+		[ 'edit_terms',       'on_term_edit',        10, 3 ],
+		[ 'edited_term',      'on_term_edited',      10, 3 ],
+		[ 'pre_delete_term',  'on_term_delete',      10, 2 ],
+		[ 'set_object_terms', 'on_object_terms_set', 10, 6 ],
+		[ 'delete_term',      'on_term_deleted',     10, 3 ],
 	],
 
 	SiteSettings::class => [

@@ -336,11 +336,17 @@ class DependentPostsTest extends PendingChangesTestCase {
 			foreach ( $before as $post_id => $url ) nextjs_revalidate_post( $post_id, $url );
 		}, 10, 3 );
 
+		$term_before = Change::term_side( 'old-category', Change::uri_of( get_term_link( $category, 'category' ) ) );
 		$this->reset_pending_changes();
 
 		wp_update_term( $category, 'category', [ 'slug' => 'new-category' ] );
 
-		$this->assertPendingChanges( [ Change::post( $post, 'post', '/old-category/a-post/', '/new-category/a-post/' ) ] );
+		// The term's own change comes first (#55): it is reported on
+		// `edited_term` ahead of the theme's callback.
+		$this->assertPendingChanges( [
+			Change::term( $category, 'category', $term_before, Change::term_side( 'new-category', Change::uri_of( get_term_link( $category, 'category' ) ) ) ),
+			Change::post( $post, 'post', '/old-category/a-post/', '/new-category/a-post/' ),
+		] );
 	}
 
 	public function test_the_api_reports_a_post_as_it_stands_without_a_before() {
