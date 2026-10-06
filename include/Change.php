@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  *
  * | Subject     | Fields                                                  |
  * | ----------- | ------------------------------------------------------- |
- * | `post`      | `id`, `type`, `before: { uri } \| null`, `after: { uri } \| null` |
+ * | `post`      | `id`, `type`, `before: { uri, terms } \| null`, `after: { uri, terms } \| null` |
  * | `term`      | `id`, `taxonomy`, `before: { slug, uri } \| null`, `after: { slug, uri } \| null` |
  * | `redirect`  | `uri`                                                   |
  * | `path`      | `uri`                                                   |
@@ -55,20 +55,59 @@ final class Change {
 	 * `before` for a publish, `after` for a post that left the front-end. A
 	 * change with both sides `null` is not a change at all — see `is_void()`.
 	 *
-	 * @param int         $id         The post ID.
-	 * @param string      $type       The post type.
-	 * @param string|null $before_uri The path the post had before, from the domain root, or null.
-	 * @param string|null $after_uri  The path the post has after, from the domain root, or null.
+	 * Each side that exists carries the post's **term membership** on that
+	 * side: its terms in revalidatable taxonomies, as `post_term()` builds
+	 * each, sorted here by taxonomy then ID — `[]` when it has none. The
+	 * archives the post joined are on the `after` side, and the ones it left
+	 * on the `before` side. See
+	 * `docs/adr/0040-a-term-reports-itself-and-a-post-the-terms-it-is-in.md`.
+	 *
+	 * @param int         $id           The post ID.
+	 * @param string      $type         The post type.
+	 * @param string|null $before_uri   The path the post had before, from the domain root, or null.
+	 * @param string|null $after_uri    The path the post has after, from the domain root, or null.
+	 * @param array[]     $before_terms Its terms before. Ignored when it had no page.
+	 * @param array[]     $after_terms  Its terms after. Ignored when it has no page.
 	 * @return array
 	 */
-	public static function post( int $id, string $type, ?string $before_uri, ?string $after_uri ): array {
+	public static function post( int $id, string $type, ?string $before_uri, ?string $after_uri, array $before_terms = [], array $after_terms = [] ): array {
 		return [
 			'subject' => self::POST,
 			'id'      => $id,
 			'type'    => $type,
-			'before'  => ( null === $before_uri ) ? null : [ 'uri' => $before_uri ],
-			'after'   => ( null === $after_uri )  ? null : [ 'uri' => $after_uri ],
+			'before'  => ( null === $before_uri ) ? null : [ 'uri' => $before_uri, 'terms' => self::sorted_terms( $before_terms ) ],
+			'after'   => ( null === $after_uri )  ? null : [ 'uri' => $after_uri, 'terms' => self::sorted_terms( $after_terms ) ],
 		];
+	}
+
+	/**
+	 * One term a post is in, as a side of its change lists it.
+	 *
+	 * @param int    $id       The term ID.
+	 * @param string $taxonomy The taxonomy.
+	 * @param string $slug     The term's slug.
+	 * @return array
+	 */
+	public static function post_term( int $id, string $taxonomy, string $slug ): array {
+		return [ 'id' => $id, 'taxonomy' => $taxonomy, 'slug' => $slug ];
+	}
+
+	/**
+	 * A post's terms in the one order a side lists them: by taxonomy, then by
+	 * ID — so two sides holding the same terms are equal whichever order they
+	 * were read in.
+	 *
+	 * @param array[] $terms As `post_term()` builds each.
+	 * @return array[]
+	 */
+	private static function sorted_terms( array $terms ): array {
+		$terms = array_values( $terms );
+
+		usort( $terms, function ( $a, $b ) {
+			return [ (string) ( $a['taxonomy'] ?? '' ), (int) ( $a['id'] ?? 0 ) ] <=> [ (string) ( $b['taxonomy'] ?? '' ), (int) ( $b['id'] ?? 0 ) ];
+		} );
+
+		return $terms;
 	}
 
 	/**

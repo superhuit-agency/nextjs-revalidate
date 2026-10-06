@@ -23,8 +23,14 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * front-end saw it before and as it sees it after, `null` on a side where it
  * had or has no page. See `docs/adr/0033-the-plugin-reports-changes-not-tags.md`.
  *
+ * Each side of a post change carries the post's **term membership** on that
+ * side, and a post's terms written with no save — an import, a plugin,
+ * Polylang's synchronisation — are a change of that post too. See
+ * `docs/adr/0040-a-term-reports-itself-and-a-post-the-terms-it-is-in.md`.
+ *
  * @property PendingChanges $pendingChanges The pending changes, from the composition root.
  * @property Settings       $settings       The settings, from the composition root.
+ * @property Terms          $terms          The term producer, which knows when a term is being deleted.
  */
 class Revalidate extends Base implements Hookable {
 	use AdminBarMenu;
@@ -73,14 +79,81 @@ class Revalidate extends Base implements Hookable {
 	 */
 	private array $positions_before = [];
 
+	/**
+	 * The **term membership** of the posts whose update is under way, as it was
+	 * before it: post ID => its terms, `[]` for a post that had no page.
+	 *
+	 * Read on `pre_post_update`: WordPress writes a post's terms after its row,
+	 * so they are still the old ones there. Let go by that post's own
+	 * `wp_after_insert_post`, which reports them as its `before`. A post held
+	 * here has a save under way, which reports its terms itself — a write of
+	 * them in the meantime is the save's, and not a change of its own.
+	 *
+	 * @var array<int, array[]>
+	 */
+	private array $terms_before = [];
+
+	/**
+	 * The posts being inserted in this request, one entry per insert under way:
+	 * the highest post ID there was when it started, and the ID it was asked to
+	 * take, if any — so that a post whose ID is not known yet can still be told
+	 * from the posts that were there before it.
+	 *
+	 * Pushed on `wp_insert_post_data`, before the row is written, and popped on
+	 * `wp_insert_post`, which every insert ends with, once the ID is known.
+	 *
+	 * @var array<int, array{highest: int, import_id: int}>
+	 */
+	private array $inserting = [];
+
+	/**
+	 * The posts inserted in this request whose save has not reached
+	 * `wp_after_insert_post` yet: post ID => true. The REST API writes a new
+	 * post's terms between the two.
+	 *
+	 * @var array<int, true>
+	 */
+	private array $inserted = [];
+
+	/**
+	 * The posts being permanently deleted: post ID => true, from
+	 * `before_delete_post` to `deleted_post`. Their terms are let go on the
+	 * way, and that is the delete, already reported.
+	 *
+	 * @var array<int, true>
+	 */
+	private array $deleting = [];
+
+	/**
+	 * The term membership of the posts whose terms are being written with no
+	 * save, as it was before the write began: post ID => its terms.
+	 *
+	 * Read on the first relationship WordPress adds or removes, and let go
+	 * once the write has ended — on `set_object_terms`, or on
+	 * `deleted_term_relationships` for `wp_remove_object_terms()`, which fires
+	 * no `set_object_terms`.
+	 *
+	 * @var array<int, array[]>
+	 */
+	private array $membership_before = [];
+
 	public function register_hooks(): void {
 		add_action( 'pre_post_update', [$this, 'on_pre_post_update'], 10, 2 );
+		add_filter( 'wp_insert_post_data', [$this, 'on_insert_post_data'], 10, 4 );
+		add_filter( 'wp_insert_attachment_data', [$this, 'on_insert_post_data'], 10, 4 );
+		add_action( 'wp_insert_post', [$this, 'on_post_inserted'], 10, 3 );
 
 		// Ahead of core's `wp_save_post_revision`, at 10 on the same hook until
 		// WordPress 6.4 — see `$saving`.
 		add_action( 'post_updated', [$this, 'on_post_updated'], 1 );
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99, 4 );
 		add_action( 'before_delete_post', [$this, 'on_post_delete'] );
+		add_action( 'deleted_post', [$this, 'on_post_deleted'] );
+
+		add_action( 'add_term_relationship', [$this, 'on_term_relationship_write'], 10, 3 );
+		add_action( 'delete_term_relationships', [$this, 'on_term_relationship_write'], 10, 3 );
+		add_action( 'set_object_terms', [$this, 'on_object_terms_set'], 10, 4 );
+		add_action( 'deleted_term_relationships', [$this, 'on_term_relationships_deleted'], 10, 3 );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -301,6 +374,9 @@ class Revalidate extends Base implements Hookable {
 
 		$revision_of = wp_is_post_revision( $post_id );
 
+		// An insert has reached its end too.
+		unset( $this->inserted[ (int) $post_id ] );
+
 		// This post's save has reached its end.
 		if ( false === $revision_of ) unset( $this->saving[ (int) $post_id ] );
 
@@ -308,7 +384,10 @@ class Revalidate extends Base implements Hookable {
 		// what reports the change.
 		else if ( isset( $this->saving[ (int) $revision_of ] ) ) return;
 
-		$this->report_post_save( $post_id, $post_before, $revision_of );
+		$terms_before = ( false === $revision_of ) ? ( $this->terms_before[ (int) $post_id ] ?? null ) : null;
+		if ( false === $revision_of ) unset( $this->terms_before[ (int) $post_id ] );
+
+		$this->report_post_save( $post_id, $post_before, $revision_of, $terms_before );
 
 		// After the post's own change, which the front-end reads first. Asked
 		// whether the saved post is revalidatable or not: a draft parent page
@@ -320,12 +399,13 @@ class Revalidate extends Base implements Hookable {
 	 * Report the post a save saved, as the front-end saw it before and as it
 	 * sees it after.
 	 *
-	 * @param int          $post_id     The post that was saved.
-	 * @param WP_Post|null $post_before The post as it was before the save, null for a new one.
-	 * @param int|false    $revision_of The post the saved one is a revision of, or false.
+	 * @param int          $post_id      The post that was saved.
+	 * @param WP_Post|null $post_before  The post as it was before the save, null for a new one.
+	 * @param int|false    $revision_of  The post the saved one is a revision of, or false.
+	 * @param array[]|null $terms_before Its terms before the save, or null when they were not read.
 	 * @return void
 	 */
-	private function report_post_save( $post_id, $post_before, $revision_of ) {
+	private function report_post_save( $post_id, $post_before, $revision_of, $terms_before = null ) {
 
 		// Bail for a post that is not revalidatable
 		if ( ! $this->should_revalidate( $post_id, $post_before ) ) return;
@@ -337,7 +417,8 @@ class Revalidate extends Base implements Hookable {
 			? $this->post_change(
 				$post_id,
 				$this->uri_before( $post_id, $post_before ),
-				$this->front_end_uri( get_post( $post_id ) )
+				$this->front_end_uri( get_post( $post_id ) ),
+				$terms_before
 			)
 			// A revision stands for its post, as the post is: nothing about the
 			// revision says what the post was before.
@@ -398,9 +479,16 @@ class Revalidate extends Base implements Hookable {
 		}
 
 		// A post updated again while its save is under way — a plugin writing
-		// it from its `save_post` — keeps the URIs read before the first write.
-		// Any other update starts afresh: what an earlier one left behind is
-		// from a save that failed before it reached its end.
+		// it from its `save_post` — keeps the URIs read before the first write,
+		// and the terms. Any other update starts afresh: what an earlier one
+		// left behind is from a save that failed before it reached its end.
+		// Only a post that had a page has a `before` for its terms to be in.
+		if ( ! isset( $this->saving[ $post->ID ] ) || ! isset( $this->terms_before[ $post->ID ] ) ) {
+			$had_page = $this->should_revalidate( $post->ID ) && ! is_null( $this->front_end_uri( $post ) );
+
+			$this->terms_before[ $post->ID ] = $had_page ? $this->terms_of( $post->ID ) : [];
+		}
+
 		if ( ! isset( $this->saving[ $post->ID ] ) ) unset( $this->dependents_before[ $post->ID ] );
 
 		if ( empty( $before ) ) return;
@@ -657,6 +745,9 @@ class Revalidate extends Base implements Hookable {
 		// revision of, a deleted revision stands for nothing.
 		if ( false !== wp_is_post_revision( $post_id ) ) return;
 
+		// Its terms are let go next, and that is this delete.
+		$this->deleting[ (int) $post_id ] = true;
+
 		// Bail for a post that is not revalidatable
 		if ( ! $this->should_revalidate( $post_id ) ) return;
 
@@ -669,25 +760,232 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
+	 * A post's permanent delete has ended.
+	 *
+	 * @param int $post_id The post that was deleted.
+	 * @return void
+	 */
+	public function on_post_deleted( $post_id ) {
+		unset( $this->deleting[ (int) $post_id ] );
+	}
+
+	/**
 	 * A post change, or null for one that would say nothing.
 	 *
 	 * Nothing, when neither side is on the front-end — a change with both sides
 	 * `null` does not exist — and for an attachment, which is an uploaded file
 	 * rather than a page the front-end holds.
 	 *
-	 * @param int         $post_id The post ID.
-	 * @param string|null $before  Its URI before, or null when it had no page.
-	 * @param string|null $after   Its URI after, or null when it has none.
+	 * Each side carries the post's terms: `$terms_before` on the `before` side
+	 * when the producer read them before the change, and otherwise the terms
+	 * the post has now — all a producer with no record of the post before
+	 * knows of it.
+	 *
+	 * @param int          $post_id      The post ID.
+	 * @param string|null  $before       Its URI before, or null when it had no page.
+	 * @param string|null  $after        Its URI after, or null when it has none.
+	 * @param array[]|null $terms_before Its terms before, or null for the ones it has now.
 	 *
 	 * @return array|null The change, as `Change::post()` builds one.
 	 */
-	private function post_change( $post_id, ?string $before, ?string $after ) {
+	private function post_change( $post_id, ?string $before, ?string $after, ?array $terms_before = null ) {
 		if ( is_null($before) && is_null($after) ) return null;
 
 		$post_type = get_post_type( $post_id );
 		if ( false === $post_type || 'attachment' === $post_type ) return null;
 
-		return Change::post( (int) $post_id, $post_type, $before, $after );
+		$terms_now = $this->terms_of( $post_id );
+
+		return Change::post( (int) $post_id, $post_type, $before, $after, $terms_before ?? $terms_now, $terms_now );
+	}
+
+	/**
+	 * A post's **term membership**: its terms in the revalidatable taxonomies
+	 * of its type, as `Change::post_term()` builds each.
+	 *
+	 * @param int $post_id The post ID — a revision's post, never the revision.
+	 * @return array[]
+	 */
+	public function terms_of( $post_id ) {
+
+		$post_type = get_post_type( $post_id );
+		if ( false === $post_type ) return [];
+
+		$terms = [];
+		foreach ( get_object_taxonomies( $post_type ) as $taxonomy ) {
+			if ( ! $this->should_revalidate_taxonomy( $taxonomy ) ) continue;
+
+			$held = get_the_terms( (int) $post_id, $taxonomy );
+			if ( ! is_array( $held ) ) continue;
+
+			foreach ( $held as $term ) $terms[] = Change::post_term( (int) $term->term_id, (string) $term->taxonomy, (string) $term->slug );
+		}
+
+		return $terms;
+	}
+
+	/**
+	 * A post is about to be inserted: remember where the post IDs stood, so
+	 * that the terms its insert writes before its ID is known are told apart
+	 * — see `$inserting`. A filter only for the moment it fires at: the data
+	 * is handed back untouched.
+	 *
+	 * @param mixed $data                The post's fields as they are about to be written.
+	 * @param mixed $postarr             The post's fields as they were passed.
+	 * @param mixed $unsanitized_postarr The same, unsanitised.
+	 * @param bool  $update              Whether this is an update rather than an insert.
+	 * @return mixed
+	 */
+	public function on_insert_post_data( $data, $postarr = [], $unsanitized_postarr = [], $update = false ) {
+		global $wpdb;
+
+		// `$update` is passed from WordPress 6.0 only; before that, an update
+		// is told by the ID it was asked for.
+		if ( $update || ( is_array( $postarr ) && ! empty( $postarr['ID'] ) ) ) return $data;
+
+		$this->inserting[] = [
+			'highest'   => (int) $wpdb->get_var( "SELECT MAX(ID) FROM $wpdb->posts" ),
+			'import_id' => is_array( $postarr ) ? (int) ( $postarr['import_id'] ?? 0 ) : 0,
+		];
+
+		return $data;
+	}
+
+	/**
+	 * An insert has written its post and its terms: its ID is known now, and
+	 * its save is under way until `wp_after_insert_post` — see `$inserted`.
+	 *
+	 * @param int   $post_id The post ID.
+	 * @param mixed $post    The post.
+	 * @param bool  $update  Whether this was an update.
+	 * @return void
+	 */
+	public function on_post_inserted( $post_id, $post = null, $update = false ) {
+		if ( $update ) return;
+
+		// Inserts nest — a plugin inserting a post from another's `save_post` —
+		// and end innermost first.
+		array_pop( $this->inserting );
+
+		$this->inserted[ (int) $post_id ] = true;
+	}
+
+	/**
+	 * Whether a post's save is under way, so that a write of its terms is the
+	 * save's: an update between `pre_post_update` and its end, or an insert.
+	 *
+	 * @param int $post_id
+	 * @return bool
+	 */
+	private function is_being_saved( $post_id ) {
+		if ( isset( $this->terms_before[ $post_id ] ) || isset( $this->inserted[ $post_id ] ) ) return true;
+
+		foreach ( $this->inserting as $insert ) {
+			if ( $post_id > $insert['highest'] || $post_id === $insert['import_id'] ) return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * A post's terms are about to be written: read its term membership before
+	 * the first of them, when the write is a change of its own — see
+	 * `is_membership_write()`.
+	 *
+	 * @param int    $object_id The object whose terms are written.
+	 * @param mixed  $tt_ids    The term taxonomy IDs written.
+	 * @param string $taxonomy  The taxonomy.
+	 * @return void
+	 */
+	public function on_term_relationship_write( $object_id, $tt_ids, $taxonomy ) {
+		$post_id = (int) $object_id;
+
+		if ( isset( $this->membership_before[ $post_id ] ) ) return;
+
+		if ( ! $this->is_membership_write( $post_id, $taxonomy ) ) return;
+
+		$this->membership_before[ $post_id ] = $this->terms_of( $post_id );
+	}
+
+	/**
+	 * A post's terms were set: `wp_set_object_terms()`, and with it
+	 * `wp_add_object_terms()`, has ended.
+	 *
+	 * @param int    $object_id The object whose terms were set.
+	 * @param mixed  $terms     The terms, as they were passed.
+	 * @param mixed  $tt_ids    The term taxonomy IDs it now holds of the taxonomy.
+	 * @param string $taxonomy  The taxonomy.
+	 * @return void
+	 */
+	public function on_object_terms_set( $object_id, $terms, $tt_ids, $taxonomy ) {
+		$this->report_membership( (int) $object_id );
+	}
+
+	/**
+	 * Some of a post's terms were removed: `wp_remove_object_terms()` has
+	 * ended, on its own or inside `wp_set_object_terms()`.
+	 *
+	 * @param int    $object_id The object whose terms were removed.
+	 * @param mixed  $tt_ids    The term taxonomy IDs removed.
+	 * @param string $taxonomy  The taxonomy.
+	 * @return void
+	 */
+	public function on_term_relationships_deleted( $object_id, $tt_ids, $taxonomy ) {
+		$this->report_membership( (int) $object_id );
+	}
+
+	/**
+	 * Whether a write of a post's terms is a change of that post's own: the
+	 * taxonomy is revalidatable, the post is revalidatable and has a page, and
+	 * nothing else under way reports the write — the post's own save or
+	 * delete, or the delete of a term, whose change covers its members.
+	 *
+	 * @param int   $post_id
+	 * @param mixed $taxonomy
+	 * @return bool
+	 */
+	private function is_membership_write( $post_id, $taxonomy ) {
+		if ( ! is_string( $taxonomy ) || '' === $taxonomy ) return false;
+
+		if ( isset( $this->deleting[ $post_id ] ) || $this->is_being_saved( $post_id ) ) return false;
+
+		if ( $this->terms->is_deleting( $taxonomy ) ) return false;
+
+		$post = get_post( $post_id );
+		if ( ! $post instanceof WP_Post || ! is_object_in_taxonomy( $post->post_type, $taxonomy ) ) return false;
+
+		if ( ! $this->should_revalidate_taxonomy( $taxonomy ) ) return false;
+
+		return ! is_null( $this->front_end_uri( $post ) ) && $this->should_revalidate( $post_id );
+	}
+
+	/**
+	 * A write of a post's terms has ended: report the post where it stands,
+	 * from the terms it had before the write to the ones it has, when they
+	 * differ.
+	 *
+	 * Reported as the write ends rather than once for the request: a save of
+	 * the post later in the request merges into it, and keeps these terms as
+	 * its `before`.
+	 *
+	 * @param int $post_id
+	 * @return void
+	 */
+	private function report_membership( $post_id ) {
+		if ( ! isset( $this->membership_before[ $post_id ] ) ) return;
+
+		$before = $this->membership_before[ $post_id ];
+		unset( $this->membership_before[ $post_id ] );
+
+		$uri = $this->front_end_uri( get_post( $post_id ) );
+		if ( is_null( $uri ) ) return;
+
+		$change = $this->post_change( $post_id, $uri, $uri, $before );
+
+		// Written, and not changed: the same terms again.
+		if ( is_null( $change ) || $change['before'] === $change['after'] ) return;
+
+		$this->pendingChanges->report( $change );
 	}
 
 	/**

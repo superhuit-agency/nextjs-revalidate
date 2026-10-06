@@ -22,6 +22,18 @@ field, which a front-end written for 2.0 ignores (rule 1 of the
   all ([ADR 0040](docs/adr/0040-a-term-reports-itself-and-a-post-the-terms-it-is-in.md)).
   The README's reference route tags a term's archive, and every entry showing
   it, `term:{id}`, and expires `uris` too when the term's URI moved.
+- **Added:** `terms` on each side of a `post` change — the post's terms in
+  revalidatable taxonomies, as `{ id, taxonomy, slug }`, sorted by taxonomy then
+  ID — so a front-end reaches the archives a post joined and the ones it left.
+  A publish now reaches the archives of the post's categories, and a move from
+  one category to another reaches both. Every producer of a post change carries
+  them; one with no record of the terms before lists the current ones on both
+  sides. A post's terms written with no save — `wp_set_object_terms()`,
+  `wp_add_object_terms()`, `wp_remove_object_terms()`, from an import, a plugin
+  or Polylang's synchronisation — are now reported as that post's change, with
+  equal URIs; 2.0 reported nothing for them. The posts a term's delete moves are
+  still not reported: the term's own change covers them. The reference route
+  expires `term:{id}` for every term on either side of a post change.
 
 ## 2.0.0
 

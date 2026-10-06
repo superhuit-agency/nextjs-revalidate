@@ -36,9 +36,21 @@ export const CONTRACT_VERSION = 2;
 /** A path from the domain root, as WPGraphQL's `uri`: `/hello-world/`. */
 export type Uri = string;
 
-/** One side of a post change: where the front-end shows the post. */
+/** A term a post is in: one of the archives the post appears in. */
+export interface PostTerm {
+	id: number;
+	taxonomy: string;
+	slug: string;
+}
+
+/**
+ * One side of a post change: where the front-end shows the post, and the terms
+ * it is in there — of the revalidatable taxonomies only, sorted by taxonomy
+ * then ID, and `[]` when it is in none.
+ */
 export interface PostSide {
 	uri: Uri;
+	terms: PostTerm[];
 }
 
 /**
@@ -254,9 +266,16 @@ export function tagsFor(change: Change): string[] {
  * two sides disagree about where the post is. That comparison is what tells a
  * publish, an unpublish, a trash, a delete and a slug change apart from an
  * edit, without the plugin naming an event.
+ *
+ * And the archive of every term on either side: the ones the post joined and
+ * the ones it left, and, on an edit, the ones whose listing shows its title.
  */
 function postTags(change: PostChange): string[] {
 	const tags = [`node:${change.id}`, `type:${change.type}`];
+
+	for (const side of [change.before, change.after]) {
+		for (const term of side?.terms ?? []) tags.push(`term:${term.id}`);
+	}
 
 	const before = change.before?.uri ?? null;
 	const after = change.after?.uri ?? null;

@@ -71,7 +71,7 @@ class PostDeletionRevalidationTest extends PendingChangesTestCase {
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -90,7 +90,7 @@ class PostDeletionRevalidationTest extends PendingChangesTestCase {
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**
@@ -126,7 +126,7 @@ class PostDeletionRevalidationTest extends PendingChangesTestCase {
 
 		wp_delete_post( $post_id, true );
 
-		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null ) ] );
+		$this->assertPendingChanges( [ Change::post( $post_id, 'post', $path, null, $this->uncategorized(), $this->uncategorized() ) ] );
 	}
 
 	/**

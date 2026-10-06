@@ -68,7 +68,7 @@ Every change has a `subject`, and that subject's fields. There are eight:
 
 | Subject | Fields | Sent for |
 | --- | --- | --- |
-| `post` | `id`, `type`, `before`, `after` | a post saved, published, unpublished, trashed or deleted; a post whose page another post's save moved — see [dependent posts](#dependent-posts); a post reordered or reparented by Nested Pages or Simple Custom Post Order; the **Revalidate** row action, bulk action and admin bar entry; `nextjs_revalidate_post()` |
+| `post` | `id`, `type`, `before`, `after` | a post saved, published, unpublished, trashed or deleted; a post's terms written with no save — see [term membership](#term-membership); a post whose page another post's save moved — see [dependent posts](#dependent-posts); a post reordered or reparented by Nested Pages or Simple Custom Post Order; the **Revalidate** row action, bulk action and admin bar entry; `nextjs_revalidate_post()` |
 | `term` | `id`, `taxonomy`, `before`, `after` | a term of a **revalidatable taxonomy** created, edited or deleted; a term whose archive another term's edit or delete moved — see [dependent terms](#dependent-terms); the default term a delete moved posts into |
 | `redirect` | `uri` | a redirect created, edited, deleted, enabled or disabled in Redirection — one change per affected source path |
 | `path` | `uri` | `nextjs_revalidate_path()`, the inbound REST routes, a due scheduled purge, the probe |
@@ -81,7 +81,7 @@ Every change has a `subject`, and that subject's fields. There are eight:
 {
   "version": 2,
   "changes": [
-    { "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/" }, "after": { "uri": "/hello-world/" } },
+    { "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/", "terms": [ { "id": 7, "taxonomy": "category", "slug": "video" } ] }, "after": { "uri": "/hello-world/", "terms": [ { "id": 9, "taxonomy": "category", "slug": "podcast" } ] } },
     { "subject": "term", "id": 7, "taxonomy": "category", "before": { "slug": "video", "uri": "/category/video/" }, "after": { "slug": "videos", "uri": "/category/videos/" } },
     { "subject": "redirect", "uri": "/old-path/" },
     { "subject": "path", "uri": "/feeds/events/" },
@@ -100,8 +100,9 @@ Every field, and when it is `null`:
 | any | `subject` | string | Which subject changed. |
 | `post` | `id` | integer | The post's ID. |
 | `post` | `type` | string | Its post type, as registered: `post`, `page`, `event`… |
-| `post` | `before` | `{ uri }` or `null` | Where the front-end showed the post before the change. `null` when it was not on the front-end — a publish. |
-| `post` | `after` | `{ uri }` or `null` | Where the front-end shows it after. `null` when it is no longer there — unpublished, trashed or deleted alike, since the page is gone either way. |
+| `post` | `before` | `{ uri, terms }` or `null` | Where the front-end showed the post before the change, and the terms it was in. `null` when it was not on the front-end — a publish. |
+| `post` | `after` | `{ uri, terms }` or `null` | Where the front-end shows it after, and the terms it is in. `null` when it is no longer there — unpublished, trashed or deleted alike, since the page is gone either way. |
+| `post` | `terms` | `{ id, taxonomy, slug }[]` | On each side, the post's terms in **revalidatable taxonomies** — the archives it appears in — sorted by taxonomy then ID. `[]` when it is in none. |
 | `term` | `id` | integer | The term's ID. |
 | `term` | `taxonomy` | string | Its taxonomy, as registered: `category`, `post_tag`, `genre`… |
 | `term` | `before` | `{ slug, uri }` or `null` | The term's slug, and where its archive was, before the change. `null` when it was not there — a term just created. |
@@ -127,6 +128,13 @@ Every field, and when it is `null`:
   `before`, and anything that takes the page away no `after`. The row action,
   bulk action and admin bar entry report a post as it stands, with both sides its
   current URI.
+- **A post's `terms`** are on both sides of every post change, whatever
+  produced it. Expire the archive of every term on either side: a publish
+  reaches the archives the post joined, an unpublish, a trash or a delete the
+  ones it left, a move from *Video* to *Podcast* both, and an edit the ones
+  whose listings show its title. A producer with no record of the post's terms
+  before — the row action, a dependent post, `nextjs_revalidate_post()` — lists
+  the terms it has now on both sides.
 - **A term's `before` and `after`** compare the same way: an edit of its name
   or description has two equal sides, a slug change two different slugs and
   URIs, a creation no `before`, a delete no `after`. `slug` is there for a
@@ -184,7 +192,7 @@ onto an example tag scheme and expires each tag with `revalidateTag( tag, 'max' 
 
 | Change | Tags expired |
 | --- | --- |
-| `post` | `node:{id}` and `type:{type}`; and `uris` when `before.uri` and `after.uri` differ — a publish, an unpublish, a trash, a delete or a slug change |
+| `post` | `node:{id}`, `type:{type}`, and `term:{id}` for every term on either side; and `uris` when `before.uri` and `after.uri` differ — a publish, an unpublish, a trash, a delete or a slug change |
 | `term` | `term:{id}`; and `uris` when `before.uri` and `after.uri` differ — a creation, a delete, a slug change or a move |
 | `redirect`, `path` | `uris` |
 | `menu` | `menu:{id}`, whatever its locations |
@@ -493,7 +501,7 @@ A revalidated post is reported as a `post` change, which describes the post as
 the front-end sees it before and after:
 
 ```json
-{ "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/" }, "after": { "uri": "/hello-world/" } }
+{ "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/", "terms": [ { "id": 7, "taxonomy": "category", "slug": "video" } ] }, "after": { "uri": "/hello-world/", "terms": [ { "id": 7, "taxonomy": "category", "slug": "video" } ] } }
 ```
 
 `uri` is the path from the domain root. A side is `null` when the post is not on
@@ -509,6 +517,32 @@ attachment is never reported.
 A headless site registering post types with `publicly_queryable => false` while
 its front-end still renders their permalinks can say so with the filter below.
 
+### Term membership
+
+Each side of a post change lists the post's terms on that side — its terms in
+the [revalidatable taxonomies](#which-terms-are-revalidated), each as
+`{ id, taxonomy, slug }`, sorted by taxonomy then ID — so the front-end reaches
+every archive the post is in, joined or left. A save that moves a post from
+*Video* to *Podcast* lists *Video* in `before.terms` and *Podcast* in
+`after.terms`; a title edit lists the same terms on both sides.
+
+A post's terms written with **no save** — an import, a plugin, Polylang's
+synchronisation, calling `wp_set_object_terms()`, `wp_add_object_terms()` or
+`wp_remove_object_terms()` — are a change of that post too, reported where it
+stands with the terms it had before the write and the ones it has after:
+
+```json
+{ "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/", "terms": [ { "id": 7, "taxonomy": "category", "slug": "video" } ] }, "after": { "uri": "/hello/", "terms": [ { "id": 9, "taxonomy": "category", "slug": "podcast" } ] } }
+```
+
+Only a post with a page — a revalidatable post, `publish` or `private` — is
+reported, and only when its terms in a revalidatable taxonomy changed: a draft's,
+or a write that sets the terms a post already has, reports nothing. A post also
+saved in the same request is one change, from its terms before the first to its
+terms after the last. The one exception is a term's delete: the posts it moves
+are not reported, since the deleted term's own change reaches whatever showed
+it, and the default term's reaches the archive the posts moved into.
+
 ### Dependent posts
 
 A post's page can move without the post being saved. A child page's permalink is
@@ -518,8 +552,8 @@ its own, after the saved post's, with the URI it had before the save and the one
 it has after:
 
 ```json
-{ "subject": "post", "id": 42, "type": "page", "before": { "uri": "/about/" }, "after": { "uri": "/company/" } }
-{ "subject": "post", "id": 43, "type": "page", "before": { "uri": "/about/team/" }, "after": { "uri": "/company/team/" } }
+{ "subject": "post", "id": 42, "type": "page", "before": { "uri": "/about/", "terms": [] }, "after": { "uri": "/company/", "terms": [] } }
+{ "subject": "post", "id": 43, "type": "page", "before": { "uri": "/about/team/", "terms": [] }, "after": { "uri": "/company/team/", "terms": [] } }
 ```
 
 By default these are the descendants of a post of a hierarchical type whose

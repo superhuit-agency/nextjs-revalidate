@@ -78,6 +78,9 @@ function apply_filters_deprecated( $hook, $args, $version, $replacement = '', $m
 function wp_is_post_autosave( $post_id ) { return false; }
 function wp_is_post_revision( $post_id ) { return false; }
 
+// A post's term membership (#188): the posts here are in no taxonomy.
+function get_object_taxonomies( $object, $output = 'names' ) { return []; }
+
 function get_post_type( $post_id ) { return $GLOBALS['njr_test_post_type']; }
 function is_post_type_viewable( $post_type ) { return $GLOBALS['njr_test_type_viewable']; }
 function get_post_status( $post_id ) { return $GLOBALS['njr_test_post_status']; }

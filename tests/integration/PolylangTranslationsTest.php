@@ -85,8 +85,8 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 		$this->assertSame( $new_de, get_post( $page_de )->post_parent, 'Polylang did not synchronise the parent.' );
 
 		$this->assertPendingChanges( [
-			Change::post( $page_fr, 'page', '/ancien/page-fr/', '/nouveau/page-fr/' ),
-			Change::post( $page_de, 'page', '/alt/seite/', '/neu/seite/' ),
+			Change::post( $page_fr, 'page', '/ancien/page-fr/', '/nouveau/page-fr/', $this->in( 'fr' ), $this->in( 'fr' ) ),
+			Change::post( $page_de, 'page', '/alt/seite/', '/neu/seite/', $this->in( 'de' ), $this->in( 'de' ) ),
 		] );
 	}
 
@@ -101,7 +101,7 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 		wp_update_post( [ 'ID' => $page_fr, 'post_parent' => $new_fr ] );
 
 		$this->assertContains(
-			Change::post( $child_de, 'page', '/alt/seite/kind/', '/neu/seite/kind/' ),
+			Change::post( $child_de, 'page', '/alt/seite/kind/', '/neu/seite/kind/', $this->in( 'de' ), $this->in( 'de' ) ),
 			$this->pending_changes()->pending()
 		);
 	}
@@ -121,8 +121,8 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 		$this->assertSame( 5, get_post( $page_de )->menu_order, 'Polylang did not synchronise the order.' );
 
 		$this->assertPendingChanges( [
-			Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/' ),
-			Change::post( $page_de, 'page', '/seite/', '/seite/' ),
+			Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/', $this->in( 'fr' ), $this->in( 'fr' ) ),
+			Change::post( $page_de, 'page', '/seite/', '/seite/', $this->in( 'de' ), $this->in( 'de' ) ),
 		] );
 	}
 
@@ -139,8 +139,8 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 		wp_update_post( [ 'ID' => $page_fr, 'post_content' => 'Modifié.' ] );
 
 		$this->assertPendingChanges( [
-			Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/' ),
-			Change::post( $page_de, 'page', '/seite/', '/seite/' ),
+			Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/', $this->in( 'fr' ), $this->in( 'fr' ) ),
+			Change::post( $page_de, 'page', '/seite/', '/seite/', $this->in( 'de' ), $this->in( 'de' ) ),
 		] );
 	}
 
@@ -156,7 +156,7 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 
 		wp_update_post( [ 'ID' => $page_fr, 'post_content' => 'Modifié.' ] );
 
-		$this->assertPendingChanges( [ Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/' ) ] );
+		$this->assertPendingChanges( [ Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/', $this->in( 'fr' ), $this->in( 'fr' ) ) ] );
 	}
 
 	// Fixtures
@@ -200,5 +200,20 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 		$this->polylang->model->post->set_language( $page, $language );
 
 		return $page;
+	}
+
+	/**
+	 * The terms a side of a page's change lists for a page in a language:
+	 * Polylang's `language` taxonomy is publicly queryable, so a page's
+	 * language is part of its term membership (#188).
+	 *
+	 * @param string $language The language's slug.
+	 * @return array[]
+	 */
+	private function in( $language ) {
+		$term = get_term_by( 'slug', $language, 'language' );
+		$this->assertInstanceOf( \WP_Term::class, $term, "The $language language's term cannot be read back." );
+
+		return [ Change::post_term( (int) $term->term_id, 'language', $language ) ];
 	}
 }
