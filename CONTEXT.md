@@ -331,7 +331,9 @@ would sensibly keep.
 
 **Revalidate domain**:
 The scheme, host and port of the Next.js app this site talks to — everything an
-endpoint URL has in common, stored once. One of the two settings a site cannot
+endpoint URL has in common, stored once — with the basic-auth credentials of a
+front-end behind basic auth, when it has any. Credentials in the domain are what
+tell the plugin the front-end is behind basic auth (ADR 0042). One of the two settings a site cannot
 revalidate without. Empty on an unconfigured site; otherwise saved only as an
 `http` or `https` URL with a host — a value that is not one is refused on save,
 and the domain held before is kept. A row stored before 1.7.0 was never held to
@@ -432,8 +434,9 @@ Deliberately unguarded by any minimum length — a one-character secret is a leg
 configuration, so it is redacted like any other and the surrounding diagnostic
 is allowed to come out garbled.
 
-> From v2 the secret travels in an `Authorization` header rather than a query
-> arg, so the by-shape pass has nothing left to find in a request of this
+> From v2 the secret travels in a header rather than a query arg —
+> `Authorization`, or its own header when the domain has credentials (ADR
+> 0042) — so the by-shape pass has nothing left to find in a request of this
 > plugin's own; the by-value pass is what still applies, because a transport
 > message can quote a header back. The by-shape pass stayed while the
 > revalidation queue still sent v1's `GET`, and is a harmless no-op now that

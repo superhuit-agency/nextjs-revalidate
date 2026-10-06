@@ -107,3 +107,12 @@ has just been rebuilt, thousands of them if a revalidate all was mid-flight.
 
 **The settings screen loses its queue tab** and its progress bar, and the notices
 that counted queued pages report that a revalidation was sent.
+
+## Amended for v2.1: a domain with credentials moves the secret
+
+Decided in #199, under [ADR 0042](0042-a-domain-with-credentials-moves-the-secret-to-its-own-header.md).
+`Authorization: Bearer <secret>` replaced the `Authorization: Basic` header the
+transport builds from the credentials in a revalidate domain, so every delivery
+to a front-end behind basic auth was answered 401. When the domain carries
+credentials, the request now sends them as `Authorization: Basic`, and the
+secret in `X-Nextjs-Revalidate-Secret`. Without credentials it is unchanged.
