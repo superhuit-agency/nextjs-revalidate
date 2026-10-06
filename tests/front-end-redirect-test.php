@@ -15,6 +15,9 @@
  *    into a `GET` of some other page, and record its 200 as a delivery.
  *  - **A front-end redirecting to itself cannot hold the request.** The hops
  *    are capped, and the last redirect is the outcome.
+ *  - **Basic-auth credentials go with the request.** A staging front-end would
+ *    answer the next hop 401 without them, whether the `Location` is a path or
+ *    an absolute URL on the same origin.
  *
  * See `docs/adr/0039-a-delivery-follows-a-redirect-that-keeps-the-request.md`.
  *
@@ -190,6 +193,45 @@ foreach (
 $staging = 'http://user:pass@localhost:8083/revalidate';
 list( $code, $urls ) = njr_deliver( $staging, [ $staging => njr_redirect( 308, '/revalidate/' ), 'http://user:pass@localhost:8083/revalidate/' => $ok ] );
 njr_test_assert( 'ok' === $code && 'http://user:pass@localhost:8083/revalidate/' === ( $urls[1] ?? '' ), 'a path is joined to the credentials and port the request was sent with' );
+
+// So does an absolute URL on the same origin, which is how a proxy rewriting
+// `Location` answers the same redirect (#184). The credentials are not part of
+// the origin, so without them the next hop is the one that answers 401.
+list( $code, $urls ) = njr_deliver( $staging, [ $staging => njr_redirect( 308, 'http://localhost:8083/revalidate/' ), 'http://user:pass@localhost:8083/revalidate/' => $ok ] );
+njr_test_assert( 'ok' === $code && [ $staging, 'http://user:pass@localhost:8083/revalidate/' ] === $urls, 'an absolute URL on the same origin is given the credentials the request was sent with' );
+
+// Everything but the credentials is kept as the front-end spelt it.
+$spelt = 'HTTP://LocalHost:8083/revalidate/?x=1';
+list( $code, $urls ) = njr_deliver( $staging, [ $staging => njr_redirect( 307, $spelt ), 'HTTP://user:pass@LocalHost:8083/revalidate/?x=1' => $ok ] );
+njr_test_assert( 'ok' === $code && 'HTTP://user:pass@LocalHost:8083/revalidate/?x=1' === ( $urls[1] ?? '' ), 'the credentials are added to the Location without respelling its scheme, host, port, path or query' );
+
+// The default port, which the URL the request went to leaves to its scheme.
+$defaulted = 'https://user:pass@front-end.test/api/revalidate';
+list( $code, $urls ) = njr_deliver( $defaulted, [ $defaulted => njr_redirect( 308, 'https://front-end.test:443/api/revalidate/' ), 'https://user:pass@front-end.test:443/api/revalidate/' => $ok ] );
+njr_test_assert( 'ok' === $code && 'https://user:pass@front-end.test:443/api/revalidate/' === ( $urls[1] ?? '' ), 'an absolute URL spelling out the default port is given the credentials too' );
+
+// A Location naming credentials of its own keeps them: the front-end named
+// them, and they are not overridden.
+$own = 'http://other:word@localhost:8083/revalidate/';
+list( $code, $urls ) = njr_deliver( $staging, [ $staging => njr_redirect( 308, $own ), $own => $ok ] );
+njr_test_assert( 'ok' === $code && [ $staging, $own ] === $urls, 'an absolute URL with credentials of its own is followed exactly as given' );
+
+// A request sent without credentials has none to carry over.
+$bare = 'http://localhost:8083/revalidate';
+list( $code, $urls ) = njr_deliver( $bare, [ $bare => njr_redirect( 308, 'http://localhost:8083/revalidate/' ), 'http://localhost:8083/revalidate/' => $ok ] );
+njr_test_assert( 'ok' === $code && [ $bare, 'http://localhost:8083/revalidate/' ] === $urls, 'an absolute URL is followed exactly as given when the request carried no credentials' );
+
+// Each redirect starts from the URL it was sent to, so the credentials a first
+// hop carried over reach the third request too.
+list( $code, $urls ) = njr_deliver(
+	$staging,
+	[
+		$staging                                         => njr_redirect( 308, '/revalidate/' ),
+		'http://user:pass@localhost:8083/revalidate/'    => njr_redirect( 307, 'http://localhost:8083/v2/revalidate/' ),
+		'http://user:pass@localhost:8083/v2/revalidate/' => $ok,
+	]
+);
+njr_test_assert( 'ok' === $code && [ $staging, 'http://user:pass@localhost:8083/revalidate/', 'http://user:pass@localhost:8083/v2/revalidate/' ] === $urls, 'a path then an absolute URL on the same origin both carry the credentials' );
 
 // Not followed
 // ====

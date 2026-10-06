@@ -20,10 +20,17 @@ either: `Settings::endpoint_url()` took the slash off.
 **A 307 or a 308 to the origin the request was sent to is followed**, with the
 same method, headers and body — which is what those two statuses ask for. The
 origin is the scheme, host and port, with a default port spelled out, so
-`https://example.com` and `https://example.com:443` are one origin. A `Location`
-that is a path is joined to the URL the request went to, credentials and all:
-it is the shape Next.js answers with, and a staging front-end behind basic auth
-would answer the next hop 401 without them.
+`https://example.com` and `https://example.com:443` are one origin. **The
+credentials of the URL the request went to carry over**, whichever shape the
+`Location` takes, because a staging front-end behind basic auth would answer the
+next hop 401 without them. A `Location` that is a path — the shape Next.js
+answers with — is joined to that URL, credentials and all. One that is an
+absolute URL on the same origin — the shape a proxy rewriting `Location`
+answers with — is given those credentials and is otherwise followed exactly as
+spelt (#184). The credentials are no part of the origin, so they neither make
+nor break the check. A `Location` naming credentials of its own keeps them: the
+front-end named them, and they are not overridden. Each redirect starts from the
+URL it was sent to, so credentials carried over once reach every later hop.
 
 **Nothing else is followed**, and the redirect is the outcome, `http_{status}`:
 
