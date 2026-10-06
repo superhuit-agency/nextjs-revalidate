@@ -172,6 +172,8 @@ require_once __DIR__ . '/../include/RestApi.php';
 require_once __DIR__ . '/../include/Integrations/Redirection.php';
 require_once __DIR__ . '/../include/Integrations/Yoast.php';
 require_once __DIR__ . '/../include/Integrations/Polylang.php';
+require_once __DIR__ . '/../include/Integrations/NestedPages.php';
+require_once __DIR__ . '/../include/Integrations/SimpleCustomPostOrder.php';
 
 require_once __DIR__ . '/../nextjs-revalidate.php';
 

@@ -112,6 +112,11 @@ $polylang_hooks = [
 	'delete_language',
 	'pll_update_default_lang',
 	'update_option_polylang',
+	'added_term_meta',
+	'updated_term_meta',
+	'deleted_term_meta',
+	'nextjs_revalidate_dependent_posts',
+	'wp_after_insert_post',
 ];
 
 // Constructing an integration is not registering it.
@@ -150,7 +155,7 @@ njr_test_registered( 'a site running Yoast SEO adds to the site setting options'
 
 $GLOBALS['njr_test_hooks'] = [];
 ( new Polylang() )->register_hooks();
-njr_test_registered( 'a site running Polylang listens to its languages and its default language', $polylang_hooks );
+njr_test_registered( 'a site running Polylang listens to its languages, its default language, its string translations and its translations', $polylang_hooks );
 
 // What Yoast adds, and what it leaves out: `wpseo` is Yoast's own bookkeeping
 // (ADR 0037).

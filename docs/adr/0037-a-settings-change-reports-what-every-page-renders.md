@@ -75,3 +75,22 @@ fires the term hooks and reports one `settings` change on the upgrade request.
 That is accepted: it is one-off, the flags it rewrites are rendered, and it is
 one change — not a rebuild on every `version` bump, which is what watching the
 whole option would cost.
+
+## Amended for #180: the logo, prefixes, and Polylang's strings
+
+Found porting a site's front-end to Cache Components. Three gaps, and none of
+them changes the decision above:
+
+- **`site_logo` is on the built-in list**, beside `site_icon`. The core Site Logo
+  block renders it, and core keeps it in step with the theme's `custom_logo`
+  mod.
+- **An entry of `nextjs_revalidate_site_setting_options` ending in `*` names
+  every option starting with what comes before it.** An option stored once per
+  language — `landbot_config_url_fr`, or ACF options under
+  acf-options-for-polylang — cannot be listed ahead of time. A prefix, and not a
+  pattern language, because a prefix is all those names share. A bare `*` names
+  no option: it would make the cron array and every transient a site setting.
+- **Polylang's string translations are site settings.** The translated site
+  title, tagline, and every string registered with Polylang are kept in the
+  language term's `_pll_strings_translations` meta, not in an option, so the
+  integration reports a change from that meta's hooks.

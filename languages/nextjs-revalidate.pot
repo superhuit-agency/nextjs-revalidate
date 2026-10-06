@@ -2,14 +2,14 @@
 # This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: Next.js Revalidate 1.7.0\n"
+"Project-Id-Version: Next.js Revalidate 2.0.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/nextjs-revalidate\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-28T14:53:28+00:00\n"
+"POT-Creation-Date: 2026-10-06T09:14:51+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Poedit-Basepath: ..\n"
@@ -67,7 +67,7 @@ msgid "Other errors occurred as well."
 msgstr ""
 
 #: include/FailureWindow.php:308
-#: include/Settings.php:786
+#: include/Settings.php:805
 msgid "Please contact a site administrator."
 msgstr ""
 
@@ -87,6 +87,61 @@ msgstr ""
 #: include/FailureWindow.php:436
 #, php-format
 msgid "the front-end answered %s"
+msgstr ""
+
+#: include/LogViewer.php:75
+msgid "Sorry, you are not allowed to read the log of this site."
+msgstr ""
+
+#: include/LogViewer.php:85
+#: include/LogViewer.php:111
+msgid "This page has expired. Reload it to refresh the log."
+msgstr ""
+
+#: include/LogViewer.php:108
+msgid "Live refresh stopped: logging has been switched off."
+msgstr ""
+
+#: include/LogViewer.php:109
+msgid "Live refresh stopped: this page has expired. Reload it to refresh the log."
+msgstr ""
+
+#: include/LogViewer.php:110
+msgid "Live refresh stopped: the log could not be refreshed."
+msgstr ""
+
+#: include/LogViewer.php:112
+msgid "The log could not be refreshed."
+msgstr ""
+
+#: include/LogViewer.php:123
+msgid "Refresh"
+msgstr ""
+
+#: include/LogViewer.php:131
+msgid "Live refresh, every 5 seconds"
+msgstr ""
+
+#: include/LogViewer.php:153
+msgid "Logging has been switched off since this page was loaded, so there is no log to show. Reload the page to see the Debug tab as it is saved."
+msgstr ""
+
+#. translators: %s: the time the log was read, e.g. 14:05:09
+#: include/LogViewer.php:166
+#, php-format
+msgid "Nothing has been logged yet — refreshed %s"
+msgstr ""
+
+#. translators: 1: how many lines are shown, 2: how many lines the log holds, 3: the size of the log, e.g. 1.2 MB, 4: the time the log was read, e.g. 14:05:09
+#: include/LogViewer.php:175
+#, php-format
+msgid "Showing the last %1$s of %2$s line (%3$s) — refreshed %4$s"
+msgid_plural "Showing the last %1$s of %2$s lines (%3$s) — refreshed %4$s"
+msgstr[0] ""
+msgstr[1] ""
+
+#: include/LogViewer.php:190
+msgid "The end of the log file"
 msgstr ""
 
 #: include/Probe.php:111
@@ -141,45 +196,45 @@ msgstr ""
 msgid "Send probe"
 msgstr ""
 
-#: include/Revalidate.php:455
+#: include/Revalidate.php:784
 #, php-format
 msgid "Revalidate post “%s”"
 msgstr ""
 
-#: include/Revalidate.php:456
-#: include/Revalidate.php:633
+#: include/Revalidate.php:785
+#: include/Revalidate.php:978
 msgid "Revalidate"
 msgstr ""
 
-#: include/Revalidate.php:497
+#: include/Revalidate.php:826
 msgid "It is no longer applied: a post change carries no permalink to rewrite."
 msgstr ""
 
-#: include/Revalidate.php:527
+#: include/Revalidate.php:872
 msgid "Sorry, you are not allowed to revalidate this post."
 msgstr ""
 
-#: include/Revalidate.php:555
+#: include/Revalidate.php:900
 msgctxt "Admin top bar menu"
 msgid "Revalidate this page"
 msgstr ""
 
-#: include/Revalidate.php:563
+#: include/Revalidate.php:908
 msgctxt "Admin top bar menu"
 msgid "Tell the front-end to revalidate the page currently being edited."
 msgstr ""
 
-#: include/Revalidate.php:668
+#: include/Revalidate.php:1013
 #, php-format
 msgid "“%s”: the revalidation was sent to the front-end."
 msgstr ""
 
-#: include/Revalidate.php:669
-#: include/Revalidate.php:709
+#: include/Revalidate.php:1014
+#: include/Revalidate.php:1054
 msgid "Unable to revalidate. Please try again or contact an administrator."
 msgstr ""
 
-#: include/Revalidate.php:708
+#: include/Revalidate.php:1053
 #, php-format
 msgid "%d post: the revalidation was sent to the front-end."
 msgid_plural "%d posts: the revalidation was sent to the front-end."
@@ -281,38 +336,42 @@ msgstr ""
 msgid "Logs will be saved to file located in <code>%s</code>"
 msgstr ""
 
-#: include/Settings.php:489
+#: include/Settings.php:446
+msgid "Log"
+msgstr ""
+
+#: include/Settings.php:501
 msgid "The revalidate domain was not saved: it must be a web address starting with http:// or https://, such as https://example.com."
 msgstr ""
 
-#: include/Settings.php:719
+#: include/Settings.php:738
 msgid "Next.js Revalidate is not configured for this site: the revalidate domain and secret are both required before anything can be revalidated."
 msgstr ""
 
-#: include/Settings.php:764
+#: include/Settings.php:783
 msgid "its revalidate domain and secret are missing"
 msgstr ""
 
-#: include/Settings.php:765
+#: include/Settings.php:784
 msgid "its revalidate domain is missing"
 msgstr ""
 
-#: include/Settings.php:766
+#: include/Settings.php:785
 msgid "its secret is missing"
 msgstr ""
 
 #. translators: %s: which of the two required settings are missing.
-#: include/Settings.php:771
+#: include/Settings.php:790
 #, php-format
 msgid "Next.js Revalidate is not configured for this site — %s. Content is still saved, but every revalidation is refused: the front-end is never asked to rebuild its pages."
 msgstr ""
 
-#: include/Settings.php:782
+#: include/Settings.php:801
 msgid "Configure Next.js Revalidate"
 msgstr ""
 
 #. translators: %s: number of sites on the network.
-#: include/Settings.php:828
+#: include/Settings.php:847
 #, php-format
 msgid "Next.js Revalidate cannot migrate the %s sites of this network in a single request, and it does not migrate some of them and leave the rest running new code over old data. Open the admin of each site once instead — a site migrates itself the first time somebody does."
 msgstr ""
@@ -322,26 +381,26 @@ msgctxt "Admin top bar menu"
 msgid "Revalidate"
 msgstr ""
 
-#: include/Traits/FrontEndRequest.php:125
+#: include/Traits/FrontEndRequest.php:163
 msgid "The front-end answered without a status code."
 msgstr ""
 
 #. translators: %d: the HTTP status code the front-end answered with.
-#: include/Traits/FrontEndRequest.php:131
+#: include/Traits/FrontEndRequest.php:169
 #, php-format
 msgid "The front-end answered %d."
 msgstr ""
 
-#: nextjs-revalidate.php:79
+#: nextjs-revalidate.php:82
 msgid "Please install composer dependencies for Next.js Revalidate to work"
 msgstr ""
 
 #. translators: %s: number of sites on the network.
-#: nextjs-revalidate.php:387
+#: nextjs-revalidate.php:401
 #, php-format
 msgid "Next.js Revalidate cannot set up the %s sites of this network in a single request, and it does not set up some of them and leave the rest unable to revalidate. Activate the plugin on each site individually instead."
 msgstr ""
 
-#: nextjs-revalidate.php:390
+#: nextjs-revalidate.php:404
 msgid "Plugin could not be activated"
 msgstr ""

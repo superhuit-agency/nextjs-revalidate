@@ -437,6 +437,18 @@ class Settings extends Base implements Hookable {
 				),
 			]
 		);
+
+		// The end of the log, while logging is saved as on. With it off the
+		// tab only says where the log is, as it did before the viewer existed.
+		if ( LogViewer::is_shown() ) {
+			add_settings_field(
+				LogViewer::FIELD_ID,
+				__('Log', 'nextjs-revalidate'),
+				[ LogViewer::class, 'render' ],
+				self::PAGE_NAME,
+				'nextjs-revalidate-section-debug'
+			);
+		}
 	}
 
 	/**
@@ -641,7 +653,9 @@ class Settings extends Base implements Hookable {
 	 *
 	 * Exactly one slash joins them, whichever way the operator typed each half.
 	 * A path holding nothing but slashes is a field left empty rather than a
-	 * request to revalidate against the domain root, which no app serves.
+	 * request to revalidate against the domain root, which no app serves. A
+	 * path typed with a trailing slash keeps one, for an app that serves its
+	 * route only there (ADR 0039).
 	 *
 	 * Answers the empty string on a site with no domain, rather than a bare
 	 * path: nothing composes an endpoint without an `is_configured()` guard
@@ -659,10 +673,15 @@ class Settings extends Base implements Hookable {
 		$domain = untrailingslashit( trim( (string) $this->domain ) );
 		if ( empty($domain) ) return '';
 
-		$path = untrailingslashit( trim( (string) $this->endpoint_path ) );
-		if ( empty($path) ) $path = self::DEFAULT_ENDPOINT_PATH;
+		$path = trim( (string) $this->endpoint_path );
+		if ( '' === trim( $path, '/' ) ) $path = self::DEFAULT_ENDPOINT_PATH;
 
-		return $domain . '/' . ltrim( $path, '/' );
+		// A trailing slash is the operator's to keep: a Next.js app with
+		// `trailingSlash: true` serves its route only at `/api/revalidate/`.
+		// Kept as one, however many were typed.
+		$trailing = '/' === substr( $path, -1 ) ? '/' : '';
+
+		return $domain . '/' . trim( $path, '/' ) . $trailing;
 	}
 
 	/**

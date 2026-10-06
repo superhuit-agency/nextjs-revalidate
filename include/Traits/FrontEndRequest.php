@@ -43,6 +43,18 @@ trait FrontEndRequest {
 	protected static $redaction = '***';
 
 	/**
+	 * How many redirects one delivery follows before the last one is its
+	 * outcome.
+	 *
+	 * A trailing-slash redirect is one hop, and nothing a front-end has a reason
+	 * to answer takes more than two; the cap is what keeps a front-end
+	 * redirecting to itself from holding the request until its timeout.
+	 *
+	 * @var int
+	 */
+	protected static $max_redirects = 2;
+
+	/**
 	 * Post a JSON body to the front-end, and name what came back.
 	 *
 	 * `Authorization: Bearer <secret>` rather than a query arg: it is the
@@ -50,9 +62,16 @@ trait FrontEndRequest {
 	 * secret out of every access log the URL would have landed in (ADR 0034).
 	 *
 	 * Any 2xx is a success, because a `POST` may answer 202 or 204 as readily as
-	 * 200. Redirects are not followed: a front-end answering 301 has not taken
-	 * the changes, and following it would turn the `POST` into a `GET` of some
-	 * other page, whose 200 would then be recorded as a success.
+	 * 200. A 307 or a 308 to the same origin is followed — it is how a Next.js
+	 * app with `trailingSlash: true` answers `/api/revalidate` — and no other
+	 * redirect is (ADR 0039). A 301 or a 302 has not taken the changes, and
+	 * following it would turn the `POST` into a `GET` of some other page, whose
+	 * 200 would then be recorded as a success. A redirect to another origin
+	 * would hand the secret to whoever it names. Either one, like a redirect
+	 * past `$max_redirects`, is its own outcome: `http_{status}`.
+	 *
+	 * The timeout is the caller's, for the whole delivery: a redirect is
+	 * followed only with what is left of it.
 	 *
 	 * Nothing is thrown out of here. The pending changes are delivered from
 	 * `shutdown`, or in the middle of a save when a request reaches the cap, and neither is a place a throw belongs.
@@ -64,7 +83,8 @@ trait FrontEndRequest {
 	 * @param array  $body    What to send, encoded as JSON.
 	 * @param int    $timeout Seconds to wait for an answer.
 	 *
-	 * @return true|WP_Error True when the front-end answered any 2xx. Otherwise
+	 * @return true|WP_Error True when the front-end answered any 2xx, after any
+	 *                       redirect it was right to follow. Otherwise
 	 *                       a WP_Error whose code names the outcome:
 	 *                       `unreachable` when the front-end was not reached,
 	 *                       `no_response` when it answered without a status,
@@ -93,28 +113,46 @@ trait FrontEndRequest {
 			// only reject. Nothing was sent, so this is no HTTP outcome.
 			if ( ! is_string( $json ) ) throw new \RuntimeException( 'The changes could not be encoded as JSON.' );
 
-			$response = wp_remote_post(
-				$url,
-				[
-					'timeout'     => $timeout,
-					'redirection' => 0,
-					'headers'     => [
-						'Authorization' => 'Bearer ' . $secret,
-						'Content-Type'  => 'application/json',
-					],
-					'body'        => $json,
-				]
-			);
+			// `'redirection' => 0` because the transport's own following knows no
+			// origin and turns a 301 into a `GET`; the redirects this method
+			// does follow, it follows itself, below.
+			$args = [
+				'timeout'     => $timeout,
+				'redirection' => 0,
+				'headers'     => [
+					'Authorization' => 'Bearer ' . $secret,
+					'Content-Type'  => 'application/json',
+				],
+				'body'        => $json,
+			];
 
-			// The request never got an answer — DNS, TLS, a timeout. What the
-			// transport has to say about it is the diagnostic, so it is carried
-			// over rather than thrown away — redacted, because none of it was
-			// written here.
-			if ( is_wp_error($response) ) return new WP_Error( 'unreachable', self::redact_secret( $response->get_error_message(), $secret ) );
+			$deadline = microtime( true ) + $timeout;
+			$hops     = 0;
 
-			$status = intval( wp_remote_retrieve_response_code( $response ) );
+			while ( true ) {
+				$response = wp_remote_post( $url, $args );
 
-			if ( $status >= 200 && $status < 300 ) return true;
+				// The request never got an answer — DNS, TLS, a timeout. What the
+				// transport has to say about it is the diagnostic, so it is carried
+				// over rather than thrown away — redacted, because none of it was
+				// written here.
+				if ( is_wp_error($response) ) return new WP_Error( 'unreachable', self::redact_secret( $response->get_error_message(), $secret ) );
+
+				$status = intval( wp_remote_retrieve_response_code( $response ) );
+
+				if ( $status >= 200 && $status < 300 ) return true;
+
+				$next = self::redirect_to_follow( $url, $status, $response );
+				$left = $deadline - microtime( true );
+
+				if ( '' === $next || $hops >= self::$max_redirects || $left <= 0 ) break;
+
+				// The same method, headers and body, to where the front-end said
+				// they belong — which is what a 307 and a 308 ask for.
+				$url             = $next;
+				$args['timeout'] = $left;
+				$hops++;
+			}
 
 			// An answer with no status line at all is not an HTTP outcome to
 			// report back, and `http_0` would name nothing an operator can act on.
@@ -135,6 +173,77 @@ trait FrontEndRequest {
 		} catch (\Throwable $th) {
 			return new WP_Error( 'exception', self::redact_secret( $th->getMessage(), $secret ) );
 		}
+	}
+
+	/**
+	 * Where a redirect the front-end answered should be followed to, or '' when
+	 * it should not be.
+	 *
+	 * Only a 307 or a 308, because those are the two that promise the method
+	 * and the body are to be sent again unchanged. Only to the origin the
+	 * request was sent to — scheme, host and port — because the request carries
+	 * the secret, and a redirect is the front-end naming a URL the operator
+	 * never typed.
+	 *
+	 * A `Location` that is a path is joined to the URL the request went to,
+	 * credentials and all: it is the shape Next.js answers a trailing-slash
+	 * redirect with, and a staging front-end behind basic auth would answer the
+	 * next hop 401 without them. A relative path, or a `Location` given more
+	 * than once, is not followed — neither is anything a front-end has a reason
+	 * to send, and guessing at one is worse than reporting it.
+	 *
+	 * @param string $from     The URL the request was sent to.
+	 * @param int    $status   The status it was answered with.
+	 * @param array  $response What the transport answered.
+	 *
+	 * @return string The URL to send the request to next, or ''.
+	 */
+	protected static function redirect_to_follow( $from, $status, $response ) {
+
+		if ( 307 !== $status && 308 !== $status ) return '';
+
+		$location = wp_remote_retrieve_header( $response, 'location' );
+		if ( ! is_string( $location ) ) return '';
+
+		$location = trim( $location );
+		if ( '' === $location ) return '';
+
+		// A path on the same origin: everything in `$from` before its own path,
+		// then the path. A `//` opens a URL of another host, not a path.
+		if ( '/' === $location[0] && '//' !== substr( $location, 0, 2 ) ) {
+			if ( ! preg_match( '#^[a-z][a-z0-9+.-]*://[^/?\#]+#i', $from, $prefix ) ) return '';
+
+			return $prefix[0] . $location;
+		}
+
+		$origin = self::origin( $from );
+
+		return '' !== $origin && self::origin( $location ) === $origin ? $location : '';
+	}
+
+	/**
+	 * A URL's scheme, host and port, spelled one way, or '' for a URL that is
+	 * not an `http` or `https` one with a host.
+	 *
+	 * The port is spelled out when the URL leaves it to its scheme, so
+	 * `https://example.com` and `https://example.com:443` are the one origin
+	 * they are.
+	 *
+	 * @param string $url
+	 *
+	 * @return string
+	 */
+	protected static function origin( $url ) {
+
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || empty( $parts['scheme'] ) || empty( $parts['host'] ) ) return '';
+
+		$scheme = strtolower( $parts['scheme'] );
+		if ( 'http' !== $scheme && 'https' !== $scheme ) return '';
+
+		$port = $parts['port'] ?? ( 'https' === $scheme ? 443 : 80 );
+
+		return $scheme . '://' . strtolower( $parts['host'] ) . ':' . $port;
 	}
 
 	/**

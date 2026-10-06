@@ -133,6 +133,24 @@ action, the admin bar — never one that only save-time code consults.
 _Avoid_: Public post — private posts are revalidatable, and password-protected
 ones are too.
 
+**Dependent post**:
+A post whose permalink is built from another post's, so that saving that other
+post can move its page without saving it: a child page, whose permalink is its
+parent's plus its own slug; a translation Polylang synchronises with direct SQL;
+a post a theme's `post_type_link` filter builds from another. Its URI, order and
+parent are read before the save and after it, and it is reported as a `post`
+change of its own when any of them differs — never when none does, so an edit of
+a parent page does not walk its tree. Descendants by default, when the save
+changes a hierarchical post's slug or parent; the site and an integration name
+the rest (ADR 0038). A translation Polylang synchronises is also reported where
+it stands on every save, since Polylang may have written any field of it.
+
+A post moved by a plugin's direct write, with no save at all — a Nested Pages
+drag and drop — is not a dependent post: nothing was saved for it to depend on.
+Its integration reads it before the write and reports it after, the same way.
+_Avoid_: Child post, related post — the first is one kind of it, and the second
+says nothing about why its page moved.
+
 **Revalidatable taxonomy**:
 A taxonomy whose terms' archive pages the front-end could hold, and whose terms
 this plugin may therefore revalidate. One axis — the taxonomy is viewable,

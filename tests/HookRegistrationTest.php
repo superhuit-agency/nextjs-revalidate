@@ -6,7 +6,7 @@
  * Two things are asserted, and they are the two halves of ADR-0003:
  *
  *  1. **Constructing a Hookable touches no global state.** Every one of the
- *     twelve classes is constructed with the recorder watching, and the recorder
+ *     fourteen classes is constructed with the recorder watching, and the recorder
  *     stays empty. This is the property the whole convention exists for: an
  *     instance can be obtained for a single method call without paying for the
  *     hooks.
@@ -112,6 +112,7 @@ require_once __DIR__ . '/../include/Change.php';
 require_once __DIR__ . '/../include/PendingChanges.php';
 require_once __DIR__ . '/../include/Revalidate.php';
 require_once __DIR__ . '/../include/Probe.php';
+require_once __DIR__ . '/../include/LogViewer.php';
 require_once __DIR__ . '/../include/Cron/ScheduledPurges.php';
 require_once __DIR__ . '/../include/RevalidateAll.php';
 require_once __DIR__ . '/../include/FseSnapshot.php';
@@ -126,6 +127,7 @@ use NextJsRevalidate\FailureWindow;
 use NextJsRevalidate\FseSnapshot;
 use NextJsRevalidate\I18n;
 use NextJsRevalidate\Interfaces\Hookable;
+use NextJsRevalidate\LogViewer;
 use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Probe;
 use NextJsRevalidate\RestApi;
@@ -175,6 +177,7 @@ $expected_per_class = [
 	],
 
 	Revalidate::class => [
+		[ 'pre_post_update',      'on_pre_post_update',              10, 2 ],
 		[ 'post_updated',         'on_post_updated',                  1, 1 ],
 		[ 'wp_after_insert_post', 'on_post_save',                    99, 4 ],
 		[ 'before_delete_post',   'on_post_delete',                  10, 1 ],
@@ -190,6 +193,10 @@ $expected_per_class = [
 	Probe::class => [
 		[ 'admin_init',    'probe_action', 10, 1 ],
 		[ 'admin_notices', 'probe_notice', 10, 1 ],
+	],
+
+	LogViewer::class => [
+		[ 'wp_ajax_' . LogViewer::ACTION, 'refresh', 10, 1 ],
 	],
 
 	ScheduledPurges::class => [
@@ -242,6 +249,8 @@ $expected_of_the_root = [
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Redirection::register_redirect_hooks', 10,  1 ],
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Yoast::register_yoast_hooks',          10,  1 ],
 	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\Polylang::register_polylang_hooks',    10,  1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\NestedPages::register_nested_pages_hooks', 10, 1 ],
+	[ 'plugins_loaded',     'NextJsRevalidate\\Integrations\\SimpleCustomPostOrder::register_simple_custom_post_order_hooks', 10, 1 ],
 	[ 'wp_initialize_site', 'NextJsRevalidate::setup_new_site',                                      100, 1 ],
 ];
 

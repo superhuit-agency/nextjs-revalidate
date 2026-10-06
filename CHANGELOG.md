@@ -4,6 +4,13 @@ What changed in each release of Next.js Revalidate, newest first, and what a
 site has to do about it. Releases before 2.0.0 are listed in the changelog of
 [`readme.txt`](readme.txt).
 
+## Unreleased
+
+- **The Debug tab shows the end of the log file** while logging is on: its last
+  200 lines, with how many lines the file holds and how big it is. **Refresh**
+  reads it again without reloading the page, and **Live refresh** does so every
+  five seconds. Nothing to do: with logging off the tab is unchanged.
+
 ## 2.0.0
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a
@@ -48,8 +55,14 @@ Content-Type: application/json
   `templates` change on the same route, not a request to a second endpoint.
 - **Revalidate all is one change**, and a menu save is one change, rather than a
   request per page.
-- **Any 2xx is a success**, where 1.x wanted a 200. A 3xx, a 4xx, a 5xx, or no
+- **Any 2xx is a success**, where 1.x wanted a 200. A 4xx, a 5xx, or no
   answer within **five seconds** — down from sixty — is a failure.
+- **Only a 307 or a 308 to the same origin is followed.** 1.x followed any
+  redirect, to anywhere; 2.0 follows one that keeps the method, the body and
+  the scheme, host and port, and records any other 3xx as a failure. A route
+  served only at `/api/revalidate/` — `trailingSlash: true` — is still reached,
+  and a path typed with its trailing slash now keeps it, which saves the round
+  trip.
 - **Changes are sent when the WordPress request that produced them ends**, in
   one request, or in several of up to 100 changes for a long one such as an
   import. Nothing waits for cron.
@@ -146,6 +159,23 @@ its single revalidate URL split into a domain and a path in the same request.
   language list and default language. 1.x reported none of these. The README's
   reference route tags FSE templates `templates` and site settings `settings`,
   where it tagged templates `options`.
+- **Added:** a save that moves other posts' pages reports them too. Renaming or
+  moving a parent page reports every descendant whose URI moved, from the URI it
+  had to the one it has; the new `nextjs_revalidate_dependent_posts` filter adds
+  a post whose permalink a theme builds from another, and the new
+  `nextjs_revalidate_post( $post_id, $before_url )` reports one whose permalink
+  a term moved. With Polylang's synchronisation on, every save reports the
+  post's translations too, since Polylang writes them with direct SQL
+  ([ADR 0038](docs/adr/0038-a-save-reports-the-posts-it-moves.md)).
+- **Added:** Nested Pages and Simple Custom Post Order integrations. A drag and
+  drop reports each post it reordered or, in Nested Pages, moved under another
+  parent — both write with direct SQL, and saved nothing a save hook could see.
+  Ticking or unticking a type in Simple Custom Post Order's settings reports that
+  type whole.
+- **Added:** `site_logo` is a site setting, and so are Polylang's string
+  translations — the translated site title and tagline among them. An entry of
+  `nextjs_revalidate_site_setting_options` ending in `*` names every option
+  starting with it, for options stored once per language.
 - **Changed:** the admin says **Revalidate** where it said **Purge** — the row
   action, the bulk action, the admin bar menu and its entries, and their
   notices, which now say that a revalidation was sent rather than counting pages
