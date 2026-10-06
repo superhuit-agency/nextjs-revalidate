@@ -148,6 +148,26 @@ it stands on every save, since Polylang may have written any field of it.
 A post moved by a plugin's direct write, with no save at all — a Nested Pages
 drag and drop — is not a dependent post: nothing was saved for it to depend on.
 Its integration reads it before the write and reports it after, the same way.
+
+**Dependent term**:
+A term whose URI is built from another term's: a child term in a hierarchical
+taxonomy, whose archive URI is its parent's plus its own slug. Changing a term's
+slug or parent, or deleting it (WordPress moves its children up a level), moves
+every descendant's archive without editing any of them. Each one is reported as
+a `term` change of its own, from the URI it had to the one it has — the
+**dependent post** rule, applied to terms (ADR 0040).
+_Avoid_: Child term — a grandchild depends on the same edit.
+
+**Term membership**:
+The terms of the **revalidatable taxonomies** a post is in — the archives it
+appears in. Part of where a post is on the front-end, so each side of a `post`
+change carries it, and a post whose terms are set with no save has still
+changed. A term's own change never carries its members: what shows a term is the
+front-end's to reach through that term's change, so a term rename or delete is
+one change however many posts are in it. Deleting a term reports the term, and
+the taxonomy's default term when the delete moved posts into it — never the
+posts.
+_Avoid_: Categories, tags — two taxonomies among many.
 _Avoid_: Child post, related post — the first is one kind of it, and the second
 says nothing about why its page moved.
 
