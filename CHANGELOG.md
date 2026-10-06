@@ -4,7 +4,7 @@ What changed in each release of Next.js Revalidate, newest first, and what a
 site has to do about it. Releases before 2.0.0 are listed in the changelog of
 [`readme.txt`](readme.txt).
 
-## Unreleased
+## 2.1.0
 
 - **The Debug tab shows the end of the log file** while logging is on: its last
   200 lines, with how many lines the file holds and how big it is. **Refresh**
