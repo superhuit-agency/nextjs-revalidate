@@ -4,6 +4,19 @@ What changed in each release of Next.js Revalidate, newest first, and what a
 site has to do about it. Releases before 2.0.0 are listed in the changelog of
 [`readme.txt`](readme.txt).
 
+## 2.0.1
+
+### Fixed
+
+- **A reorder request is read only when it carries the plugin's own nonce.**
+  The Simple Custom Post Order and Nested Pages integrations read the posts a
+  drag and drop names, and looked each one up, before the plugin checked its
+  nonce. Any logged-in user, a subscriber included, could send one request
+  naming as many posts as they liked and have every one looked up, although
+  the plugin then refused it. Each integration now checks the nonce the plugin
+  is about to check first, and reads nothing when it fails; the plugin still
+  answers the request its own way (#187).
+
 ## 2.0.0
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a

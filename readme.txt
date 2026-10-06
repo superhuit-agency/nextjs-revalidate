@@ -152,6 +152,14 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
+= 2.0.1 =
+
+* Fixed: the Simple Custom Post Order and Nested Pages integrations read a
+  reorder request only when it carries the plugin's own nonce. They looked up
+  every post a drag and drop named before the plugin checked its nonce, so any
+  logged-in user, a subscriber included, could have as many posts looked up as
+  one request named, although the plugin then refused it.
+
 = 2.0.0 =
 
 2.0 changes the request the plugin sends to the front-end, and nothing else a
