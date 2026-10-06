@@ -19,6 +19,7 @@
  * with its own tests — the sequence below is the part that is not worth a mode
  * flag.
  */
+import { fileURLToPath } from 'node:url';
 import { BASE_BRANCH, CONCURRENCY, SANDBOX_IMAGE } from './lib/config.mts';
 import { ensureLocalBranch, fetch, git } from './lib/git.mts';
 import { checkoutMoved, preflight } from './lib/preflight.mts';
@@ -56,6 +57,7 @@ import {
 } from './lib/plan.mts';
 import type { PlanItem } from './lib/plan.mts';
 import { renderText } from './lib/report.mts';
+import { startRunLog } from './lib/runlog.mts';
 
 /**
  * The only flag. Everything else a five-mode CLI used to offer is either the
@@ -103,6 +105,7 @@ async function main(): Promise<void> {
 	// path the harness builds hangs off it.
 	const cwd = git(process.cwd(), ['rev-parse', '--show-toplevel']);
 
+	runLog.phase('pre-flight');
 	let started;
 	try {
 		started = preflight(cwd, (message) => console.log(`Pre-flight: ${message}`), { heal: !dryRun });
@@ -118,6 +121,7 @@ async function main(): Promise<void> {
 			: `Pre-flight: on ${started.startedOn}, ${started.healed.length} stale worktree(s) cleared.`
 	);
 
+	runLog.phase('plan');
 	const repo = currentRepo();
 
 	const warnings: string[] = [];
@@ -156,6 +160,7 @@ async function main(): Promise<void> {
 	// Auth and the image are settled before any branch is touched, not at the
 	// first container: a batch prepared and then abandoned on a missing token is
 	// worse than one that never started.
+	runLog.phase('freshness');
 	const auth = containerAuth(cwd);
 	if (!auth.ok) {
 		console.error(`\nerror: container auth to Claude is not configured — ${auth.reason}`);
@@ -285,6 +290,7 @@ function assertEpicBranchesReady(items: readonly PlanItem[], epics: readonly Epi
  * gets its own line, because it changes what the run is building on.
  */
 function freshen(cwd: string, items: readonly PlanItem[], label: string): PlanItem[] {
+	runLog.phase('freshness');
 	const ready: PlanItem[] = [];
 	const notable: string[] = [];
 
@@ -320,6 +326,7 @@ function merge(
 	items: readonly PlanItem[],
 	outcomes: readonly ImplementOutcome[]
 ): MergeOutcome[] {
+	runLog.phase('merge');
 	const children = childrenToMerge(items, greenIssues(outcomes));
 
 	if (children.length === 0) return [];
@@ -359,13 +366,14 @@ async function implement(
 	items: readonly PlanItem[],
 	eligible: readonly Candidate[]
 ): Promise<ImplementOutcome[]> {
+	runLog.phase('implement');
 	if (items.length === 0) {
 		console.error('\nnothing to implement — no item reached a correct starting point.');
 		return [];
 	}
 
 	const bodies = new Map(eligible.map((candidate) => [candidate.number, candidate.body]));
-	const deps = await realDeps(cwd, (message) => console.log(message));
+	const deps = await realDeps(cwd, (message) => console.log(message), runLog.record);
 
 	console.log(`\nImplementing ${items.length} item(s), ${CONCURRENCY} at a time:`);
 	const outcomes: ImplementOutcome[] = await pool(items, CONCURRENCY, (item) =>
@@ -391,6 +399,7 @@ function finalize(
 	merges: readonly MergeOutcome[],
 	result: GatherResult
 ): void {
+	runLog.phase('finalize');
 	const finalizable = itemsToFinalize(items, outcomes);
 
 	if (finalizable.length === 0) {
@@ -438,5 +447,18 @@ function finalize(
 		process.exitCode = 1;
 	}
 }
+
+/**
+ * This pass's run log. Everything above prints through it to
+ * `.sandcastle/logs/run-<timestamp>.log`, and it records how the pass ended
+ * however that happens. Started before `main()` so the earliest refusals land
+ * in it too.
+ *
+ * Rooted where this file lives rather than at the root git reports: `npm run
+ * sandcastle` runs from the package root, so the two agree, and this one needs
+ * no git — a pass that dies resolving the repository still leaves a log that
+ * says so.
+ */
+const runLog = startRunLog(fileURLToPath(new URL('..', import.meta.url)));
 
 await main();

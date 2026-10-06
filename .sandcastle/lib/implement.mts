@@ -187,6 +187,12 @@ export type ImplementDeps = {
 	commitsAhead: (branch: string, base: string) => number;
 	/** Called with progress lines; the harness's own reporting, not the agent's. */
 	log: (message: string) => void;
+	/**
+	 * A line for the run log only, never the terminal. The per-item transcripts
+	 * are append-only across passes, so this is what says which of their runs
+	 * belongs to which pass.
+	 */
+	record: (message: string) => void;
 };
 
 /**
@@ -202,8 +208,12 @@ export async function implementItem(deps: ImplementDeps, item: PlanItem, body: s
 	let sandbox: SandboxSeam | null = null;
 
 	try {
-		// No "starting" line: sandcastle prints its own `[issue-N] Started on
-		// branch …` with the log path as the run comes up.
+		// No "starting" line on the terminal: sandcastle prints its own
+		// `[issue-N] Started on branch …` with the log path as the run comes up.
+		// The run log gets one, stamped, because sandcastle's line names no time.
+		const transcript = logPathFor(deps.repoRoot, item.issue);
+		deps.record(`implement: #${item.issue} started on ${item.workBranch} — transcript ${transcript}`);
+
 		sandbox = await deps.createSandbox({ branch: item.workBranch, baseBranch: item.base });
 
 		const result = await sandbox.run({
@@ -214,7 +224,7 @@ export async function implementItem(deps: ImplementDeps, item: PlanItem, body: s
 			idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
 			completionSignal: COMPLETION_SIGNAL,
 			name: `issue-${item.issue}`,
-			logging: { type: 'file', path: logPathFor(deps.repoRoot, item.issue) },
+			logging: { type: 'file', path: transcript },
 		});
 
 		const signalled = result.completionSignal !== undefined;
@@ -293,7 +303,11 @@ export function logPathFor(repoRoot: string, issue: number): string {
  * Build the real dependencies, importing sandcastle only at the point a
  * container is actually wanted. The read-only modes stay free of it.
  */
-export async function realDeps(repoRoot: string, log: (message: string) => void): Promise<ImplementDeps> {
+export async function realDeps(
+	repoRoot: string,
+	log: (message: string) => void,
+	record: (message: string) => void
+): Promise<ImplementDeps> {
 	const { claudeCode, createSandbox } = await import('@ai-hero/sandcastle');
 	const { docker } = await import('@ai-hero/sandcastle/sandboxes/docker');
 
@@ -305,6 +319,7 @@ export async function realDeps(repoRoot: string, log: (message: string) => void)
 		promptFile: join(repoRoot, '.sandcastle', 'prompts', 'implement.md'),
 		commitsAhead: (branch, base) => commitsAhead(repoRoot, branch, base),
 		log,
+		record,
 		createSandbox: async ({ branch, baseBranch }) =>
 			(await createSandbox({ branch, baseBranch, sandbox: sandboxProvider, cwd: repoRoot })) as unknown as SandboxSeam,
 	};
