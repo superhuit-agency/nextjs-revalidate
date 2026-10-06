@@ -99,14 +99,18 @@ there is nothing to wait for. The console prints each change as it was sent;
       cached, and it has no page now.
 - [ ] **Publish it again.** Expect `"before":null,"after":{"uri":"/runbook-post/","terms":U}`.
 - [ ] **Move it to Trash.** Expect `"before":{"uri":"/runbook-post/","terms":U},"after":null`
-      — never the `__trashed` name the post takes on the way in. **Restore it,
-      then publish it.** Expect nothing on the restore — a restored post comes
-      back a draft — and `"before":null` on the publish.
+      — never the `__trashed` name the post takes on the way in. **In the
+      Trash view, click Restore, then publish it.** Expect nothing on the
+      restore — a restored post comes back a draft — and `"before":null` on the
+      publish. Not the trash notice's **Undo** link: that puts the post back as
+      it was, published, and reports the publish straight away.
 
 ## 4. The unconfigured site refuses
 
 Precondition: spine state. This section clears settings and restores them at the
-end — do not stop halfway.
+end — do not stop halfway. Before the first step, open Posts in a second tab and
+leave it there: its admin bar still offers revalidate all once the site is no
+longer configured.
 
 - [ ] **Clear the secret, save.** Expect a warning notice at the top of every
       admin screen: "Next.js Revalidate is not configured for this site — its
@@ -118,7 +122,9 @@ end — do not stop halfway.
 - [ ] **Update "Runbook post".** Expect **nothing** in the console, and
       `⛔ Refused a post change — site not configured (missing: domain, secret)`
       in the log — the change was refused when it was produced, not held and
-      dropped later. Then admin bar → Revalidate → All: expect an error notice
+      dropped later. Expect no **Revalidate** menu in the admin bar of a screen
+      loaded now: an unconfigured site is not offered revalidate all. Then, in
+      the second tab, admin bar → Revalidate → Posts: expect an error notice
       "Revalidate all: nothing was sent, this site is not configured."
 - [ ] **Restore the domain and secret, save.** Expect the notice gone from every
       screen and a post save to revalidate again.
@@ -191,7 +197,9 @@ Precondition: spine state.
 - [ ] **Expect the failure window cleared**:
       `wp option get nextjs_revalidate-failure_window`. Expect "could not be
       found" — the one exception, for the reason in section 5. Then reactivate
-      and expect the crons rescheduled and the settings intact.
+      and expect the settings intact. The plugin's one cron is a scheduled
+      purge's, set only while one is pending (section I of the extended pass),
+      so this pass has none to see rescheduled.
 
 ## 8. Teardown
 

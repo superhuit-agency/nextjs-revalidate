@@ -183,8 +183,9 @@ The oracle is the revalidate server console, which prints each post change as
 The oracle is the **revalidate server console**: revalidate all is one change,
 delivered in one v2 `POST`, and names no page.
 
-- [ ] **Admin bar → Revalidate.** Expect items for **All**, **Posts** and
-      **Pages**, and none for post types not ticked in the settings.
+- [ ] **Admin bar → Revalidate.** Expect items for **Posts** and **Pages**, and
+      none for post types not ticked in the settings — nor **All**, which is
+      offered only while *All post types* is ticked.
 - [ ] **Click Posts.** Expect the notice "Revalidate all: the revalidation was
       sent to the front-end." — no page count — and **exactly one**
       `= Revalidating (v2): {"subject":"all","type":"post","taxonomies":[…]}` in
@@ -192,9 +193,10 @@ delivered in one v2 `POST`, and names no page.
 - [ ] **Click Pages.** Expect
       `= Revalidating (v2): {"subject":"all","type":"page","taxonomies":[]}` in
       the console: a page has no taxonomy, and still names its type.
-- [ ] **Click All.** Expect `= Revalidating (v2): {"subject":"all"}` in the
-      console — no type, no taxonomies — and `✅ Revalidated 1 change (all)` in
-      the log.
+- [ ] **Tick *All post types* under Allow revalidate all, save, then admin
+      bar → Revalidate → All.** Expect `= Revalidating (v2): {"subject":"all"}`
+      in the console — no type, no taxonomies — and
+      `✅ Revalidated 1 change (all)` in the log. Untick it afterwards.
 - [ ] **Drop every change with the filter, then click Posts:**
       ```sh
       npx wp-env run cli -- bash -c 'mkdir -p wp-content/mu-plugins && cat > wp-content/mu-plugins/njr-runbook-drop.php <<PHP
@@ -470,8 +472,12 @@ anything reports one `= Revalidating (v2): {"subject":"settings"}` line, and
       separator, and Save changes.** Expect one `{"subject":"settings"}`
       request.
 - [ ] **Languages → Languages → add English.** Expect one
-      `{"subject":"settings"}` request.
-- [ ] **Add French.** Expect one `{"subject":"settings"}` request.
+      `{"subject":"settings"}` request, and no `term` change: Polylang's
+      `language` taxonomy is a site setting, never reported as a taxonomy.
+- [ ] **Add French.** Expect one request carrying `{"subject":"settings"}` and
+      a `term` change creating `uncategorized-fr` — the French translation of
+      the default category, which Polylang adds with the language. Still no
+      change for the language itself.
 - [ ] **Click the star beside French**, making it the default language. Expect one
       `{"subject":"settings"}` request — Polylang writes its option after this
       plugin has delivered, so a missing request here means the change was
@@ -531,15 +537,24 @@ and "Team", "À propos" and "Équipe".
 Teardown: delete both languages, then deactivate and delete both plugins:
 
 ```sh
-npx wp-env run cli wp plugin delete wp-nested-pages simple-custom-post-order --deactivate
+npx wp-env run cli wp plugin uninstall --deactivate wp-nested-pages simple-custom-post-order
 ```
 
 ## P. Uninstallation
 
 Run this last in Part 1 — it destroys the site's plugin data.
 
-- [ ] **Deactivate, then Delete the plugin from the Plugins screen.** Expect no
-      error.
+**Never click Delete on this plugin in wp-admin, and never run
+`wp plugin delete` on it.** wp-env mounts this checkout as the plugin's
+directory, `.git` included. WordPress cannot remove the mount point, so it
+reports "could not be deleted" — but only after deleting every file inside it:
+the working tree and the repository, history and unpushed commits with it.
+Uninstall it with `--skip-delete`, which runs the same uninstall and leaves the
+files alone.
+
+- [ ] **Deactivate and uninstall, keeping the files**:
+      `npx wp-env run cli wp plugin uninstall --deactivate --skip-delete nextjs-revalidate`.
+      Expect `Success: Uninstalled 1 of 1 plugins.`
 - [ ] **Expect every option gone.** Check `nextjs_revalidate-domain`,
       `-endpoint_path`, `-secret`, `-allow_revalidate_all`,
       `nextjs_revalidate-debug`, `nextjs_revalidate-db_version`,
@@ -548,8 +563,10 @@ Run this last in Part 1 — it destroys the site's plugin data.
 - [ ] **List `wp-content/uploads/nextjs-revalidate/`.** Expect the log and, if
       the rotation steps in J ran, its `.1.log` archive still there, with the
       guards: both are the operator's evidence, and uninstalling keeps them.
-- [ ] **Restore the install**: `npm run stop && npm start`. Deleting the plugin
-      removed its registration, not the mounted working tree.
+- [ ] **Restore the install**:
+      `npx wp-env run cli wp plugin activate nextjs-revalidate`, then
+      `npm run stop && npm start`, whose start script seeds the settings
+      again.
 
 ---
 
@@ -684,8 +701,10 @@ Precondition: Q done, plugin network-active, all sites set up.
 
 - [ ] **Network Deactivate.** Expect the settings kept on **every** site, and the
       failure window cleared on every site.
-- [ ] **Network Activate, then Delete the plugin.** Expect every site's options
-      gone — check `second` explicitly,
+- [ ] **Network Activate, then uninstall it, keeping the files** — never Delete,
+      for the reason at the top of section P:
+      `npx wp-env run cli wp plugin uninstall --deactivate --skip-delete nextjs-revalidate`.
+      Expect every site's options gone — check `second` explicitly,
       not just the main site. A site is torn down at the same depth on a network
       as it would be alone.
 - [ ] **Expect the network's own record gone too**:
