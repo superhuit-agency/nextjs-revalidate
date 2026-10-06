@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "revalidate-server",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["./config/revalidate-server.js"],
+      "port": 8083
+    },
+    {
+      "name": "wordpress",
+      "url": "http://localhost:8080",
+      "port": 8080
+    }
+  ]
+}
