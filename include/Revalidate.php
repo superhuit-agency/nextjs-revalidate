@@ -133,7 +133,7 @@ class Revalidate extends Base implements Hookable {
 	 *
 	 * @var array<int, true>
 	 */
-	private array $deleting = [];
+	private array $being_deleted = [];
 
 	/**
 	 * The term membership of the posts whose terms are being written with no
@@ -158,7 +158,7 @@ class Revalidate extends Base implements Hookable {
 		add_action( 'post_updated', [$this, 'on_post_updated'], 1 );
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99, 4 );
 		add_action( 'before_delete_post', [$this, 'on_post_delete'] );
-		add_action( 'deleted_post', [$this, 'on_post_deleted'] );
+		add_action( 'deleted_post', [$this, 'on_post_delete_ended'] );
 
 		add_action( 'add_term_relationship', [$this, 'on_term_relationship_write'], 10, 3 );
 		add_action( 'delete_term_relationships', [$this, 'on_term_relationship_write'], 10, 3 );
@@ -756,7 +756,7 @@ class Revalidate extends Base implements Hookable {
 		if ( false !== wp_is_post_revision( $post_id ) ) return;
 
 		// Its terms are let go next, and that is this delete.
-		$this->deleting[ (int) $post_id ] = true;
+		$this->being_deleted[ (int) $post_id ] = true;
 
 		// Bail for a post that is not revalidatable
 		if ( ! $this->should_revalidate( $post_id ) ) return;
@@ -775,8 +775,8 @@ class Revalidate extends Base implements Hookable {
 	 * @param int $post_id The post that was deleted.
 	 * @return void
 	 */
-	public function on_post_deleted( $post_id ) {
-		unset( $this->deleting[ (int) $post_id ] );
+	public function on_post_delete_ended( $post_id ) {
+		unset( $this->being_deleted[ (int) $post_id ] );
 	}
 
 	/**
@@ -960,7 +960,7 @@ class Revalidate extends Base implements Hookable {
 	private function is_membership_write( $post_id, $taxonomy ) {
 		if ( ! is_string( $taxonomy ) || '' === $taxonomy ) return false;
 
-		if ( isset( $this->deleting[ $post_id ] ) || $this->is_being_saved( $post_id ) ) return false;
+		if ( isset( $this->being_deleted[ $post_id ] ) || $this->is_being_saved( $post_id ) ) return false;
 
 		if ( $this->terms->is_deleting( $taxonomy ) ) return false;
 

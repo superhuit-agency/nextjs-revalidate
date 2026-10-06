@@ -183,7 +183,7 @@ $expected_per_class = [
 		[ 'post_updated',         'on_post_updated',                  1, 1 ],
 		[ 'wp_after_insert_post', 'on_post_save',                    99, 4 ],
 		[ 'before_delete_post',   'on_post_delete',                  10, 1 ],
-		[ 'deleted_post',         'on_post_deleted',                 10, 1 ],
+		[ 'deleted_post',         'on_post_delete_ended',            10, 1 ],
 		[ 'add_term_relationship',      'on_term_relationship_write',    10, 3 ],
 		[ 'delete_term_relationships',  'on_term_relationship_write',    10, 3 ],
 		[ 'set_object_terms',           'on_object_terms_set',           10, 4 ],
