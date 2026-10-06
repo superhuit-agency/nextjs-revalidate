@@ -51,8 +51,9 @@ class Logger {
 	/**
 	 * The filter that sets the size, in bytes, at which the log is rotated.
 	 *
-	 * `0` or less never rotates. Anything that is not an integer — `'10MB'`,
-	 * `null`, an array — falls back to the default, silently. See ADR 0041.
+	 * `0` or less never rotates. An integer written as a string of digits —
+	 * `'1048576'` — is read as that integer. Anything else — `'10MB'`, `null`,
+	 * a float, an array — falls back to the default, silently. See ADR 0041.
 	 */
 	public const MAX_SIZE_FILTER = 'nextjs_revalidate_log_max_size';
 
@@ -217,9 +218,15 @@ class Logger {
 	public static function max_size() {
 		$size = apply_filters( self::MAX_SIZE_FILTER, self::DEFAULT_MAX_SIZE );
 
-		// An integer or the default: a size written as `'10MB'` is not one, and
-		// guessing what it meant is worse than ignoring it.
-		return is_int( $size ) ? $size : self::DEFAULT_MAX_SIZE;
+		if ( is_int( $size ) ) return $size;
+
+		// An integer as WordPress so often hands one over — from `get_option()`,
+		// `getenv()`, a constant defined as a string — is an integer still.
+		// Digits only: a size written as `'10MB'` is not one, and guessing what
+		// it meant is worse than ignoring it.
+		if ( is_string( $size ) && 1 === preg_match( '/^-?\d+\z/', $size ) ) return (int) $size;
+
+		return self::DEFAULT_MAX_SIZE;
 	}
 
 	/**

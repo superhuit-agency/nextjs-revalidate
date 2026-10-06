@@ -155,7 +155,8 @@ so returning `true` there revalidates nothing.
 Filters the size, in bytes, at which the log file is rotated: a line written to
 a log at or past it first renames the log to its one archive beside it,
 replacing the previous archive, and then starts a new log. The default is 5 MB.
-Return `0` or less to never rotate; anything that is not an integer falls back
+Return `0` or less to never rotate. An integer written as a string of digits,
+such as `'1048576'`, counts as one; anything else, such as `'10MB'`, falls back
 to the default. Asked only as a line is written, so a site with logging off
 never rotates.
 

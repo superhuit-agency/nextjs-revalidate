@@ -1062,8 +1062,9 @@ a log at or past it first renames the log to its one archive beside it —
 starts a new log ([ADR 0041](docs/adr/0041-the-log-rotates-at-a-size-and-keeps-one-archive.md)).
 Asked only as a line is written, so a site with logging off never rotates.
 
-Return `0` or less to never rotate. Anything that is not an integer — `'10MB'`,
-`null`, an array — falls back to the 5 MB default, silently. There is no minimum.
+Return `0` or less to never rotate. An integer written as a string of digits,
+such as `'1048576'`, counts as that integer. Anything else — `'10MB'`, `null`, a
+float, an array — falls back to the 5 MB default, silently. There is no minimum.
 
 #### Usage
 ```php

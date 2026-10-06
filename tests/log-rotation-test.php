@@ -10,7 +10,8 @@
  *  - **There is only ever one archive**, beside the log in the guarded
  *    directory under the site's suffix, and a second rotation replaces it.
  *  - **The limit is `nextjs_revalidate_log_max_size`**: 5 MB by default, `0`
- *    or less for never, and anything that is not an integer for the default.
+ *    or less for never, an integer written as a string of digits for that
+ *    integer, and anything else for the default.
  *  - **Nothing rotates with logging off**, and the legacy log is migrated
  *    before anything rotates.
  *  - **Writers crossing the limit together lose no line** and leave one log
@@ -243,7 +244,11 @@ $cases = [
 	'0, never'                        => [ 0, Logger::DEFAULT_MAX_SIZE + 1, false ],
 	'a negative size, never'          => [ -1, Logger::DEFAULT_MAX_SIZE + 1, false ],
 	"'10MB', the default"             => [ '10MB', Logger::DEFAULT_MAX_SIZE, true ],
-	"'1024' as a string, the default" => [ '1024', 2048, false ],
+	"'1024' as a string, 1 KB"        => [ '1024', 2048, true ],
+	"'-1' as a string, never"         => [ '-1', Logger::DEFAULT_MAX_SIZE + 1, false ],
+	"'1024 KB', the default"          => [ '1024 KB', 2048, false ],
+	"'1024' and a newline, the default" => [ "1024\n", 2048, false ],
+	"'1e3', the default"              => [ '1e3', 2048, false ],
 	'null, the default'               => [ null, Logger::DEFAULT_MAX_SIZE, true ],
 	'an array, the default'           => [ [ 1024 ], 2048, false ],
 	'a float, the default'            => [ 1024.0, 2048, false ],

@@ -7,8 +7,9 @@ front-end that fails writes a line for every change it is sent. From 2.1.0,
 a line about to be written to a log at or past a size limit first renames the
 log to a single **log archive** beside it. The previous archive is destroyed by
 that rename. The limit is 5 MB, and `nextjs_revalidate_log_max_size` can change
-it. `0` or less turns rotation off, and anything that isn't an integer falls
-back to the default.
+it. `0` or less turns rotation off. An integer written as a string of digits
+counts as that integer, and anything else that isn't an integer falls back to
+the default.
 
 This is the first time the plugin destroys the log's evidence on purpose. ADR
 0004 makes the log the only trace a failed revalidation leaves, and ADR 0024

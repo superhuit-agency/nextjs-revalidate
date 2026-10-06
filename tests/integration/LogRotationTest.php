@@ -91,7 +91,8 @@ class LogRotationTest extends \WP_UnitTestCase {
 			'0 never rotates'          => [ 0, Logger::DEFAULT_MAX_SIZE + 1, false ],
 			'-1 never rotates'         => [ -1, Logger::DEFAULT_MAX_SIZE + 1, false ],
 			"'10MB' is the default"    => [ '10MB', Logger::DEFAULT_MAX_SIZE, true ],
-			"'1024' is the default"    => [ '1024', 2048, false ],
+			"'1024' is 1 KB"           => [ '1024', 2048, true ],
+			"'1024 KB' is the default" => [ '1024 KB', 2048, false ],
 			'an array is the default'  => [ [ 1024 ], 2048, false ],
 			'false is the default'     => [ false, 2048, false ],
 		];
