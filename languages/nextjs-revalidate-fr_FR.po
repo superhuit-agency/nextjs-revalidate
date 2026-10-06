@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: Next.js Revalidate\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/nextjs-"
 "revalidate\n"
-"POT-Creation-Date: 2026-10-06T09:13:51+00:00\n"
+"POT-Creation-Date: 2026-10-06T09:31:33+00:00\n"
 "PO-Revision-Date: 2026-09-24 12:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -114,11 +114,14 @@ msgstr "Actualisation en direct arrêtée : la journalisation a été désactiv�
 #: include/LogViewer.php:109
 msgid ""
 "Live refresh stopped: this page has expired. Reload it to refresh the log."
-msgstr "Actualisation en direct arrêtée : cette page a expiré. Rechargez-la pour actualiser le journal."
+msgstr ""
+"Actualisation en direct arrêtée : cette page a expiré. Rechargez-la pour "
+"actualiser le journal."
 
 #: include/LogViewer.php:110
 msgid "Live refresh stopped: the log could not be refreshed."
-msgstr "Actualisation en direct arrêtée : le journal n’a pas pu être actualisé."
+msgstr ""
+"Actualisation en direct arrêtée : le journal n’a pas pu être actualisé."
 
 #: include/LogViewer.php:112
 msgid "The log could not be refreshed."
@@ -136,23 +139,47 @@ msgstr "Actualisation en direct, toutes les 5 secondes"
 msgid ""
 "Logging has been switched off since this page was loaded, so there is no log "
 "to show. Reload the page to see the Debug tab as it is saved."
-msgstr "La journalisation a été désactivée depuis le chargement de cette page : il n’y a aucun journal à afficher. Rechargez la page pour voir l’onglet Débogage tel qu’il est enregistré."
+msgstr ""
+"La journalisation a été désactivée depuis le chargement de cette page : il "
+"n’y a aucun journal à afficher. Rechargez la page pour voir l’onglet "
+"Débogage tel qu’il est enregistré."
 
 #. translators: %s: the time the log was read, e.g. 14:05:09
-#: include/LogViewer.php:166
+#: include/LogViewer.php:169
 #, php-format
 msgid "Nothing has been logged yet — refreshed %s"
 msgstr "Rien n’a encore été journalisé — actualisé à %s"
 
 #. translators: 1: how many lines are shown, 2: how many lines the log holds, 3: the size of the log, e.g. 1.2 MB, 4: the time the log was read, e.g. 14:05:09
-#: include/LogViewer.php:175
+#: include/LogViewer.php:181
 #, php-format
 msgid "Showing the last %1$s of %2$s line (%3$s) — refreshed %4$s"
 msgid_plural "Showing the last %1$s of %2$s lines (%3$s) — refreshed %4$s"
 msgstr[0] "Affichage de %1$s ligne sur %2$s (%3$s) — actualisé à %4$s"
-msgstr[1] "Affichage des %1$s dernières lignes sur %2$s (%3$s) — actualisé à %4$s"
+msgstr[1] ""
+"Affichage des %1$s dernières lignes sur %2$s (%3$s) — actualisé à %4$s"
 
-#: include/LogViewer.php:190
+#. translators: 1: how many lines are shown, 2: how many of them come from the log, 3: how many from the log archive, 4: the time the log was read, e.g. 14:05:09
+#: include/LogViewer.php:198
+#, php-format
+msgid ""
+"Showing the last %1$s line (%2$s in the log, %3$s from the archive) — "
+"refreshed %4$s"
+msgid_plural ""
+"Showing the last %1$s lines (%2$s in the log, %3$s from the archive) — "
+"refreshed %4$s"
+msgstr[0] ""
+"Affichage de %1$s ligne (%2$s dans le journal, %3$s de l’archive) — "
+"actualisé à %4$s"
+msgstr[1] ""
+"Affichage des %1$s dernières lignes (%2$s dans le journal, %3$s de "
+"l’archive) — actualisé à %4$s"
+
+#: include/LogViewer.php:215
+msgid "The log archive ends here, and the log starts below."
+msgstr "L’archive du journal s’arrête ici, et le journal commence en dessous."
+
+#: include/LogViewer.php:223
 msgid "The end of the log file"
 msgstr "La fin du fichier journal"
 

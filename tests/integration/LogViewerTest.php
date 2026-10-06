@@ -243,8 +243,84 @@ class LogViewerTest extends \WP_Ajax_UnitTestCase {
 		$this->assertDirectoryDoesNotExist( Logger::directory() );
 	}
 
+	// Into the archive
+	// ====
+
+	public function test_a_short_log_is_topped_up_from_the_end_of_the_archive() {
+		$this->enable_logs();
+		for ( $i = 1; $i <= 3; $i++ ) Logger::log( "live line $i.", 'test.php' );
+		$this->write_archive( 300 );
+
+		$body = LogViewer::body();
+
+		$this->assertStringContainsString( 'Showing the last 200 lines (3 in the log, 197 from the archive)', $body );
+		$this->assertStringNotContainsString( 'archived line 103.', $body );
+		$this->assertStringContainsString( 'archived line 104.', $body );
+		$this->assertSame( 197, substr_count( $body, 'archived line ' ) );
+		$this->assertSame( 3, substr_count( $body, 'live line ' ) );
+	}
+
+	public function test_a_separator_marks_where_the_archive_ends() {
+		$this->enable_logs();
+		Logger::log( 'live line 1.', 'test.php' );
+		$this->write_archive( 10 );
+
+		$body      = LogViewer::body();
+		$separator = strpos( $body, 'njr-log-viewer__separator' );
+
+		$this->assertSame( 1, substr_count( $body, 'njr-log-viewer__separator' ) );
+		$this->assertLessThan( $separator, strrpos( $body, 'archived line 10.' ), 'An archived line follows the separator.' );
+		$this->assertGreaterThan( $separator, strpos( $body, 'live line 1.' ), 'A live line comes before the separator.' );
+		$this->assertStringContainsString( 'Showing the last 11 lines (1 in the log, 10 from the archive)', $body );
+	}
+
+	public function test_a_log_of_200_lines_or_more_does_not_read_the_archive() {
+		$this->enable_logs();
+		for ( $i = 1; $i <= 200; $i++ ) Logger::log( "live line $i.", 'test.php' );
+		$this->write_archive( 10 );
+
+		$body = LogViewer::body();
+
+		$this->assertStringNotContainsString( 'archived line', $body );
+		$this->assertStringNotContainsString( 'njr-log-viewer__separator', $body );
+		$this->assertStringContainsString( 'Showing the last 200 of 200 lines', $body );
+	}
+
+	public function test_an_archive_without_a_log_is_still_shown() {
+		$this->enable_logs();
+		Logger::log( 'soon gone', 'test.php' );
+		$this->write_archive( 5 );
+		unlink( Logger::path() );
+
+		$body = LogViewer::body();
+
+		$this->assertStringContainsString( 'Showing the last 5 lines (0 in the log, 5 from the archive)', $body );
+		$this->assertFileDoesNotExist( Logger::path(), 'Viewing recreated the log.' );
+	}
+
+	public function test_a_refresh_continues_into_the_archive_as_the_page_does() {
+		$this->enable_logs();
+		Logger::log( 'live line 1.', 'test.php' );
+		$this->write_archive( 10 );
+		$this->become( 'administrator' );
+
+		$answer = $this->refresh( wp_create_nonce( LogViewer::ACTION ) );
+
+		$this->assertSame( self::without_time( LogViewer::body() ), self::without_time( $answer['data']['html'] ) );
+		$this->assertStringContainsString( '1 in the log, 10 from the archive', $answer['data']['html'] );
+	}
+
 	// Helpers
 	// ====
+
+	/**
+	 * Write a log archive of `$count` numbered lines.
+	 */
+	private function write_archive( $count ) {
+		$lines = '';
+		for ( $i = 1; $i <= $count; $i++ ) $lines .= "[2026-01-01 00:00:00]\t[INFO]\t[test.php]         archived line $i.\n";
+		file_put_contents( Logger::archive_path(), $lines );
+	}
 
 	private function enable_logs() {
 		update_option( Settings::SETTINGS_DEBUG, [ 'enable-logs' => 'on' ] );
@@ -315,7 +391,11 @@ class LogViewerTest extends \WP_Ajax_UnitTestCase {
 		return preg_replace( '/\d{2}:\d{2}:\d{2}/', 'HH:MM:SS', $html );
 	}
 
-	private static function remove_log_directory() {
+	/**
+	 * Remove the log's directory and everything in it: the log, the archive and
+	 * the guards are on disk, where no rollback reaches them.
+	 */
+	public static function remove_log_directory() {
 		$directory = Logger::directory();
 		if ( ! is_dir( $directory ) ) return;
 

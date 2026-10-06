@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-06T09:14:51+00:00\n"
+"POT-Creation-Date: 2026-10-06T09:31:33+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Poedit-Basepath: ..\n"
@@ -127,20 +127,32 @@ msgid "Logging has been switched off since this page was loaded, so there is no 
 msgstr ""
 
 #. translators: %s: the time the log was read, e.g. 14:05:09
-#: include/LogViewer.php:166
+#: include/LogViewer.php:169
 #, php-format
 msgid "Nothing has been logged yet — refreshed %s"
 msgstr ""
 
 #. translators: 1: how many lines are shown, 2: how many lines the log holds, 3: the size of the log, e.g. 1.2 MB, 4: the time the log was read, e.g. 14:05:09
-#: include/LogViewer.php:175
+#: include/LogViewer.php:181
 #, php-format
 msgid "Showing the last %1$s of %2$s line (%3$s) — refreshed %4$s"
 msgid_plural "Showing the last %1$s of %2$s lines (%3$s) — refreshed %4$s"
 msgstr[0] ""
 msgstr[1] ""
 
-#: include/LogViewer.php:190
+#. translators: 1: how many lines are shown, 2: how many of them come from the log, 3: how many from the log archive, 4: the time the log was read, e.g. 14:05:09
+#: include/LogViewer.php:198
+#, php-format
+msgid "Showing the last %1$s line (%2$s in the log, %3$s from the archive) — refreshed %4$s"
+msgid_plural "Showing the last %1$s lines (%2$s in the log, %3$s from the archive) — refreshed %4$s"
+msgstr[0] ""
+msgstr[1] ""
+
+#: include/LogViewer.php:215
+msgid "The log archive ends here, and the log starts below."
+msgstr ""
+
+#: include/LogViewer.php:223
 msgid "The end of the log file"
 msgstr ""
 

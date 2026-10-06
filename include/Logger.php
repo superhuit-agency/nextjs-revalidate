@@ -49,6 +49,19 @@ class Logger {
 	public const SUFFIX_OPTION_NAME = 'nextjs_revalidate-log_suffix';
 
 	/**
+	 * The filter that sets the size, in bytes, at which the log is rotated.
+	 *
+	 * `0` or less never rotates. Anything that is not an integer — `'10MB'`,
+	 * `null`, an array — falls back to the default, silently. See ADR 0040.
+	 */
+	public const MAX_SIZE_FILTER = 'nextjs_revalidate_log_max_size';
+
+	/**
+	 * The size the log is rotated at unless the filter says otherwise: 5 MB.
+	 */
+	public const DEFAULT_MAX_SIZE = 5 * 1024 * 1024;
+
+	/**
 	 * Custom logging function
 	 *
 	 * @source https://stackoverflow.com/a/44745716/5078169
@@ -103,6 +116,12 @@ class Logger {
 		// site created later on a network, or a directory somebody removed by
 		// hand would otherwise lose the line, or keep it unguarded.
 		if ( ! self::ensure_directory() ) return;
+
+		// Checked here, as a line is about to be written, and nowhere else: a
+		// site that is not logging never rotates, and nothing that only reads
+		// the log ever does (ADR 0040). After the migration, so a legacy log
+		// over the limit is moved into place first and rotated by this line.
+		self::rotate();
 
 		error_log(
 			sprintf(
@@ -167,6 +186,89 @@ class Logger {
 	 */
 	public static function existing_path() {
 		return null !== self::stored_suffix() ? self::path() : null;
+	}
+
+	/**
+	 * The full path of this site's **log archive**: the log as it stood at its
+	 * last rotation, beside it in the guarded directory and under the same
+	 * suffix — `nextjs-revalidate-<suffix>.1.log`.
+	 *
+	 * @return string
+	 */
+	public static function archive_path() {
+		return trailingslashit( self::directory() ) . self::DIRECTORY_NAME . '-' . self::suffix() . '.1.log';
+	}
+
+	/**
+	 * `archive_path()` for anything that only reads it, and null for a site
+	 * that has never been handed a suffix — as `existing_path()` is.
+	 *
+	 * @return string|null
+	 */
+	public static function existing_archive_path() {
+		return null !== self::stored_suffix() ? self::archive_path() : null;
+	}
+
+	/**
+	 * The size, in bytes, at which the log is rotated, or `0` or less for never.
+	 *
+	 * @return int
+	 */
+	public static function max_size() {
+		$size = apply_filters( self::MAX_SIZE_FILTER, self::DEFAULT_MAX_SIZE );
+
+		// An integer or the default: a size written as `'10MB'` is not one, and
+		// guessing what it meant is worse than ignoring it.
+		return is_int( $size ) ? $size : self::DEFAULT_MAX_SIZE;
+	}
+
+	/**
+	 * Move the log into the archive if it is at or past the size limit, so the
+	 * line about to be written starts a new log.
+	 *
+	 * Renamed, never trimmed: a `rename()` is atomic and moves no data, and it
+	 * replaces the previous archive, so there is only ever one (ADR 0040).
+	 *
+	 * Two writers can find the log over the limit together. The first to rename
+	 * it wins; the other must not then rename the *new* log — holding the first
+	 * one's line — over the archive it just made. So the size is asked again
+	 * under an exclusive lock on the file this writer found, and the rename is
+	 * made only if the path still holds a file over the limit. A writer that
+	 * opened the old log waits for the lock and then finds the path moved on; one
+	 * that opened the new log finds it small. A rename that fails is left to
+	 * fail: the line is written to whatever log is there, and nothing is lost.
+	 *
+	 * @return void
+	 */
+	private static function rotate() {
+		$limit = self::max_size();
+		if ( $limit <= 0 ) return;
+
+		$path = self::path();
+
+		// No log yet is the normal state: this line starts it.
+		clearstatcache( true, $path );
+		if ( ! is_file( $path ) || filesize( $path ) < $limit ) return;
+
+		$handle = @fopen( $path, 'r' );
+		if ( false === $handle ) return;
+
+		if ( flock( $handle, LOCK_EX ) ) {
+			clearstatcache( true, $path );
+			$found   = fstat( $handle );
+			$current = @stat( $path );
+
+			$unmoved = is_array( $found ) && is_array( $current )
+				&& $found['ino'] === $current['ino']
+				&& $found['dev'] === $current['dev']
+				&& $current['size'] >= $limit;
+
+			if ( $unmoved ) @rename( $path, self::archive_path() );
+
+			flock( $handle, LOCK_UN );
+		}
+
+		fclose( $handle );
 	}
 
 	/**
