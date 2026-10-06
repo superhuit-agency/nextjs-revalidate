@@ -237,6 +237,15 @@ A probe is never counted towards the "not keeping this site up to date" warning:
 pressing it can neither raise that warning nor clear it. It is written to the log
 file when logging is on, marked `🔎 Probe`.
 
+### Reading the log
+
+While **Enable logs** is on, the **Debug** tab shows the end of the site's log
+file — its last 200 lines, oldest first, under a line saying how many lines the
+file holds and how big it is. **Refresh** reads it again without reloading the
+page, and **Live refresh** does so every five seconds while the tab is visible;
+it is off whenever the page loads. Viewing the log is read-only: it never
+creates the file, and with logging off the tab only says where the file is.
+
 ## Requirements
 
 - Requires PHP 7.4+
