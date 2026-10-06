@@ -32,6 +32,14 @@ site has to do about it. Releases before 2.0.0 are listed in the changelog of
   the plugin then refused it. Each integration now checks the nonce the plugin
   is about to check first, and reads nothing when it fails; the plugin still
   answers the request its own way (#187).
+- **Trashing or deleting a parent reports the descendants it moves.** Trashing
+  a page adds `__trashed` to its slug, and deleting one reattaches its children
+  to its own parent, so every descendant's URI changes — `/about/team/` becomes
+  `/about__trashed/team/`, then `/team/` — without a save of its own. Only the
+  parent was reported, and deleting a parent already in the trash reported
+  nothing. Each descendant whose URI moved is now reported as its own `post`
+  change, from its old URI to its new one, as a save that renames or moves a
+  parent already did (#144).
 
 ## 2.0.0
 

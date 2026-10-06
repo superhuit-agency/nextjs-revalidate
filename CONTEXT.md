@@ -145,6 +145,13 @@ changes a hierarchical post's slug or parent; the site and an integration name
 the rest (ADR 0038). A translation Polylang synchronises is also reported where
 it stands on every save, since Polylang may have written any field of it.
 
+A trash and a permanent delete move a hierarchical post's descendants too — the
+`__trashed` suffix, and core reattaching the deleted post's children to its own
+parent — and they are its dependent posts all the same, though neither is the
+save above. A trash reads them on `wp_trash_post`, before the suffix is written;
+a delete on `before_delete_post`, even for a post already in the trash. A trash
+through a bare `wp_update_post()` reports none, an accepted gap.
+
 A post moved by a plugin's direct write, with no save at all — a Nested Pages
 drag and drop — is not a dependent post: nothing was saved for it to depend on.
 Its integration reads it before the write and reports it after, the same way.

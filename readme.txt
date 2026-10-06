@@ -170,6 +170,10 @@ so returning `true` there revalidates nothing.
   every post a drag and drop named before the plugin checked its nonce, so any
   logged-in user, a subscriber included, could have as many posts looked up as
   one request named, although the plugin then refused it.
+* Fixed: trashing or permanently deleting a parent page reports each descendant
+  whose URI that moved, from its old URI to its new one, as a save that renames
+  or moves the parent already did. Before, only the parent was reported, and
+  deleting a parent already in the trash reported nothing.
 
 = 2.0.0 =
 

@@ -73,14 +73,45 @@ class Revalidate extends Base implements Hookable {
 	 */
 	private array $positions_before = [];
 
+	/**
+	 * The **dependent posts** of the posts being trashed, with where each stood
+	 * when the trash started: trashed post ID => dependent post ID => its URI,
+	 * its order and its parent.
+	 *
+	 * Read on `wp_trash_post`, which `wp_trash_post()` fires before it saves the
+	 * post. By `pre_post_update` core has already written the `__trashed`
+	 * suffix to the post's slug — so the save sees no slug change, and a URI
+	 * read there already carries it. Handed to the trash's own save on its
+	 * `pre_post_update`, which reports them with the rest of its dependent
+	 * posts.
+	 *
+	 * @var array<int, array<int, array{uri: string|null, menu_order: int, post_parent: int}>>
+	 */
+	private array $trashing = [];
+
+	/**
+	 * The **dependent posts** of the posts being permanently deleted, with
+	 * where each stood before the delete: deleted post ID => dependent post ID
+	 * => its URI, its order and its parent.
+	 *
+	 * Read on `before_delete_post`, and reported on `after_delete_post`: in
+	 * between, core reattaches the deleted post's children to its own parent
+	 * with a direct write, and clears their cache, with no save hook at all.
+	 *
+	 * @var array<int, array<int, array{uri: string|null, menu_order: int, post_parent: int}>>
+	 */
+	private array $deleting = [];
+
 	public function register_hooks(): void {
 		add_action( 'pre_post_update', [$this, 'on_pre_post_update'], 10, 2 );
+		add_action( 'wp_trash_post', [$this, 'on_trash_post'] );
 
 		// Ahead of core's `wp_save_post_revision`, at 10 on the same hook until
 		// WordPress 6.4 — see `$saving`.
 		add_action( 'post_updated', [$this, 'on_post_updated'], 1 );
 		add_action( 'wp_after_insert_post', [$this, 'on_post_save'], 99, 4 );
 		add_action( 'before_delete_post', [$this, 'on_post_delete'] );
+		add_action( 'after_delete_post', [$this, 'on_post_deleted'] );
 
 		add_filter( 'page_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
 		add_filter( 'post_row_actions', [$this, 'add_revalidate_row_action'], 20, 2 );
@@ -391,11 +422,18 @@ class Revalidate extends Base implements Hookable {
 		// A revision or an autosave moves nothing: no permalink is built from one.
 		if ( false !== wp_is_post_revision( $post ) || false !== wp_is_post_autosave( $post ) ) return;
 
-		$before = [];
-		foreach ( $this->dependent_posts( $post, is_array( $data ) ? $data : [] ) as $dependent_id ) {
-			$dependent = get_post( $dependent_id );
-			if ( $dependent instanceof WP_Post ) $before[ $dependent_id ] = $this->position_of( $dependent );
-		}
+		$data  = is_array( $data ) ? $data : [];
+		$moves = self::update_changes( $post, $data, 'post_name' ) || self::update_changes( $post, $data, 'post_parent' );
+
+		$before = $this->positions_of_dependents( $post, $data, $moves );
+
+		// The save of a trash: what was read before core wrote the `__trashed`
+		// suffix is where its dependent posts stood, and comes first — see
+		// `$trashing`. Let go of either way, so that a trash which failed
+		// before it saved leaves nothing behind for a later update.
+		$trashed = $this->trashing[ $post->ID ] ?? [];
+		unset( $this->trashing[ $post->ID ] );
+		if ( 'trash' === ( $data['post_status'] ?? null ) ) $before = $trashed + $before;
 
 		// A post updated again while its save is under way — a plugin writing
 		// it from its `save_post` — keeps the URIs read before the first write.
@@ -409,40 +447,92 @@ class Revalidate extends Base implements Hookable {
 	}
 
 	/**
-	 * The **dependent posts** of a post about to be updated: the posts whose
-	 * permalink is built from its own, so that this save may move them without
-	 * saving them.
+	 * A post is about to be trashed: read where its **dependent posts** stand
+	 * before core gives its slug the `__trashed` suffix — see `$trashing`.
 	 *
-	 * Its descendants, by default, when it is of a hierarchical type and the
-	 * save changes its slug or its parent — a child page's permalink is its
-	 * parent's, plus its own slug. The site, and an integration, add the rest
-	 * through the filter.
+	 * Its descendants always, when it is of a hierarchical type: the suffix
+	 * moves every one of them. A trash made with `wp_update_post()` alone,
+	 * without `wp_trash_post()`, fires nothing before the suffix is written,
+	 * and its descendants are not reported. Core's screens, its REST API and
+	 * its bulk actions all trash through `wp_trash_post()` (ADR 0038).
 	 *
-	 * @param WP_Post $post The post, as it is before the update.
-	 * @param array   $data The post's fields as they are about to be written.
+	 * @param int $post_id The post about to be trashed.
+	 * @return void
+	 */
+	public function on_trash_post( $post_id ) {
+
+		$post = get_post( $post_id );
+		if ( ! $post instanceof WP_Post ) return;
+
+		if ( false !== wp_is_post_revision( $post ) || false !== wp_is_post_autosave( $post ) ) return;
+
+		$before = $this->positions_of_dependents( $post, [ 'post_status' => 'trash' ], true );
+
+		if ( empty( $before ) ) unset( $this->trashing[ $post->ID ] );
+		else $this->trashing[ $post->ID ] = $before;
+	}
+
+	/**
+	 * Where each of a post's **dependent posts** stands — its URI, its order
+	 * and its parent — keyed by its ID.
+	 *
+	 * @param WP_Post $post  The post, as it is before it is updated, trashed or deleted.
+	 * @param array   $data  The post's fields as they are about to be written.
+	 * @param bool    $moves Whether its descendants move: its slug or its parent
+	 *                       changes, or it is trashed or deleted.
+	 * @return array<int, array{uri: string|null, menu_order: int, post_parent: int}>
+	 */
+	private function positions_of_dependents( WP_Post $post, array $data, bool $moves ) {
+		$positions = [];
+
+		foreach ( $this->dependent_posts( $post, $data, $moves ) as $dependent_id ) {
+			$dependent = get_post( $dependent_id );
+			if ( $dependent instanceof WP_Post ) $positions[ $dependent_id ] = $this->position_of( $dependent );
+		}
+
+		return $positions;
+	}
+
+	/**
+	 * The **dependent posts** of a post about to be updated, trashed or
+	 * deleted: the posts whose permalink is built from its own, so that this
+	 * may move them without saving them.
+	 *
+	 * Its descendants, by default, when it is of a hierarchical type and they
+	 * move — the update changes its slug or its parent, or the post is trashed
+	 * or deleted: a child page's permalink is its parent's, plus its own slug.
+	 * The site, and an integration, add the rest through the filter.
+	 *
+	 * @param WP_Post $post  The post, as it is before the update, the trash or the delete.
+	 * @param array   $data  The post's fields as they are about to be written:
+	 *                       its status alone for a trash, and none for a delete.
+	 * @param bool    $moves Whether its descendants move.
 	 * @return int[] Post IDs, never the post's own.
 	 */
-	private function dependent_posts( WP_Post $post, array $data ) {
-
-		$moves = self::update_changes( $post, $data, 'post_name' ) || self::update_changes( $post, $data, 'post_parent' );
+	private function dependent_posts( WP_Post $post, array $data, bool $moves ) {
 
 		$post_ids = ( $moves && is_post_type_hierarchical( $post->post_type ) ) ? $this->descendants( $post->ID ) : [];
 
 		/**
-		 * Filters the posts a post's update may move without saving them: the
-		 * posts whose permalink is built from its own.
+		 * Filters the posts a post's update, trash or delete may move without
+		 * saving them: the posts whose permalink is built from its own.
 		 *
 		 * Its descendants by default, when it is of a hierarchical type and the
-		 * update changes its slug or its parent. Add a post whose permalink a
-		 * `post_type_link` filter builds from this one — each is reported,
-		 * after the update, when its URI, its order or its parent moved, and
-		 * left alone when none did. Asked on every update, so a callback that
-		 * names posts only when what their permalink is built from changes
-		 * costs nothing on the other saves.
+		 * update changes its slug or its parent, or the post is trashed or
+		 * deleted. Add a post whose permalink a `post_type_link` filter builds
+		 * from this one — each is reported, afterwards, when its URI, its order
+		 * or its parent moved, and left alone when none did. Asked on every
+		 * update, so a callback that names posts only when what their permalink
+		 * is built from changes costs nothing on the other saves.
+		 *
+		 * A trash asks it twice: when it starts, with `$data` holding only
+		 * `post_status`, and again as the save it goes through. A post named
+		 * both times is reported once, from where it stood when the trash
+		 * started. A delete asks it once, with an empty `$data`.
 		 *
 		 * @param int[]   $post_ids    The dependent post IDs.
-		 * @param int     $post_id     The ID of the post about to be updated.
-		 * @param WP_Post $post_before The post as it is before the update.
+		 * @param int     $post_id     The ID of the post about to be updated, trashed or deleted.
+		 * @param WP_Post $post_before The post as it is before that.
 		 * @param array   $data        The post's fields as they are about to be written.
 		 */
 		$filtered = apply_filters( 'nextjs_revalidate_dependent_posts', $post_ids, $post->ID, $post, $data );
@@ -520,6 +610,18 @@ class Revalidate extends Base implements Hookable {
 		$dependents = $this->dependents_before[ $post_id ] ?? [];
 		unset( $this->dependents_before[ $post_id ] );
 
+		$this->report_moved( $dependents );
+	}
+
+	/**
+	 * Report each of the given posts that moved since it was read, from the
+	 * URI it had to the one it has now.
+	 *
+	 * @param array<int, array{uri: string|null, menu_order: int, post_parent: int}> $dependents
+	 *        Dependent post ID => where it stood.
+	 * @return void
+	 */
+	private function report_moved( array $dependents ) {
 		foreach ( $dependents as $dependent_id => $before ) {
 			$dependent = get_post( $dependent_id );
 			if ( ! $dependent instanceof WP_Post ) continue;
@@ -645,6 +747,12 @@ class Revalidate extends Base implements Hookable {
 	 * This hangs on `before_delete_post` rather than on either hook that follows
 	 * it because the URI is composed from a row `deleted_post` no longer has.
 	 *
+	 * Its **dependent posts** are read here too, whether the post is reported
+	 * or not, and reported once the delete is done — see `$deleting`. Core
+	 * reattaches a deleted page's children to its own parent, which moves every
+	 * descendant: a page already in the trash reports nothing of its own, but
+	 * its descendants still lose its `__trashed` slug.
+	 *
 	 * @param int $post_id The post about to be deleted.
 	 * @return void
 	 */
@@ -657,6 +765,14 @@ class Revalidate extends Base implements Hookable {
 		// revision of, a deleted revision stands for nothing.
 		if ( false !== wp_is_post_revision( $post_id ) ) return;
 
+		$post = get_post( $post_id );
+		if ( $post instanceof WP_Post ) {
+			$dependents = $this->positions_of_dependents( $post, [], true );
+
+			if ( empty( $dependents ) ) unset( $this->deleting[ $post->ID ] );
+			else $this->deleting[ $post->ID ] = $dependents;
+		}
+
 		// Bail for a post that is not revalidatable
 		if ( ! $this->should_revalidate( $post_id ) ) return;
 
@@ -666,6 +782,22 @@ class Revalidate extends Base implements Hookable {
 		if ( is_null($change) ) return;
 
 		$this->pendingChanges->report( $change );
+	}
+
+	/**
+	 * A post was permanently deleted: report each of its **dependent posts**
+	 * that moved, from the URI it had before the delete to the one it has now,
+	 * after the deleted post's own change.
+	 *
+	 * @param int $post_id The post that was deleted.
+	 * @return void
+	 */
+	public function on_post_deleted( $post_id ) {
+
+		$dependents = $this->deleting[ (int) $post_id ] ?? [];
+		unset( $this->deleting[ (int) $post_id ] );
+
+		$this->report_moved( $dependents );
 	}
 
 	/**
