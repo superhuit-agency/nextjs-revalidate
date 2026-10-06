@@ -432,8 +432,9 @@ Deliberately unguarded by any minimum length — a one-character secret is a leg
 configuration, so it is redacted like any other and the surrounding diagnostic
 is allowed to come out garbled.
 
-> From v2 the secret travels in an `Authorization` header rather than a query
-> arg, so the by-shape pass has nothing left to find in a request of this
+> From v2 the secret travels in a header rather than a query arg —
+> `Authorization`, or `X-Nextjs-Revalidate-Secret` for a revalidate domain with
+> basic-auth credentials (ADR 0042) — so the by-shape pass has nothing left to find in a request of this
 > plugin's own; the by-value pass is what still applies, because a transport
 > message can quote a header back. The by-shape pass stayed while the
 > revalidation queue still sent v1's `GET`, and is a harmless no-op now that

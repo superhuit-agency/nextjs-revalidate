@@ -64,7 +64,7 @@ published page.
       "The front-end rebuilt http://localhost:8080/runbook-post/." and
       `= Revalidating (v2): {"subject":"path","uri":"/runbook-post/"}` in the
       console: the credentials went as basic auth, decoded, and the secret in
-      its own header. A `http_401` here is the bug fixed in 2.1.0 (#199).
+      its own header. A `http_401` here is the bug 2.1.0 fixed.
 - [ ] **Update a post, with logs on.** Expect `✅ Revalidated 1 change (post)`
       in the log and the post change in the console.
 - [ ] **Change the domain's password to `wrong`** —

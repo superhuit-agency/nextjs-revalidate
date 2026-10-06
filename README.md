@@ -47,8 +47,9 @@ Content-Type: application/json
 { "version": 2, "changes": [ … ] }
 ```
 
-- **`Authorization`** carries the site's revalidate secret, after `Bearer `. It
-  is never sent in the URL or the body.
+- **`Authorization`** carries the site's revalidate secret, after `Bearer ` —
+  unless the revalidate domain has basic-auth credentials, below. It is never
+  sent in the URL or the body.
 - **`version`** is the contract version, `2`. See the rules below.
 - **`changes`** is a non-empty array of changes, one object per subject that
   changed.

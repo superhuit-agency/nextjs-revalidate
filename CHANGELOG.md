@@ -34,7 +34,6 @@ header (the **Act on it** entry below).
   upgrading**, either update the route to read the new header, as the
   [front-end contract](README.md#the-request) says, or take the credentials out
   of the domain.
-
 - **Added:** a `term` change. Creating, editing or deleting a term of a
   revalidatable taxonomy reports its slug and the URI of its archive before and
   after — `null` before a creation and after a delete, equal sides for a name

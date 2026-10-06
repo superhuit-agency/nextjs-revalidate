@@ -28,6 +28,10 @@ Content-Type: application/json
 { "version": 2, "changes": [ { "subject": "post", "id": 42, "type": "post", "before": { "uri": "/hello/" }, "after": { "uri": "/hello-world/" } } ] }
 ```
 
+A revalidate domain with basic-auth credentials, `https://user:pass@…`, sends
+them as `Authorization: Basic`, and the secret in `X-Nextjs-Revalidate-Secret`
+instead.
+
 The subjects are `post`, `redirect`, `path`, `menu`, `templates` and `all`. Any
 2xx answer is a success. The full contract — every field, when it is `null`, the
 two rules that let it grow, and a reference Next.js route in TypeScript — is in
@@ -183,7 +187,7 @@ two entries. The full notes are in CHANGELOG.md on GitHub.
   also lets the 2.0.1 fix for credentials across a redirect take effect. A
   domain without credentials sends what 2.0 sent.
 * Act on it: a revalidate domain that still has credentials its front-end no
-  longer checks answers 401 from 2.1.0, because the secret is no longer in
+  longer checks gets a 401 from 2.1.0, because the secret is no longer in
   `Authorization` there. Before upgrading, update the route to read
   `X-Nextjs-Revalidate-Secret` first, as the README's reference route does, or
   take the credentials out of the domain.
