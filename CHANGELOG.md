@@ -16,6 +16,14 @@ site has to do about it. Releases before 2.0.0 are listed in the changelog of
   behind basic auth answered it 401 and the delivery failed. The credentials now
   carry over to both; a `Location` naming credentials of its own keeps them, and
   a redirect to another origin is still not followed (#184).
+- **A Simple Custom Post Order drag and drop is read whole.** Its list of posts
+  was read with `parse_str()`, which stops at `max_input_vars` and warns as it
+  does. On a host whose limit is lower than the number of posts dragged, the
+  warning — printed with `display_errors` on — broke the JSON the drag and drop
+  answers with, and the posts past the limit were never reported. The list is
+  now read by hand, the way Simple Custom Post Order 2.8.9 reads it, so the
+  posts reported are the ones it writes; a list whose `[]` arrives
+  percent-encoded is read too (#186).
 
 ## 2.0.0
 
