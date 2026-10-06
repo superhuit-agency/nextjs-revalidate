@@ -15,7 +15,8 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  *
  * | Subject     | Fields                                                  |
  * | ----------- | ------------------------------------------------------- |
- * | `post`      | `id`, `type`, `before: { uri } \| null`, `after: { uri } \| null` |
+ * | `post`      | `id`, `type`, `before: { uri, terms } \| null`, `after: { uri, terms } \| null` |
+ * | `term`      | `id`, `taxonomy`, `before: { slug, uri } \| null`, `after: { slug, uri } \| null` |
  * | `redirect`  | `uri`                                                   |
  * | `path`      | `uri`                                                   |
  * | `menu`      | `id`, `locations`                                       |
@@ -32,11 +33,14 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * is `PendingChanges`' job, and producing them is the job of whatever saw the
  * WordPress event.
  *
- * See `docs/adr/0033-the-plugin-reports-changes-not-tags.md`.
+ * See `docs/adr/0033-the-plugin-reports-changes-not-tags.md`, and
+ * `docs/adr/0040-a-term-reports-itself-and-a-post-the-terms-it-is-in.md` for
+ * the `term` subject.
  */
 final class Change {
 
 	const POST      = 'post';
+	const TERM      = 'term';
 	const REDIRECT  = 'redirect';
 	const PATH      = 'path';
 	const MENU      = 'menu';
@@ -51,20 +55,98 @@ final class Change {
 	 * `before` for a publish, `after` for a post that left the front-end. A
 	 * change with both sides `null` is not a change at all — see `is_void()`.
 	 *
-	 * @param int         $id         The post ID.
-	 * @param string      $type       The post type.
-	 * @param string|null $before_uri The path the post had before, from the domain root, or null.
-	 * @param string|null $after_uri  The path the post has after, from the domain root, or null.
+	 * Each side that exists carries the post's **term membership** on that
+	 * side: its terms in revalidatable taxonomies, as `post_term()` builds
+	 * each, sorted here by taxonomy then ID — `[]` when it has none. The
+	 * archives the post joined are on the `after` side, and the ones it left
+	 * on the `before` side. See
+	 * `docs/adr/0040-a-term-reports-itself-and-a-post-the-terms-it-is-in.md`.
+	 *
+	 * @param int         $id           The post ID.
+	 * @param string      $type         The post type.
+	 * @param string|null $before_uri   The path the post had before, from the domain root, or null.
+	 * @param string|null $after_uri    The path the post has after, from the domain root, or null.
+	 * @param array[]     $before_terms Its terms before. Ignored when it had no page.
+	 * @param array[]     $after_terms  Its terms after. Ignored when it has no page.
 	 * @return array
 	 */
-	public static function post( int $id, string $type, ?string $before_uri, ?string $after_uri ): array {
+	public static function post( int $id, string $type, ?string $before_uri, ?string $after_uri, array $before_terms = [], array $after_terms = [] ): array {
 		return [
 			'subject' => self::POST,
 			'id'      => $id,
 			'type'    => $type,
-			'before'  => ( null === $before_uri ) ? null : [ 'uri' => $before_uri ],
-			'after'   => ( null === $after_uri )  ? null : [ 'uri' => $after_uri ],
+			'before'  => ( null === $before_uri ) ? null : [ 'uri' => $before_uri, 'terms' => self::sorted_terms( $before_terms ) ],
+			'after'   => ( null === $after_uri )  ? null : [ 'uri' => $after_uri, 'terms' => self::sorted_terms( $after_terms ) ],
 		];
+	}
+
+	/**
+	 * One term a post is in, as a side of its change lists it.
+	 *
+	 * @param int    $id       The term ID.
+	 * @param string $taxonomy The taxonomy.
+	 * @param string $slug     The term's slug.
+	 * @return array
+	 */
+	public static function post_term( int $id, string $taxonomy, string $slug ): array {
+		return [ 'id' => $id, 'taxonomy' => $taxonomy, 'slug' => $slug ];
+	}
+
+	/**
+	 * A post's terms in the one order a side lists them: by taxonomy, then by
+	 * ID — so two sides holding the same terms are equal whichever order they
+	 * were read in.
+	 *
+	 * @param array[] $terms As `post_term()` builds each.
+	 * @return array[]
+	 */
+	private static function sorted_terms( array $terms ): array {
+		$terms = array_values( $terms );
+
+		usort( $terms, function ( $a, $b ) {
+			return [ (string) ( $a['taxonomy'] ?? '' ), (int) ( $a['id'] ?? 0 ) ] <=> [ (string) ( $b['taxonomy'] ?? '' ), (int) ( $b['id'] ?? 0 ) ];
+		} );
+
+		return $terms;
+	}
+
+	/**
+	 * A term, as the front-end sees it before and after.
+	 *
+	 * `null` on a side means the term is not there on that side: `before` for
+	 * a term just created, `after` for one deleted. An edit that moves nothing
+	 * — a name, a description — has two equal sides. See `term_side()` for
+	 * what a side holds, and `is_void()` for a change with neither.
+	 *
+	 * @param int        $id       The term ID.
+	 * @param string     $taxonomy The taxonomy.
+	 * @param array|null $before   The term before, as `term_side()` builds it, or null.
+	 * @param array|null $after    The term after, as `term_side()` builds it, or null.
+	 * @return array
+	 */
+	public static function term( int $id, string $taxonomy, ?array $before, ?array $after ): array {
+		return [
+			'subject'  => self::TERM,
+			'id'       => $id,
+			'taxonomy' => $taxonomy,
+			'before'   => $before,
+			'after'    => $after,
+		];
+	}
+
+	/**
+	 * One side of a term change: its slug, and the URI of its archive.
+	 *
+	 * The slug is carried because a common tag scheme is
+	 * `term:{taxonomy}:{slug}`: after a slug change, the front-end's entries
+	 * are still tagged with the old one, which only `before.slug` reaches.
+	 *
+	 * @param string $slug The term's slug.
+	 * @param string $uri  The path of its archive, from the domain root.
+	 * @return array
+	 */
+	public static function term_side( string $slug, string $uri ): array {
+		return [ 'slug' => $slug, 'uri' => $uri ];
 	}
 
 	/**
@@ -189,8 +271,9 @@ final class Change {
 	 * Which change a change is, for merging: two changes with the same identity
 	 * are one change in the pending changes.
 	 *
-	 * A post is identified by its ID, because a post has a before and an
-	 * after, and two changes to it merge (`merge()`). The site settings are
+	 * A post is identified by its ID, and a term by its taxonomy and its ID,
+	 * because each has a before and an after, and two changes to it merge
+	 * (`merge()`). The site settings are
 	 * identified by their subject alone: every site setting a request saves is
 	 * the same change, even once a filter has reshaped some of them — the later
 	 * one is kept. Every other subject has no sides to keep, so its identity is
@@ -206,6 +289,10 @@ final class Change {
 			return self::POST . ':' . (string) $change['id'];
 		}
 
+		if ( self::TERM === $change['subject'] && isset( $change['id'], $change['taxonomy'] ) && is_scalar( $change['id'] ) && is_scalar( $change['taxonomy'] ) ) {
+			return self::TERM . ':' . (string) $change['taxonomy'] . ':' . (string) $change['id'];
+		}
+
 		if ( self::SETTINGS === $change['subject'] ) return self::SETTINGS;
 
 		return (string) $change['subject'] . ':' . serialize( self::normalised( $change ) );
@@ -216,8 +303,9 @@ final class Change {
 	 * the state after the last.
 	 *
 	 * Everything but `before` comes from the later change, which describes the
-	 * subject as it now is. For a subject without sides, the two changes are
-	 * identical and the later one is as good as the earlier.
+	 * subject as it now is — for a post and for a term, the two subjects with
+	 * sides. For a subject without sides, the two changes are identical and
+	 * the later one is as good as the earlier.
 	 *
 	 * @param array $earlier The change already held.
 	 * @param array $later   The change just produced.
@@ -225,7 +313,7 @@ final class Change {
 	 */
 	public static function merge( array $earlier, array $later ): array {
 
-		if ( self::POST !== $later['subject'] ) return $later;
+		if ( ! self::has_sides( $later ) ) return $later;
 
 		$merged = $later;
 		$merged['before'] = array_key_exists( 'before', $earlier ) ? $earlier['before'] : null;
@@ -236,17 +324,28 @@ final class Change {
 	/**
 	 * Whether a change says nothing happened on the front-end.
 	 *
-	 * Only a post can: one that was not on the front-end before and is not
-	 * after — a draft published and trashed in the same request, once merged —
-	 * has no page to tell anybody about.
+	 * Only a subject with sides can: a post that was not on the front-end
+	 * before and is not after — a draft published and trashed in the same
+	 * request, once merged — has no page to tell anybody about, and a term
+	 * created and deleted in the same request has no archive.
 	 *
 	 * @param array $change
 	 * @return bool
 	 */
 	public static function is_void( array $change ): bool {
-		return self::POST === $change['subject']
+		return self::has_sides( $change )
 			&& array_key_exists( 'before', $change ) && null === $change['before']
 			&& array_key_exists( 'after', $change )  && null === $change['after'];
+	}
+
+	/**
+	 * Whether a change is of a subject with a `before` and an `after`.
+	 *
+	 * @param array $change
+	 * @return bool
+	 */
+	private static function has_sides( array $change ): bool {
+		return in_array( $change['subject'] ?? null, [ self::POST, self::TERM ], true );
 	}
 
 	/**

@@ -145,11 +145,38 @@ changes a hierarchical post's slug or parent; the site and an integration name
 the rest (ADR 0038). A translation Polylang synchronises is also reported where
 it stands on every save, since Polylang may have written any field of it.
 
+A trash and a permanent delete move a hierarchical post's descendants too — the
+`__trashed` suffix, and core reattaching the deleted post's children to its own
+parent — and they are its dependent posts all the same, though neither is the
+save above. A trash reads them on `wp_trash_post`, before the suffix is written;
+a delete on `before_delete_post`, even for a post already in the trash. A trash
+through a bare `wp_update_post()` reports none, an accepted gap.
+
 A post moved by a plugin's direct write, with no save at all — a Nested Pages
 drag and drop — is not a dependent post: nothing was saved for it to depend on.
 Its integration reads it before the write and reports it after, the same way.
 _Avoid_: Child post, related post — the first is one kind of it, and the second
 says nothing about why its page moved.
+
+**Dependent term**:
+A term whose URI is built from another term's: a child term in a hierarchical
+taxonomy, whose archive URI is its parent's plus its own slug. Changing a term's
+slug or parent, or deleting it (WordPress moves its children up a level), moves
+every descendant's archive without editing any of them. Each one is reported as
+a `term` change of its own, from the URI it had to the one it has — the
+**dependent post** rule, applied to terms (ADR 0040).
+_Avoid_: Child term — a grandchild depends on the same edit.
+
+**Term membership**:
+The terms of the **revalidatable taxonomies** a post is in — the archives it
+appears in. Part of where a post is on the front-end, so each side of a `post`
+change carries it, and a post whose terms are set with no save has still
+changed. A term's own change never carries its members: what shows a term is the
+front-end's to reach through that term's change, so a term rename or delete is
+one change however many posts are in it. Deleting a term reports the term, and
+the taxonomy's default term when the delete moved posts into it — never the
+posts.
+_Avoid_: Categories, tags — two taxonomies among many.
 
 **Revalidatable taxonomy**:
 A taxonomy whose terms' archive pages the front-end could hold, and whose terms
@@ -167,11 +194,14 @@ never candidates.
 
 The site has the last word here too, through a filter of its own rather than the
 post one — the same escape hatch, for the same headless reason, and it can admit
-a whole taxonomy as readily as decline one.
+a whole taxonomy as readily as decline one. An **integration** can use it too:
+Polylang's declines the `language` taxonomy, which is viewable but holds the
+language list, a **site setting** rather than terms the front-end shows.
 
-Only **revalidate all** asks the question today: nothing in this plugin reacts to
-a term being created, edited or deleted, so a term archive goes stale until
-somebody revalidates all. That gap is an enhancement, not a property of the taxonomy.
+Asked by **revalidate all**, once per taxonomy, by a term's own lifecycle — a
+term created, edited or deleted is reported as a `term` change when its taxonomy
+is revalidatable, along with its **dependent terms** — and by a post's **term
+membership** (ADR 0040).
 _Avoid_: Public taxonomy — `public` is a different setting and the two disagree
 in both directions, which is the whole of the bug this names the fix for.
 

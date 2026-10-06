@@ -154,10 +154,53 @@ so returning `true` there revalidates nothing.
 
 = 2.1.0 =
 
+New subjects and fields in the request to the front-end, which a route written
+for 2.0 ignores. The contract version stays 2. The full notes are in
+CHANGELOG.md on GitHub.
+
+* Added: a `term` change. Creating, editing or deleting a term of a
+  revalidatable taxonomy reports its slug and archive URI before and after,
+  with each descendant whose archive moved, and the default term a delete moved
+  posts into. A term's change never reports the posts in it: tag whatever shows
+  a term with that term's tag. The reference route tags it `term:{id}`.
+* Added: `terms` on each side of a post change — the post's terms in
+  revalidatable taxonomies — so the front-end reaches the archives a post
+  joined and the ones it left. A post's terms written with no save, by an
+  import, a plugin or Polylang's synchronisation, are now reported as that
+  post's change.
 * Added: the Debug tab shows the end of the log file while logging is on — its
   last 200 lines, with how many lines the file holds and how big it is. Refresh
   reads it again without reloading the page, and Live refresh does so every
   five seconds. With logging off the tab is unchanged.
+* Changed: with Polylang, its `language` taxonomy is no longer revalidated as
+  a taxonomy. A language is a site setting, reported as a settings change, so it
+  is not reported as a term, not listed in a post's terms, and no longer named
+  by revalidate all of a post type. The Polylang integration declines it through
+  the `nextjs_revalidate_should_revalidate_taxonomy` filter, which a site can
+  use to admit it again.
+
+= 2.0.1 =
+
+* Fixed: a 307 or a 308 to the front-end's own origin whose `Location` is an
+  absolute URL, as a proxy rewriting `Location` sends it, keeps the basic-auth
+  credentials of the revalidate domain, as a `Location` that is a path already
+  did. Without them, a staging front-end behind basic auth answered the
+  redirected request 401 and the delivery failed.
+* Fixed: a Simple Custom Post Order drag and drop is read the way that plugin
+  reads it, by hand, rather than with `parse_str()`. On a host whose
+  `max_input_vars` is lower than the number of posts dragged, `parse_str()`
+  stopped at the limit with a warning: printed with `display_errors` on, it broke
+  the drag and drop's answer, and the posts past the limit were never reported.
+  A list whose `[]` arrives percent-encoded is read too.
+* Fixed: the Simple Custom Post Order and Nested Pages integrations read a
+  reorder request only when it carries the plugin's own nonce. They looked up
+  every post a drag and drop named before the plugin checked its nonce, so any
+  logged-in user, a subscriber included, could have as many posts looked up as
+  one request named, although the plugin then refused it.
+* Fixed: trashing or permanently deleting a parent page reports each descendant
+  whose URI that moved, from its old URI to its new one, as a save that renames
+  or moves the parent already did. Before, only the parent was reported, and
+  deleting a parent already in the trash reported nothing.
 
 = 2.0.0 =
 

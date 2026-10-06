@@ -86,18 +86,19 @@ Precondition: spine state.
 
 A post save is a **post change**, delivered when the save's request ends —
 there is nothing to wait for. The console prints each change as it was sent;
-`N` below is the post's ID.
+`N` below is the post's ID, and `U` the post's terms on each side it is on —
+`[{"id":1,"taxonomy":"category","slug":"uncategorized"}]`, the category it is in.
 
 - [ ] **Edit "Runbook post", change a word, Update.** Expect
-      `= Revalidating (v2): {"subject":"post","id":N,"type":"post","before":{"uri":"/runbook-post/"},"after":{"uri":"/runbook-post/"}}`
+      `= Revalidating (v2): {"subject":"post","id":N,"type":"post","before":{"uri":"/runbook-post/","terms":U},"after":{"uri":"/runbook-post/","terms":U}}`
       in the revalidate server console straight away — one line, two equal
       sides.
 - [ ] **Check the log.** Expect a line ending `✅ Revalidated 1 change (post)`.
-- [ ] **Move it to Draft.** Expect `"before":{"uri":"/runbook-post/"},"after":null`
+- [ ] **Move it to Draft.** Expect `"before":{"uri":"/runbook-post/","terms":U},"after":null`
       — the path it held while published is the one the front-end still has
       cached, and it has no page now.
-- [ ] **Publish it again.** Expect `"before":null,"after":{"uri":"/runbook-post/"}`.
-- [ ] **Move it to Trash.** Expect `"before":{"uri":"/runbook-post/"},"after":null`
+- [ ] **Publish it again.** Expect `"before":null,"after":{"uri":"/runbook-post/","terms":U}`.
+- [ ] **Move it to Trash.** Expect `"before":{"uri":"/runbook-post/","terms":U},"after":null`
       — never the `__trashed` name the post takes on the way in. **Restore it,
       then publish it.** Expect nothing on the restore — a restored post comes
       back a draft — and `"before":null` on the publish.

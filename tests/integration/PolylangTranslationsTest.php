@@ -12,6 +12,10 @@
  * synchronised, every save reports the translations where they stand, since
  * Polylang may have written any synchronised field of theirs.
  *
+ * Polylang's `language` taxonomy is declined by the integration, so a post's
+ * language is never part of its `terms`, nor named by revalidate all, while
+ * its other taxonomies are reported as on any site (ADR 0040).
+ *
  * Driven through Polylang's own post handling and synchronisation, over its
  * model, as its admin screens drive them.
  *
@@ -157,6 +161,73 @@ class PolylangTranslationsTest extends PendingChangesTestCase {
 		wp_update_post( [ 'ID' => $page_fr, 'post_content' => 'Modifié.' ] );
 
 		$this->assertPendingChanges( [ Change::post( $page_fr, 'page', '/page-fr/', '/page-fr/' ) ] );
+	}
+
+	// The language taxonomy
+	// ====
+
+	/**
+	 * A post's language is a site setting rather than a term the front-end
+	 * shows: its `terms` list its category and not its language, so a save
+	 * does not expire whatever carries the language's term.
+	 */
+	public function test_a_translated_posts_terms_list_its_category_and_not_its_language() {
+		// In the post's language, or Polylang takes it off the post on save.
+		$video = self::factory()->category->create( [ 'name' => 'Video', 'slug' => 'video' ] );
+		$this->polylang->model->term->set_language( $video, 'fr' );
+
+		$post = self::factory()->post->create( [
+			'post_status'   => 'publish',
+			'post_name'     => 'bonjour',
+			'post_title'    => 'Bonjour',
+			'post_category' => [ $video ],
+		] );
+		$this->polylang->model->post->set_language( $post, 'fr' );
+		$this->assertSame( 'fr', pll_get_post_language( $post ), 'Polylang did not set the language.' );
+
+		$this->reset_pending_changes();
+
+		wp_update_post( [ 'ID' => $post, 'post_content' => 'Modifié.' ] );
+
+		$uri   = $this->path_of( get_permalink( $post ) );
+		$terms = [ Change::post_term( $video, 'category', 'video' ) ];
+
+		$this->assertPendingChanges( [ Change::post( $post, 'post', $uri, $uri, $terms, $terms ) ] );
+	}
+
+	/**
+	 * Polylang sets a post's language with `wp_set_object_terms()`, which
+	 * for a revalidatable taxonomy is a write of the post's terms with no
+	 * save. The `language` taxonomy is not one.
+	 */
+	public function test_setting_a_posts_language_is_not_a_write_of_its_terms() {
+		$post = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'hallo' ] );
+		$this->polylang->model->post->set_language( $post, 'fr' );
+
+		$this->reset_pending_changes();
+
+		$this->polylang->model->post->set_language( $post, 'de' );
+
+		$this->assertSame( 'de', pll_get_post_language( $post ), 'Polylang did not change the language.' );
+		$this->assertPendingChanges( [] );
+	}
+
+	/**
+	 * WordPress would route the `language` taxonomy, and the integration is
+	 * what declines it — for revalidate all too, while the post type's other
+	 * taxonomies are still named.
+	 */
+	public function test_revalidate_all_of_a_post_type_names_its_taxonomies_but_not_the_language() {
+		$this->assertContains( 'language', get_object_taxonomies( 'post' ), 'Polylang did not register its taxonomy for posts.' );
+		$this->assertTrue( is_taxonomy_viewable( 'language' ), 'The `language` taxonomy is no longer publicly queryable.' );
+
+		$this->assertFalse( \NextJsRevalidate::init()->revalidate->should_revalidate_taxonomy( 'language' ) );
+
+		$taxonomies = \NextJsRevalidate::init()->revalidateAll->revalidatable_taxonomies( 'post' );
+
+		$this->assertNotContains( 'language', $taxonomies );
+		$this->assertContains( 'category', $taxonomies );
+		$this->assertContains( 'post_tag', $taxonomies );
 	}
 
 	// Fixtures

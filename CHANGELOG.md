@@ -6,10 +6,86 @@ site has to do about it. Releases before 2.0.0 are listed in the changelog of
 
 ## 2.1.0
 
-- **The Debug tab shows the end of the log file** while logging is on: its last
-  200 lines, with how many lines the file holds and how big it is. **Refresh**
-  reads it again without reloading the page, and **Live refresh** does so every
-  five seconds. Nothing to do: with logging off the tab is unchanged.
+Contract version **2**, unchanged: everything below is a new subject or a new
+field, which a front-end written for 2.0 ignores (rule 1 of the
+[front-end contract](README.md#two-rules)).
+
+- **Added:** a `term` change. Creating, editing or deleting a term of a
+  revalidatable taxonomy reports its slug and the URI of its archive before and
+  after — `null` before a creation and after a delete, equal sides for a name
+  or description edit. Changing a term's slug or parent, or deleting it, also
+  reports each descendant whose archive moved, and a delete that moved posts
+  into *Uncategorized*, or another taxonomy's default term, reports that term
+  once. A term's change never reports the posts in it: **tag whatever shows a
+  term with that term's tag**, so one change reaches it all. 2.0 reported no
+  term at all, and a term's archive stayed stale until somebody ran revalidate
+  all ([ADR 0040](docs/adr/0040-a-term-reports-itself-and-a-post-the-terms-it-is-in.md)).
+  The README's reference route tags a term's archive, and every entry showing
+  it, `term:{id}`, and expires `uris` too when the term's URI moved.
+- **Added:** `terms` on each side of a `post` change — the post's terms in
+  revalidatable taxonomies, as `{ id, taxonomy, slug }`, sorted by taxonomy then
+  ID — so a front-end reaches the archives a post joined and the ones it left.
+  A publish now reaches the archives of the post's categories, and a move from
+  one category to another reaches both. Every producer of a post change carries
+  them; one with no record of the terms before lists the current ones on both
+  sides. A post's terms written with no save — `wp_set_object_terms()`,
+  `wp_add_object_terms()`, `wp_remove_object_terms()`, from an import, a plugin
+  or Polylang's synchronisation — are now reported as that post's change, with
+  equal URIs; 2.0 reported nothing for them. The posts a term's delete moves are
+  still not reported: the term's own change covers them. The reference route
+  expires `term:{id}` for every term on either side of a post change.
+- **Added:** the Debug tab shows the end of the log file while logging is on:
+  its last 200 lines, with how many lines the file holds and how big it is.
+  **Refresh** reads it again without reloading the page, and **Live refresh**
+  does so every five seconds. Nothing to do: with logging off the tab is
+  unchanged.
+- **Changed:** with Polylang, its `language` taxonomy is no longer a
+  revalidatable taxonomy. A language is a site setting, already reported as a
+  `settings` change; as a taxonomy it would have put a `term` change next to
+  that one, and listed every translated post's language in its `terms`, so
+  every save would have expired whatever carries the language's term. The
+  Polylang integration declines it through
+  `nextjs_revalidate_should_revalidate_taxonomy`, so revalidate all of a post
+  type no longer names `language` in its `taxonomies`, as 2.0 did. A site that
+  does tag pages with a language's term can admit it again from a later
+  priority of that filter.
+
+## 2.0.1
+
+### Fixed
+
+- **A redirect to the front-end's own URL keeps the basic-auth credentials.** A
+  307 or a 308 to the same origin was followed with the credentials of the
+  revalidate domain only when its `Location` was a path, the shape Next.js
+  answers with. One given as an absolute URL — the shape a proxy rewriting
+  `Location` answers with — was followed without them, so a staging front-end
+  behind basic auth answered it 401 and the delivery failed. The credentials now
+  carry over to both; a `Location` naming credentials of its own keeps them, and
+  a redirect to another origin is still not followed (#184).
+- **A Simple Custom Post Order drag and drop is read whole.** Its list of posts
+  was read with `parse_str()`, which stops at `max_input_vars` and warns as it
+  does. On a host whose limit is lower than the number of posts dragged, the
+  warning — printed with `display_errors` on — broke the JSON the drag and drop
+  answers with, and the posts past the limit were never reported. The list is
+  now read by hand, the way Simple Custom Post Order 2.8.9 reads it, so the
+  posts reported are the ones it writes; a list whose `[]` arrives
+  percent-encoded is read too (#186).
+- **A reorder request is read only when it carries the plugin's own nonce.**
+  The Simple Custom Post Order and Nested Pages integrations read the posts a
+  drag and drop names, and looked each one up, before the plugin checked its
+  nonce. Any logged-in user, a subscriber included, could send one request
+  naming as many posts as they liked and have every one looked up, although
+  the plugin then refused it. Each integration now checks the nonce the plugin
+  is about to check first, and reads nothing when it fails; the plugin still
+  answers the request its own way (#187).
+- **Trashing or deleting a parent reports the descendants it moves.** Trashing
+  a page adds `__trashed` to its slug, and deleting one reattaches its children
+  to its own parent, so every descendant's URI changes — `/about/team/` becomes
+  `/about__trashed/team/`, then `/team/` — without a save of its own. Only the
+  parent was reported, and deleting a parent already in the trash reported
+  nothing. Each descendant whose URI moved is now reported as its own `post`
+  change, from its old URI to its new one, as a save that renames or moves a
+  parent already did (#144).
 
 ## 2.0.0
 
