@@ -171,6 +171,44 @@ class PostTermsTest extends PendingChangesTestCase {
 		] );
 	}
 
+	/**
+	 * An attachment's insert ends on `add_attachment`, without the
+	 * `wp_insert_post` action a post's insert ends with: an importer uploads
+	 * the media, then inserts the posts and sets their terms.
+	 */
+	public function test_a_direct_write_after_an_upload_in_the_same_request_is_reported() {
+		self::factory()->attachment->create_object( [ 'file' => 'image.jpg', 'post_mime_type' => 'image/jpeg' ] );
+		$post = $this->published( [ $this->video ] );
+
+		wp_set_object_terms( $post, [ $this->podcast ], 'category' );
+
+		$this->assertPendingChanges( [
+			Change::post( $post, 'post', '/hello/', '/hello/', [ $this->video() ], [ $this->podcast() ] ),
+		] );
+	}
+
+	/**
+	 * A plugin inserting a post from another post's save, then setting its
+	 * terms: the inner insert has ended, though the outer one has not.
+	 */
+	public function test_a_direct_write_on_a_post_inserted_from_another_posts_save_is_reported() {
+		$inner    = 0;
+		$callback = function () use ( &$inner, &$callback ) {
+			remove_action( 'save_post', $callback );
+
+			$inner = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'inner', 'post_category' => [ $this->video ] ] );
+			wp_set_object_terms( $inner, [ $this->podcast ], 'category' );
+		};
+		add_action( 'save_post', $callback );
+
+		$outer = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'outer', 'post_category' => [ $this->video ] ] );
+
+		$this->assertPendingChanges( [
+			Change::post( $inner, 'post', null, '/inner/', [], [ $this->podcast() ] ),
+			Change::post( $outer, 'post', null, '/outer/', [], [ $this->video() ] ),
+		] );
+	}
+
 	public function test_a_write_that_changes_no_term_reports_nothing() {
 		$post = $this->published( [ $this->video ] );
 

@@ -179,7 +179,6 @@ $expected_per_class = [
 	Revalidate::class => [
 		[ 'pre_post_update',      'on_pre_post_update',              10, 2 ],
 		[ 'wp_insert_post_data',  'on_insert_post_data',             10, 4 ],
-		[ 'wp_insert_attachment_data', 'on_insert_post_data',        10, 4 ],
 		[ 'wp_insert_post',       'on_post_inserted',                10, 3 ],
 		[ 'post_updated',         'on_post_updated',                  1, 1 ],
 		[ 'wp_after_insert_post', 'on_post_save',                    99, 4 ],

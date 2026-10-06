@@ -100,18 +100,29 @@ class Revalidate extends Base implements Hookable {
 	 * from the posts that were there before it.
 	 *
 	 * Pushed on `wp_insert_post_data`, before the row is written, and popped on
-	 * `wp_insert_post`, which every insert ends with, once the ID is known.
+	 * `wp_insert_post`, which every insert of a post ends with, once the ID is
+	 * known. Not for an attachment: its insert ends on `add_attachment`
+	 * instead, and an attachment has no page whose terms could be reported.
+	 *
+	 * Only a post whose ID is not known yet is told by this — see `$inserted`
+	 * for the ones whose insert has reached `wp_insert_post`.
 	 *
 	 * @var array<int, array{highest: int, import_id: int}>
 	 */
 	private array $inserting = [];
 
 	/**
-	 * The posts inserted in this request whose save has not reached
-	 * `wp_after_insert_post` yet: post ID => true. The REST API writes a new
-	 * post's terms between the two.
+	 * The posts inserted in this request, once `wp_insert_post` has named them:
+	 * post ID => whether their save is still under way, which it is until
+	 * `wp_after_insert_post`. The REST API writes a new post's terms between
+	 * the two.
 	 *
-	 * @var array<int, true>
+	 * A post whose insert has ended stays here, as not under way: it was
+	 * created in this request, so its ID is above the highest an insert still
+	 * under way read — a plugin inserting it from another post's `save_post` —
+	 * and its terms written now are a change of their own.
+	 *
+	 * @var array<int, bool>
 	 */
 	private array $inserted = [];
 
@@ -140,7 +151,6 @@ class Revalidate extends Base implements Hookable {
 	public function register_hooks(): void {
 		add_action( 'pre_post_update', [$this, 'on_pre_post_update'], 10, 2 );
 		add_filter( 'wp_insert_post_data', [$this, 'on_insert_post_data'], 10, 4 );
-		add_filter( 'wp_insert_attachment_data', [$this, 'on_insert_post_data'], 10, 4 );
 		add_action( 'wp_insert_post', [$this, 'on_post_inserted'], 10, 3 );
 
 		// Ahead of core's `wp_save_post_revision`, at 10 on the same hook until
@@ -375,7 +385,7 @@ class Revalidate extends Base implements Hookable {
 		$revision_of = wp_is_post_revision( $post_id );
 
 		// An insert has reached its end too.
-		unset( $this->inserted[ (int) $post_id ] );
+		if ( isset( $this->inserted[ (int) $post_id ] ) ) $this->inserted[ (int) $post_id ] = false;
 
 		// This post's save has reached its end.
 		if ( false === $revision_of ) unset( $this->saving[ (int) $post_id ] );
@@ -878,7 +888,10 @@ class Revalidate extends Base implements Hookable {
 	 * @return bool
 	 */
 	private function is_being_saved( $post_id ) {
-		if ( isset( $this->terms_before[ $post_id ] ) || isset( $this->inserted[ $post_id ] ) ) return true;
+		if ( isset( $this->terms_before[ $post_id ] ) ) return true;
+
+		// Its insert has named it: under way until its end, and done after.
+		if ( isset( $this->inserted[ $post_id ] ) ) return $this->inserted[ $post_id ];
 
 		foreach ( $this->inserting as $insert ) {
 			if ( $post_id > $insert['highest'] || $post_id === $insert['import_id'] ) return true;
