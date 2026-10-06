@@ -178,12 +178,14 @@ $expected_per_class = [
 
 	Revalidate::class => [
 		[ 'pre_post_update',      'on_pre_post_update',              10, 2 ],
+		[ 'wp_trash_post',        'on_trash_post',                   10, 1 ],
 		[ 'wp_insert_post_data',  'on_insert_post_data',             10, 4 ],
 		[ 'wp_insert_post',       'on_post_inserted',                10, 3 ],
 		[ 'post_updated',         'on_post_updated',                  1, 1 ],
 		[ 'wp_after_insert_post', 'on_post_save',                    99, 4 ],
 		[ 'before_delete_post',   'on_post_delete',                  10, 1 ],
 		[ 'deleted_post',         'on_post_delete_ended',            10, 1 ],
+		[ 'after_delete_post',    'on_post_deleted',                 10, 1 ],
 		[ 'add_term_relationship',      'on_term_relationship_write',    10, 3 ],
 		[ 'delete_term_relationships',  'on_term_relationship_write',    10, 3 ],
 		[ 'set_object_terms',           'on_object_terms_set',           10, 4 ],

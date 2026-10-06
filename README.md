@@ -566,13 +566,23 @@ and one built from a term is reported with
 [`nextjs_revalidate_post()`](#nextjs_revalidate_post). The
 [Polylang](#polylang) integration adds a post's translations.
 
+Trashing a parent page moves its descendants as well — `/about/team/` becomes
+`/about__trashed/team/` — and each is reported from the URI it had to the one
+it has, after the trashed page's own change. Restoring it moves them back, and
+reports them back. A trash made with a bare `wp_update_post()` setting the
+status to `trash`, rather than with `wp_trash_post()`, reports no descendant:
+WordPress's screens, REST API and bulk actions all go through `wp_trash_post()`.
+
 Permanently deleting a post asks the same question of the post as it stands just
 before it is gone, and reports its URI with no `after`, so the front-end stops
 serving a page for content that no longer exists. A post already in the trash is
 not reported again: trashing it reported that page gone already, and the
 front-end has had no reason to cache it since — so emptying the trash, by hand
-or through WordPress's scheduled sweep, reports nothing. Deleting a revision
-reports nothing either; the post it belongs to still has its page.
+or through WordPress's scheduled sweep, reports nothing of the post itself.
+WordPress reattaches a deleted page's children to its own parent, though, and
+each descendant that moved is reported, whether the page was in the trash or
+not: deleting `/about/` reports `/about/team/` → `/team/`. Deleting a revision
+reports nothing; the post it belongs to still has its page.
 
 ## Which post types the admin offers
 
@@ -1023,22 +1033,28 @@ add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', function( $should_re
 
 ### nextjs_revalidate_dependent_posts
 
-Filters the posts a post's update may move without saving them: the posts whose
-permalink is built from its own. Each is reported after the update when its URI,
-order or parent moved, and left alone when none did — see
-[Dependent posts](#dependent-posts).
+Filters the posts a post's update, trash or permanent delete may move without
+saving them: the posts whose permalink is built from its own. Each is reported
+afterwards when its URI, order or parent moved, and left alone when none did —
+see [Dependent posts](#dependent-posts).
 
 The IDs it starts with are the post's descendants, when it is of a hierarchical
-type and the update changes its slug or its parent, and none otherwise. Asked on
-every update, before the post is written, so a callback that names posts only
-when what their permalinks are built from changes costs nothing on the other
-saves.
+type and the update changes its slug or its parent, or the post is trashed or
+deleted, and none otherwise. Asked on every update, before the post is written,
+so a callback that names posts only when what their permalinks are built from
+changes costs nothing on the other saves.
+
+A trash asks it when it starts, with `$data` holding only `post_status`, and
+again as the save it goes through; a post named both times is reported once. A
+permanent delete asks it with an empty `$data`, since nothing of the post is
+written.
 
 #### Usage
 ```php
 // A feature lives under its linked page: /features/a-feature/.
 add_filter( 'nextjs_revalidate_dependent_posts', function( $post_ids, $post_id, $post_before, $data ) {
-	if ( 'page' !== $post_before->post_type || $data['post_name'] === $post_before->post_name ) return $post_ids;
+	// No `post_name` in `$data` on a trash or a delete, which move it too.
+	if ( 'page' !== $post_before->post_type || ( $data['post_name'] ?? null ) === $post_before->post_name ) return $post_ids;
 	return array_merge( $post_ids, get_posts( [
 		'post_type'  => 'feature',
 		'meta_key'   => 'linked_page',
@@ -1054,9 +1070,9 @@ add_filter( 'nextjs_revalidate_dependent_posts', function( $post_ids, $post_id, 
 | Name | Type | Description |
 | --- | --- | --- |
 | post_ids | int[] | The dependent post IDs |
-| post_id | int | The post about to be updated |
-| post_before | WP_Post | The post as it is before the update |
-| data | array | The post's fields as they are about to be written |
+| post_id | int | The post about to be updated, trashed or deleted |
+| post_before | WP_Post | The post as it is before that |
+| data | array | The post's fields as they are about to be written: only `post_status` on a trash, none on a delete |
 
 ### nextjs_revalidate_change
 

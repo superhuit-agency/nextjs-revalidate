@@ -89,6 +89,12 @@ function is_post_type_viewable( $post_type ) {
 	return in_array( $post_type, $GLOBALS['njr_test_viewable_types'], true );
 }
 
+// No fixture type has descendants: what a delete reports for them is
+// `tests/integration/DependentPostsTest.php`'s, which has a real tree.
+function is_post_type_hierarchical( $post_type ) {
+	return false;
+}
+
 function wp_is_post_revision( $post_id ) {
 	$post = njr_test_post( $post_id );
 	return ( $post && isset( $post['revision_of'] ) ? $post['revision_of'] : false );

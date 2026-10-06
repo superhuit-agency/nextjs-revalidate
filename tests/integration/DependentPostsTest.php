@@ -35,6 +35,7 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 	public function tear_down() {
 		remove_all_filters( 'nextjs_revalidate_dependent_posts' );
+		remove_all_filters( 'nextjs_revalidate_change' );
 		remove_all_filters( 'post_link' );
 
 		parent::tear_down();
@@ -182,6 +183,208 @@ class DependentPostsTest extends PendingChangesTestCase {
 		$this->assertPendingChanges( [
 			Change::post( $child, 'page', '/about/team/', '/company/team/' ),
 			Change::post( $parent, 'page', '/about/', '/company/' ),
+		] );
+	}
+
+	// Trash and delete
+	// ====
+
+	/**
+	 * A permanent delete is no save: core reattaches the deleted page's
+	 * children to its own parent with a direct write, and no save hook sees
+	 * them. Each descendant is reported from where it was to where that left
+	 * it, after the deleted page's own change (#144).
+	 */
+	public function test_deleting_a_parent_page_reports_every_descendant_where_it_was_reattached() {
+		$parent     = $this->page( 'parent' );
+		$child      = $this->page( 'child', $parent );
+		$grandchild = $this->page( 'grandchild', $child );
+
+		$this->reset_pending_changes();
+
+		wp_delete_post( $parent, true );
+
+		$this->assertPendingChanges( [
+			Change::post( $parent, 'page', '/parent/', null ),
+			Change::post( $child, 'page', '/parent/child/', '/child/' ),
+			Change::post( $grandchild, 'page', '/parent/child/grandchild/', '/child/grandchild/' ),
+		] );
+	}
+
+	/**
+	 * A page already in the trash was reported gone when it was trashed, and
+	 * its delete reports nothing of its own — but its published descendants
+	 * still carried its `__trashed` slug, and lose it now.
+	 */
+	public function test_deleting_a_trashed_parent_page_reports_its_descendants_alone() {
+		$parent     = $this->page( 'parent' );
+		$child      = $this->page( 'child', $parent );
+		$grandchild = $this->page( 'grandchild', $child );
+
+		wp_trash_post( $parent );
+
+		$this->reset_pending_changes();
+
+		wp_delete_post( $parent, true );
+
+		$this->assertPendingChanges( [
+			Change::post( $child, 'page', '/parent__trashed/child/', '/child/' ),
+			Change::post( $grandchild, 'page', '/parent__trashed/child/grandchild/', '/child/grandchild/' ),
+		] );
+	}
+
+	/**
+	 * Core writes the `__trashed` suffix before `pre_post_update`, so the save
+	 * sees no slug change, and a URI read there already carries the suffix.
+	 * The descendants are read when the trash starts.
+	 */
+	public function test_trashing_a_parent_page_reports_every_descendant_under_its_trashed_slug() {
+		$parent     = $this->page( 'parent' );
+		$child      = $this->page( 'child', $parent );
+		$grandchild = $this->page( 'grandchild', $child );
+
+		$this->reset_pending_changes();
+
+		wp_trash_post( $parent );
+
+		$this->assertPendingChanges( [
+			Change::post( $parent, 'page', '/parent/', null ),
+			Change::post( $child, 'page', '/parent/child/', '/parent__trashed/child/' ),
+			Change::post( $grandchild, 'page', '/parent/child/grandchild/', '/parent__trashed/child/grandchild/' ),
+		] );
+	}
+
+	/**
+	 * Restoring goes through a save that gives the page its slug back, which
+	 * the save path already sees. The page itself comes back a draft, with no
+	 * page of its own.
+	 */
+	public function test_restoring_a_parent_page_reports_its_descendants_back_where_they_were() {
+		$parent     = $this->page( 'parent' );
+		$child      = $this->page( 'child', $parent );
+		$grandchild = $this->page( 'grandchild', $child );
+
+		wp_trash_post( $parent );
+
+		$this->reset_pending_changes();
+
+		wp_untrash_post( $parent );
+
+		$this->assertPendingChanges( [
+			Change::post( $child, 'page', '/parent__trashed/child/', '/parent/child/' ),
+			Change::post( $grandchild, 'page', '/parent__trashed/child/grandchild/', '/parent/child/grandchild/' ),
+		] );
+	}
+
+	/**
+	 * A post type that is not hierarchical has no descendants, on its way to
+	 * the trash or out of the site, whatever its `post_parent` column holds.
+	 */
+	public function test_trashing_a_post_reports_no_other_post() {
+		$post  = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'a-post' ] );
+		$other = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'other', 'post_parent' => $post ] );
+
+		$started = $this->ids_the_filter_starts_with( $post );
+
+		$this->reset_pending_changes();
+
+		wp_trash_post( $post );
+
+		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', null, $this->uncategorized(), $this->uncategorized() ) ] );
+		$this->assertNotContains( $other, array_column( $this->pending_changes()->pending(), 'id' ) );
+
+		// A post's permalink is not built from its parent's, so `$other` stays
+		// put either way: what pins the walk is what the filter is handed.
+		$this->assertSame( [ [], [] ], $started->ids, 'The trash walked the tree of a type that has none.' );
+	}
+
+	public function test_deleting_a_post_reports_no_other_post() {
+		$post  = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'a-post' ] );
+		$other = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'other', 'post_parent' => $post ] );
+
+		$started = $this->ids_the_filter_starts_with( $post );
+
+		$this->reset_pending_changes();
+
+		wp_delete_post( $post, true );
+
+		$this->assertPendingChanges( [ Change::post( $post, 'post', '/a-post/', null, $this->uncategorized(), $this->uncategorized() ) ] );
+		$this->assertNotContains( $other, array_column( $this->pending_changes()->pending(), 'id' ) );
+
+		// Core reattaches no child of a type that is not hierarchical, so
+		// `$other` stays put either way: what pins the walk is what the filter
+		// is handed.
+		$this->assertSame( [ [] ], $started->ids, 'The delete walked the tree of a type that has none.' );
+	}
+
+	/**
+	 * A trash is a save too, and the save asks the filter again once the
+	 * suffix is written. A post both name is reported once, from where it
+	 * stood before the trash — not from the `__trashed` URI the save reads.
+	 */
+	public function test_a_descendant_the_save_also_names_is_reported_once_from_where_it_was() {
+		$parent = $this->page( 'parent' );
+		$child  = $this->page( 'child', $parent );
+
+		add_filter( 'nextjs_revalidate_dependent_posts', function ( $post_ids, $post_id ) use ( $parent, $child ) {
+			if ( $parent === $post_id ) $post_ids[] = $child;
+			return $post_ids;
+		}, 10, 2 );
+
+		$reported = $this->count_reports_of( $child );
+
+		$this->reset_pending_changes();
+
+		wp_trash_post( $parent );
+
+		$this->assertPendingChanges( [
+			Change::post( $parent, 'page', '/parent/', null ),
+			Change::post( $child, 'page', '/parent/child/', '/parent__trashed/child/' ),
+		] );
+		$this->assertSame( 1, $reported->count, 'The child was reported more than once.' );
+	}
+
+	public function test_a_descendant_is_reported_once_for_a_delete() {
+		$parent = $this->page( 'parent' );
+		$child  = $this->page( 'child', $parent );
+
+		$reported = $this->count_reports_of( $child );
+
+		$this->reset_pending_changes();
+
+		wp_delete_post( $parent, true );
+
+		$this->assertSame( 1, $reported->count, 'The child was not reported exactly once.' );
+	}
+
+	/**
+	 * The filter is asked on a delete too, with nothing about to be written:
+	 * a post whose permalink a theme builds from the deleted one moves with it.
+	 */
+	public function test_the_filter_adds_a_post_whose_permalink_is_built_from_a_deleted_one() {
+		$page    = $this->page( 'features' );
+		$feature = self::factory()->post->create( [ 'post_status' => 'publish', 'post_name' => 'a-feature' ] );
+		update_post_meta( $feature, 'linked_page', $page );
+
+		$this->link_posts_under_their_page();
+
+		$asked = [];
+		add_filter( 'nextjs_revalidate_dependent_posts', function ( $post_ids, $post_id, $post_before, $data ) use ( $page, $feature, &$asked ) {
+			if ( $page !== $post_id ) return $post_ids;
+
+			$asked[]    = [ $post_before->ID, $data ];
+			$post_ids[] = $feature;
+			return $post_ids;
+		}, 10, 4 );
+
+		$this->reset_pending_changes();
+
+		wp_delete_post( $page, true );
+
+		$this->assertSame( [ [ $page, [] ] ], $asked );
+		$this->assertPendingChanges( [
+			Change::post( $page, 'page', '/features/', null ),
+			Change::post( $feature, 'post', '/features/a-feature/', '/a-feature/', $this->uncategorized(), $this->uncategorized() ),
 		] );
 	}
 
@@ -424,6 +627,44 @@ class DependentPostsTest extends PendingChangesTestCase {
 
 			return trailingslashit( get_permalink( $page ) ) . $post->post_name . '/';
 		}, 10, 2 );
+	}
+
+	/**
+	 * Record the IDs `nextjs_revalidate_dependent_posts` starts with each time
+	 * it is asked about a post from here on: the descendants the plugin walked,
+	 * before any callback adds to them.
+	 *
+	 * @param int $post_id
+	 * @return \stdClass Its `ids`, one list per ask, kept up to date.
+	 */
+	private function ids_the_filter_starts_with( $post_id ) {
+		$started = (object) [ 'ids' => [] ];
+
+		add_filter( 'nextjs_revalidate_dependent_posts', function ( $post_ids, $asked_id ) use ( $post_id, $started ) {
+			if ( $post_id === $asked_id ) $started->ids[] = $post_ids;
+			return $post_ids;
+		}, PHP_INT_MIN, 2 );
+
+		return $started;
+	}
+
+	/**
+	 * Count how many times a post's change is reported from here on, merged or
+	 * not: the pending changes merge a post's changes into one, which would
+	 * hide a second report.
+	 *
+	 * @param int $post_id
+	 * @return \stdClass Its `count`, kept up to date.
+	 */
+	private function count_reports_of( $post_id ) {
+		$reported = (object) [ 'count' => 0 ];
+
+		add_filter( 'nextjs_revalidate_change', function ( $change ) use ( $post_id, $reported ) {
+			if ( is_array( $change ) && 'post' === $change['subject'] && $post_id === $change['id'] ) $reported->count++;
+			return $change;
+		} );
+
+		return $reported;
 	}
 
 	/**

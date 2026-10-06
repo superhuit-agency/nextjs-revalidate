@@ -50,6 +50,37 @@ after the saved post's own.
   $before_url )` reports one from the URI it had: the theme reads the permalink
   before the term changes and reports it after.
 
+**A trash and a permanent delete report the posts they move too** (#144),
+though neither is a save the rule above can hang on. Its descendants always,
+when the post is of a hierarchical type, and whatever
+`nextjs_revalidate_dependent_posts` adds, each from where it stood to where it
+stands after, and only when it moved:
+
+- **A permanent delete** reattaches the deleted post's children to its own
+  parent with a `$wpdb->update()`, and fires no save hook for them. Where they
+  stood is read on `before_delete_post`, beside the deleted post's own change,
+  and they are reported on `after_delete_post`, once core has cleared their
+  cache. Whether or not the deleted post was already in the trash: it reports
+  nothing of its own then, but its descendants still lose its `__trashed` slug.
+  The filter is asked with an empty `$data`, since nothing of the post is
+  written.
+- **A trash** is a save, but `wp_insert_post()` writes the `__trashed` suffix to
+  the post's row before `pre_post_update`. The save sees no slug change, so it
+  never walks the tree, and a URI read there would already carry the suffix.
+  Where the dependent posts stood is read on `wp_trash_post`, which
+  `wp_trash_post()` fires before its `wp_update_post()`, asking the filter with
+  `$data` holding only `post_status`. The trash's own save takes them on its
+  `pre_post_update` and reports them with the rest of its dependent posts, so a
+  post both name is reported once, from where it stood when the trash started.
+- **A restore** needs nothing more: `wp_untrash_post()` gives the post its slug
+  back through a save, which sees the slug change.
+
+**A trash made with `wp_update_post( [ 'post_status' => 'trash' ] )` alone,
+without `wp_trash_post()`, reports no descendant.** Nothing fires between the
+call and the suffix being written. Core's screens, its REST API and its bulk
+actions all trash through `wp_trash_post()`; a plugin that does not is accepted
+as a gap rather than designed around.
+
 **A plugin writing posts with direct SQL is an integration that reads the posts
 before the plugin handles the request, and reports those it wrote after.** Its
 own action says a write happened, but not what each post was before it, so the
@@ -93,6 +124,17 @@ one differs.** Precise, but a snapshot of the date, every custom field, the
 featured image and the terms on every save, re-deriving what Polylang's options
 mean. A site has a handful of languages; reporting them all costs less.
 
+**Leave a trashed or deleted parent's descendants to the front-end** (#144):
+it could expire every URI under the parent's from the parent's own change. The
+plugin reports each descendant instead, as it does for a rename, so the
+front-end needs no rule of its own for where a subtree starts, and nothing
+reads WordPress's hierarchy off the wire.
+
+**Read a trash's descendants on `pre_post_update`, as a save does.** The
+`__trashed` suffix is already written there, which is why the trash reads them
+on `wp_trash_post` — and leaves out a trash that does not go through
+`wp_trash_post()`.
+
 **Leave Simple Custom Post Order's fallback to its integration tests.** They
 drive the real handler and would fail on a plugin update. Rejected because a site
 updates the plugin before this one catches up, and its listings would go stale
@@ -101,7 +143,10 @@ with nothing said.
 ## Consequences
 
 - A rename of a parent page with many descendants reports as many changes, sent
-  in requests of up to 100 each (ADR 0034).
+  in requests of up to 100 each (ADR 0034). So do a trash and a delete of one.
+- Every trash and every permanent delete asks the filter, and walks the tree of
+  a post of a hierarchical type — emptying a trash of many pages walks it once
+  for each.
 - The dependent posts' `before` costs a permalink per candidate on every update
   that names any — none, for an edit of a post with no translations and no
   theme callback.
