@@ -105,6 +105,18 @@ check_same( 'https://front-end.test/api/revalidate', $settings->endpoint_url(), 
 site( [ DOMAIN => 'https://front-end.test/', PATH_OPT => 'api/revalidate' ] );
 check_same( 'https://front-end.test/api/revalidate', $settings->endpoint_url(), 'neither half carrying a slash still joins with one' );
 
+// A trailing slash on the path is kept, because a Next.js app with
+// `trailingSlash: true` serves its route only there, and answers the bare path
+// with a redirect (ADR 0039). One, however many were typed.
+site( [ DOMAIN => 'https://front-end.test', PATH_OPT => '/api/revalidate/' ] );
+check_same( 'https://front-end.test/api/revalidate/', $settings->endpoint_url(), 'a trailing slash on the path is kept' );
+
+site( [ DOMAIN => 'https://front-end.test/', PATH_OPT => 'api/revalidate//' ] );
+check_same( 'https://front-end.test/api/revalidate/', $settings->endpoint_url(), 'a run of trailing slashes on the path is kept as one' );
+
+site( [ DOMAIN => 'https://front-end.test', PATH_OPT => '//' ] );
+check_same( 'https://front-end.test/api/revalidate', $settings->endpoint_url(), 'a path of nothing but slashes falls back to the default' );
+
 // A path field holding only a slash is a field an operator cleared, not a
 // request to revalidate against the domain root — which no Next.js app serves.
 site( [ DOMAIN => 'https://front-end.test', PATH_OPT => '/' ] );

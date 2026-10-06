@@ -135,6 +135,37 @@ class PolylangSettingsTest extends PendingChangesTestCase {
 		];
 	}
 
+	// String translations
+	// ====
+
+	/**
+	 * A translated site title or tagline, or any string registered with
+	 * Polylang, saved from Languages → Translations: Polylang stores each
+	 * language's in the language term's meta, and writes no option.
+	 */
+	public function test_saving_a_language_s_string_translations_reports_a_change() {
+		$french = $this->add_language( 'fr_FR', 'fr' );
+		$this->reset_pending_changes();
+
+		$mo = new \PLL_MO();
+		$mo->add_entry( $mo->make_entry( 'A site title', 'Un titre de site' ) );
+		$mo->export_to_db( $french );
+
+		$this->assertPendingChanges( [ Change::settings() ] );
+	}
+
+	/**
+	 * Another term meta, of a language or of any term, is not a site setting.
+	 */
+	public function test_other_term_meta_reports_nothing() {
+		$french = $this->add_language( 'fr_FR', 'fr' );
+		$this->reset_pending_changes();
+
+		update_term_meta( $french->term_id, 'njr_something_else', 'a value' );
+
+		$this->assertNoPendingChanges();
+	}
+
 	// Fixtures
 	// ====
 

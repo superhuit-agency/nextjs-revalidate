@@ -123,9 +123,9 @@ webpack failure used to fail an item and no longer does. That was accepted to
 keep the gate to scripts a developer already runs; `tsc` covers the TypeScript
 either way, and #34 files the real PHP compatibility gate.
 
-That weakness is why implementers run on Opus 5.5 at high effort — implementer
-judgement is the only real quality control in this pipeline, and downgrading the
-model does not make the gate any stricter.
+That weakness is why implementers run on Opus 5.5 — implementer judgement is the
+only real quality control in this pipeline, and downgrading the model does not
+make the gate any stricter.
 
 ## Considered Options
 
