@@ -4,7 +4,7 @@ Tags: Next.js, Nextjs, Next, Cache, revalidate, Purge
 Requires at least: 5.6
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.1.0
 license: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -183,14 +183,35 @@ two entries. The full notes are in CHANGELOG.md on GitHub.
   domain, is reached again. Since 2.0.0 the secret's `Authorization: Bearer`
   header took the place of the credentials, so such a front-end answered every
   delivery 401. For a domain with credentials, the plugin now sends them as
-  `Authorization: Basic`, and the secret in `X-Nextjs-Revalidate-Secret`. This
-  also lets the 2.0.1 fix for credentials across a redirect take effect. A
-  domain without credentials sends what 2.0 sent.
+  `Authorization: Basic`, and the secret in `X-Nextjs-Revalidate-Secret`. A
+  307 or a 308 to the front-end's own origin whose `Location` is an absolute
+  URL, as a proxy rewriting `Location` sends it, now keeps the credentials too,
+  as a `Location` that is a path already did. A domain without credentials
+  sends what 2.0 sent.
 * Act on it: a revalidate domain that still has credentials its front-end no
   longer checks gets a 401 from 2.1.0, because the secret is no longer in
   `Authorization` there. Before upgrading, update the route to read
   `X-Nextjs-Revalidate-Secret` first, as the README's reference route does, or
   take the credentials out of the domain.
+* Fixed: a Simple Custom Post Order drag and drop is read the way that plugin
+  reads it, by hand, rather than with `parse_str()`. On a host whose
+  `max_input_vars` is lower than the number of posts dragged, `parse_str()`
+  stopped at the limit with a warning: printed with `display_errors` on, it broke
+  the drag and drop's answer, and the posts past the limit were never reported.
+  A list whose `[]` arrives percent-encoded is read too.
+* Fixed: the Simple Custom Post Order and Nested Pages integrations read a
+  reorder request only when it carries the plugin's own nonce. They looked up
+  every post a drag and drop named before the plugin checked its nonce, so any
+  logged-in user, a subscriber included, could have as many posts looked up as
+  one request named, although the plugin then refused it.
+* Fixed: trashing or permanently deleting a parent page reports each descendant
+  whose URI that moved, from its old URI to its new one, as a save that renames
+  or moves the parent already did. Before, only the parent was reported, and
+  deleting a parent already in the trash reported nothing.
+* Fixed: revalidate all, opened with no referer such as from a bookmarked
+  link, raised an `Undefined array key "post"` warning. Where warnings are
+  displayed, it broke the redirect back and left a page of warnings instead of
+  the notice.
 * Added: a `term` change. Creating, editing or deleting a term of a
   revalidatable taxonomy reports its slug and archive URI before and after,
   with each descendant whose archive moved, and the default term a delete moved
@@ -217,33 +238,6 @@ two entries. The full notes are in CHANGELOG.md on GitHub.
   by revalidate all of a post type. The Polylang integration declines it through
   the `nextjs_revalidate_should_revalidate_taxonomy` filter, which a site can
   use to admit it again.
-
-= 2.0.1 =
-
-* Fixed: a 307 or a 308 to the front-end's own origin whose `Location` is an
-  absolute URL, as a proxy rewriting `Location` sends it, keeps the basic-auth
-  credentials of the revalidate domain, as a `Location` that is a path already
-  did. Without them, a staging front-end behind basic auth answered the
-  redirected request 401 and the delivery failed.
-* Fixed: a Simple Custom Post Order drag and drop is read the way that plugin
-  reads it, by hand, rather than with `parse_str()`. On a host whose
-  `max_input_vars` is lower than the number of posts dragged, `parse_str()`
-  stopped at the limit with a warning: printed with `display_errors` on, it broke
-  the drag and drop's answer, and the posts past the limit were never reported.
-  A list whose `[]` arrives percent-encoded is read too.
-* Fixed: the Simple Custom Post Order and Nested Pages integrations read a
-  reorder request only when it carries the plugin's own nonce. They looked up
-  every post a drag and drop named before the plugin checked its nonce, so any
-  logged-in user, a subscriber included, could have as many posts looked up as
-  one request named, although the plugin then refused it.
-* Fixed: trashing or permanently deleting a parent page reports each descendant
-  whose URI that moved, from its old URI to its new one, as a save that renames
-  or moves the parent already did. Before, only the parent was reported, and
-  deleting a parent already in the trash reported nothing.
-* Fixed: revalidate all, opened with no referer such as from a bookmarked
-  link, raised an `Undefined array key "post"` warning. Where warnings are
-  displayed, it broke the redirect back and left a page of warnings instead of
-  the notice.
 
 = 2.0.0 =
 

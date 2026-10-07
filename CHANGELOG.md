@@ -6,8 +6,8 @@ site has to do about it. Releases before 2.0.0 are listed in the changelog of
 
 ## 2.1.0
 
-Contract version **2**, unchanged: everything below is a new subject or a new
-field, which a front-end written for 2.0 ignores (rule 1 of the
+Contract version **2**, unchanged: everything added below is a new subject or a
+new field, which a front-end written for 2.0 ignores (rule 1 of the
 [front-end contract](README.md#two-rules)) — except on a site whose revalidate
 domain has basic-auth credentials, which has to read the secret from a new
 header (the **Act on it** entry below).
@@ -20,9 +20,12 @@ header (the **Act on it** entry below).
   all — so the front-end answered every delivery and every probe 401. For a
   domain with credentials, the plugin now sends them itself as
   `Authorization: Basic`, percent-decoded, and the secret, bare, in
-  `X-Nextjs-Revalidate-Secret`, on every hop of a followed redirect. That also
-  lets 2.0.1's carrying of the credentials across a redirect (#184) take effect.
-  A domain without credentials sends exactly what 2.0 sent
+  `X-Nextjs-Revalidate-Secret`, on every hop of a followed redirect. A 307 or a
+  308 to the same origin whose `Location` is an absolute URL — the shape a proxy
+  rewriting `Location` answers with — now keeps the domain's credentials too, as
+  one whose `Location` is a path already did; a `Location` naming credentials of
+  its own keeps them, and a redirect to another origin is still not followed
+  (#184). A domain without credentials sends exactly what 2.0 sent
   ([ADR 0042](docs/adr/0042-a-domain-with-credentials-moves-the-secret-to-its-own-header.md),
   #199). The README's reference route reads `X-Nextjs-Revalidate-Secret` first,
   then `Authorization: Bearer`.
@@ -34,6 +37,37 @@ header (the **Act on it** entry below).
   upgrading**, either update the route to read the new header, as the
   [front-end contract](README.md#the-request) says, or take the credentials out
   of the domain.
+- **Fixed:** a Simple Custom Post Order drag and drop is read whole. Its list of
+  posts was read with `parse_str()`, which stops at `max_input_vars` and warns
+  as it does. On a host whose limit is lower than the number of posts dragged,
+  the warning — printed with `display_errors` on — broke the JSON the drag and
+  drop answers with, and the posts past the limit were never reported. The list
+  is now read by hand, the way Simple Custom Post Order 2.8.9 reads it, so the
+  posts reported are the ones it writes; a list whose `[]` arrives
+  percent-encoded is read too (#186).
+- **Fixed:** a reorder request is read only when it carries the plugin's own
+  nonce. The Simple Custom Post Order and Nested Pages integrations read the
+  posts a drag and drop names, and looked each one up, before the plugin checked
+  its nonce. Any logged-in user, a subscriber included, could send one request
+  naming as many posts as they liked and have every one looked up, although the
+  plugin then refused it. Each integration now checks the nonce the plugin is
+  about to check first, and reads nothing when it fails; the plugin still
+  answers the request its own way (#187).
+- **Fixed:** trashing or deleting a parent reports the descendants it moves.
+  Trashing a page adds `__trashed` to its slug, and deleting one reattaches its
+  children to its own parent, so every descendant's URI changes — `/about/team/`
+  becomes `/about__trashed/team/`, then `/team/` — without a save of its own.
+  Only the parent was reported, and deleting a parent already in the trash
+  reported nothing. Each descendant whose URI moved is now reported as its own
+  `post` change, from its old URI to its new one, as a save that renames or
+  moves a parent already did (#144).
+- **Fixed:** revalidate all with no referer sends you back instead of printing a
+  warning. It redirects back to the screen it came from, and to the posts list
+  when the browser sends no referer — a link opened in a new tab with
+  `noreferrer`, a bookmarked action URL. On that fallback it read a post it
+  never names, raising an `Undefined array key "post"` warning; where warnings
+  are displayed, it was printed before the redirect, which then failed, leaving
+  a page of warnings where the notice should have been (#200).
 - **Added:** a `term` change. Creating, editing or deleting a term of a
   revalidatable taxonomy reports its slug and the URI of its archive before and
   after — `null` before a creation and after a delete, equal sides for a name
@@ -83,50 +117,6 @@ header (the **Act on it** entry below).
   type no longer names `language` in its `taxonomies`, as 2.0 did. A site that
   does tag pages with a language's term can admit it again from a later
   priority of that filter.
-
-## 2.0.1
-
-### Fixed
-
-- **A redirect to the front-end's own URL keeps the basic-auth credentials.** A
-  307 or a 308 to the same origin was followed with the credentials of the
-  revalidate domain only when its `Location` was a path, the shape Next.js
-  answers with. One given as an absolute URL — the shape a proxy rewriting
-  `Location` answers with — was followed without them, so a staging front-end
-  behind basic auth answered it 401 and the delivery failed. The credentials now
-  carry over to both; a `Location` naming credentials of its own keeps them, and
-  a redirect to another origin is still not followed (#184).
-- **A Simple Custom Post Order drag and drop is read whole.** Its list of posts
-  was read with `parse_str()`, which stops at `max_input_vars` and warns as it
-  does. On a host whose limit is lower than the number of posts dragged, the
-  warning — printed with `display_errors` on — broke the JSON the drag and drop
-  answers with, and the posts past the limit were never reported. The list is
-  now read by hand, the way Simple Custom Post Order 2.8.9 reads it, so the
-  posts reported are the ones it writes; a list whose `[]` arrives
-  percent-encoded is read too (#186).
-- **A reorder request is read only when it carries the plugin's own nonce.**
-  The Simple Custom Post Order and Nested Pages integrations read the posts a
-  drag and drop names, and looked each one up, before the plugin checked its
-  nonce. Any logged-in user, a subscriber included, could send one request
-  naming as many posts as they liked and have every one looked up, although
-  the plugin then refused it. Each integration now checks the nonce the plugin
-  is about to check first, and reads nothing when it fails; the plugin still
-  answers the request its own way (#187).
-- **Trashing or deleting a parent reports the descendants it moves.** Trashing
-  a page adds `__trashed` to its slug, and deleting one reattaches its children
-  to its own parent, so every descendant's URI changes — `/about/team/` becomes
-  `/about__trashed/team/`, then `/team/` — without a save of its own. Only the
-  parent was reported, and deleting a parent already in the trash reported
-  nothing. Each descendant whose URI moved is now reported as its own `post`
-  change, from its old URI to its new one, as a save that renames or moves a
-  parent already did (#144).
-- **Revalidate all with no referer sends you back instead of printing a
-  warning.** It redirects back to the screen it came from, and to the posts list
-  when the browser sends no referer — a link opened in a new tab with
-  `noreferrer`, a bookmarked action URL. On that fallback it read a post it
-  never names, raising an `Undefined array key "post"` warning; where warnings
-  are displayed, it was printed before the redirect, which then failed, leaving
-  a page of warnings where the notice should have been.
 
 ## 2.0.0
 

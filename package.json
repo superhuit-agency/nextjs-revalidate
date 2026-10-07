@@ -1,6 +1,6 @@
 {
   "name": "nextjs-revalidate",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Tells a Next.js front-end which WordPress content changed — posts, menus, templates, redirects — so it can revalidate whatever it cached from it, on save and from the admin.",
   "main": "nextjs-revalidate.php",
   "repository": "git@github.com:superhuit-agency/nextjs-revalidate.git",
