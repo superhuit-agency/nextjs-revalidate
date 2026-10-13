@@ -750,10 +750,11 @@ class RevalidateQueue extends Base implements Hookable {
 		// Turned away by the cap. The event that fired this is already consumed,
 		// and drains *starting* are what keep the queue scheduled, so returning
 		// without arming the next one would leave the queue's liveness to the
-		// drains already running — which cannot reschedule reliably (see
-		// `forget_cached_cron()`). A turned-away tick costs one cheap request a
-		// minute while the cap holds; a dropped one stalls the queue until
-		// something new is enqueued (#208).
+		// drains already running — which only reschedule as they finish, up to
+		// their whole time budget later, and not at all if they are killed
+		// first. A turned-away tick costs one cheap request a minute while the
+		// cap holds; a dropped one stalls the queue until something new is
+		// enqueued (#208).
 		if ( false === $n_cron ) {
 			$this->schedule_next_cron();
 			return;

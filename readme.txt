@@ -152,6 +152,16 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
+= 1.7.1 =
+
+* Fixed: the revalidation queue no longer stops draining while it still holds
+  entries. A drain that found four already running returned without scheduling
+  the next one, and a drain that had run for a long time could not see that the
+  next one had already fired, so nothing was scheduled. The entries left then
+  waited — for hours, on a host with a long `max_execution_time` — until
+  something new was enqueued. The queue now stays scheduled for as long as it
+  holds entries.
+
 = 1.7.0 =
 
 * Added: the Redirection integration. Creating, editing, deleting, enabling or
