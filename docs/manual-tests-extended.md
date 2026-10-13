@@ -368,6 +368,8 @@ Run this last in Part 1 — it destroys the site's plugin data.
       `nextjs_revalidate-debug`, `nextjs_revalidate-db_version`,
       `nextjs_revalidate-log_suffix`, `nextjs_revalidate-failure_window`,
       `nextjs-revalidate-scheduled_purges`. Expect all "could not be found".
+      And `npx wp-env run cli wp option list --search='nextjs_revalidate-drain_lease-*'`
+      lists nothing: a drain's lease is a row of its own, and goes with the rest.
 - [ ] **Restore the install**: `npm run stop && npm start`. Deleting the plugin
       removed its registration, not the mounted working tree.
 

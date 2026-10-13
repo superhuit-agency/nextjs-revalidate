@@ -304,7 +304,7 @@ class NextJsRevalidate {
 
 	/**
 	 * Tear one site down as far as an uninstall goes: its settings, its
-	 * scheduled purges and its queue table are dropped.
+	 * scheduled purges, its queue table and its drain leases are dropped.
 	 */
 	public function uninstall_site() {
 		Settings::delete_settings();
@@ -312,6 +312,7 @@ class NextJsRevalidate {
 		FailureWindow::clear();
 
 		$this->queue->delete_table();
+		$this->queue->delete_drain_leases();
 	}
 
 	/**
