@@ -746,7 +746,19 @@ class RevalidateQueue extends Base implements Hookable {
 	 */
 	public function run_cron() {
 		$n_cron = $this->add_running_cron();
-		if ( false === $n_cron ) return;
+
+		// Turned away by the cap. The event that fired this is already consumed,
+		// and drains *starting* are what keep the queue scheduled, so returning
+		// without arming the next one would leave the queue's liveness to the
+		// drains already running — which only reschedule as they finish, up to
+		// their whole time budget later, and not at all if they are killed
+		// first. A turned-away tick costs one cheap request a minute while the
+		// cap holds; a dropped one stalls the queue until something new is
+		// enqueued (#208).
+		if ( false === $n_cron ) {
+			$this->schedule_next_cron();
+			return;
+		}
 
 		$id = uniqid();
 		$start_time = time();
@@ -790,7 +802,33 @@ class RevalidateQueue extends Base implements Hookable {
 		} while ($item && $max_exec_time > (time() - $start_time) );
 
 		$this->remove_running_cron();
+		$this->forget_cached_cron();
 		$this->schedule_next_cron();
+	}
+
+	/**
+	 * Drop this request's copy of the `cron` option, so the next read of it
+	 * comes from the database.
+	 *
+	 * A drain runs for up to its whole time budget — an hour, on a host that
+	 * allows one — and the copy it holds dates from when it armed the next
+	 * event at its own start. That event has long since fired in another
+	 * request, but `wp_next_scheduled()` still finds it in the stale copy, so
+	 * `schedule_next_cron()` concludes the queue is scheduled and does nothing.
+	 * Writing from the stale copy would be no better: `wp_schedule_single_event()`
+	 * saves the whole array, and would put back events other requests have
+	 * since run or moved (#208).
+	 *
+	 * Only a finishing drain needs this. Every other caller of
+	 * `schedule_next_cron()` runs in a request too short to have gone stale, and
+	 * dropping `alloptions` there — once per enqueue, in a bulk save — would
+	 * cost every later request a reload for nothing.
+	 *
+	 * @return void
+	 */
+	private function forget_cached_cron() {
+		wp_cache_delete( 'alloptions', 'options' );
+		wp_cache_delete( 'cron', 'options' );
 	}
 
 	/**
