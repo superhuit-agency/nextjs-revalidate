@@ -265,8 +265,8 @@ njr_test_assert(
 	'`http_{status}` keeps the literal this plugin wrote, redaction and all'
 );
 
-// Nothing is thrown out of the trait, including out of the redaction: the queue
-// drain runs this in a loop holding a running-cron count.
+// Nothing is thrown out of the trait, including out of the redaction: a drain
+// runs this in a loop holding a drain lease.
 $thrown = false;
 try {
 	njr_test_message( $secret, njr_test_throw( 'a filter blew up' ) );

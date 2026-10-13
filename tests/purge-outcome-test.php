@@ -251,8 +251,8 @@ foreach ( [ 401, 403, 404, 500 ] as $status ) {
 $outcome = njr_test_purge( $configured, [ 'body' => '' ] );
 njr_test_assert( 'no_response' === njr_test_code( $outcome ), 'an answer without a status is `no_response`, never `http_0`' );
 
-// Anything thrown inside the attempt is caught: the drain runs this in a loop
-// and holds a running-cron count while it does.
+// Anything thrown inside the attempt is caught: a drain runs this in a loop
+// and holds a drain lease while it does.
 $outcome = njr_test_purge( $configured, function() { throw new \RuntimeException( 'a filter blew up' ); } );
 njr_test_assert( 'exception' === njr_test_code( $outcome ), 'a throw is caught and named `exception`' );
 njr_test_assert(

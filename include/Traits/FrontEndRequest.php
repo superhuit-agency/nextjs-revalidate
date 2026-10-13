@@ -41,10 +41,9 @@ trait FrontEndRequest {
 	/**
 	 * Ask the front-end for a URL, and name what came back.
 	 *
-	 * Nothing is thrown out of here. The queue drain runs this in a loop while
-	 * holding a running-cron count, and the FSE snapshot calls it from
-	 * `shutdown` — in both places a throw would cost far more than the one
-	 * request that produced it.
+	 * Nothing is thrown out of here. A drain runs this in a loop while holding
+	 * a drain lease, and the FSE snapshot calls it from `shutdown` — in both
+	 * places a throw would cost far more than the one request that produced it.
 	 *
 	 * @param string $url     The fully composed URL, secret included.
 	 * @param int    $timeout Seconds to wait for an answer.

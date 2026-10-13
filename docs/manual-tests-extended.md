@@ -356,6 +356,11 @@ Redirection's own bulk screen.
 
 Run this last in Part 1 — it destroys the site's plugin data.
 
+Precondition: a drain lease left behind, as a drain killed part-way leaves one.
+A drain that finishes gives its lease back, so without this there is no lease
+row for the uninstall to delete:
+`npx wp-env run cli wp option add nextjs_revalidate-drain_lease-0 9999999999 --autoload=no`.
+
 - [ ] **Deactivate, then Delete the plugin from the Plugins screen.** Expect no
       error.
 - [ ] **Expect the table gone**:
@@ -368,6 +373,9 @@ Run this last in Part 1 — it destroys the site's plugin data.
       `nextjs_revalidate-debug`, `nextjs_revalidate-db_version`,
       `nextjs_revalidate-log_suffix`, `nextjs_revalidate-failure_window`,
       `nextjs-revalidate-scheduled_purges`. Expect all "could not be found".
+      And `npx wp-env run cli wp option list --search='nextjs_revalidate-drain_lease-*'`
+      lists nothing, the precondition's lease included: a drain's lease is a
+      row of its own, and goes with the rest.
 - [ ] **Restore the install**: `npm run stop && npm start`. Deleting the plugin
       removed its registration, not the mounted working tree.
 

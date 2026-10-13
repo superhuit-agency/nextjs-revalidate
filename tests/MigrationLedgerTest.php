@@ -169,6 +169,14 @@ function delete_option( $name ) {
 $GLOBALS['njr_test_table_migrations'] = 0;
 
 /**
+ * How many times the migration asked the queue to forget the count of running
+ * drains releases up to 1.7.0 kept.
+ *
+ * @var int
+ */
+$GLOBALS['njr_test_running_counts_forgotten'] = 0;
+
+/**
  * The revalidation queue, as much of it as a migration reaches.
  *
  * `Settings::migrate_db()` asks the queue to bring its table to the shape the
@@ -180,6 +188,10 @@ class NJR_Queue_Double {
 
 	public function migrate_table() {
 		$GLOBALS['njr_test_table_migrations']++;
+	}
+
+	public function forget_running_count() {
+		$GLOBALS['njr_test_running_counts_forgotten']++;
 	}
 }
 
@@ -235,10 +247,11 @@ $failures = 0;
  * @return Settings The instance which migrated it, for a second run.
  */
 function migrate( array $options ) {
-	$GLOBALS['njr_test_options']          = $options;
-	$GLOBALS['njr_test_writes']           = [];
-	$GLOBALS['njr_test_table_migrations'] = 0;
-	$GLOBALS['njr_test_settings_errors']  = [];
+	$GLOBALS['njr_test_options']                  = $options;
+	$GLOBALS['njr_test_writes']                   = [];
+	$GLOBALS['njr_test_table_migrations']         = 0;
+	$GLOBALS['njr_test_running_counts_forgotten'] = 0;
+	$GLOBALS['njr_test_settings_errors']          = [];
 
 	// In the order `admin_init` runs them.
 	$settings = new Settings();
@@ -471,6 +484,13 @@ check_same( [ 'page' => 'on' ], options()[ ALLOW_REVALIDATE_ALL ], 'a stamped si
 migrate( [ LEDGER => '1.6.9', ALLOW_REVALIDATE_ALL => [ 'page' => 'on' ] ] );
 check_same( [ 'update:' . LEDGER ], writes(), 'a site stamped 1.6.9 only re-stamps' );
 check_same( NJR_VERSION, options()[ LEDGER ], 'the ledger moves to the running version' );
+
+// The count of running drains became one lease per drain (#210). A site the
+// ledger has at 1.7.0 forgets the count; one already past it is not asked.
+migrate( [ LEDGER => '1.7.0' ] );
+check_same( 1, $GLOBALS['njr_test_running_counts_forgotten'], 'a site stamped 1.7.0 forgets the count of running drains' );
+migrate( [ LEDGER => '1.7.1' ] );
+check_same( 0, $GLOBALS['njr_test_running_counts_forgotten'], 'a site stamped 1.7.1 is not asked to forget it again' );
 
 // Migrating twice is indistinguishable from migrating once, whatever the site
 // does with its data in between. This is what the version comparison could not

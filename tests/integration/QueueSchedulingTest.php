@@ -12,7 +12,7 @@
  *    own stale copy of the `cron` option, which still held the event it armed
  *    at its start, long since fired elsewhere — so it rescheduled nothing.
  *
- * Both need real cron, transients and the queue table, which is what sends them
+ * Both need real cron, options and the queue table, which is what sends them
  * here rather than to a standalone script. See
  * `docs/adr/0008-two-testing-idioms.md`.
  *
@@ -41,7 +41,6 @@ class QueueSchedulingTest extends QueueTestCase {
 	 */
 	public function tear_down() {
 		remove_filter( 'pre_http_request', [ $this, 'answer_the_front_end' ] );
-		delete_transient( RevalidateQueue::CRON_TRANSCIENT_NAME );
 		FailureWindow::clear();
 
 		parent::tear_down();
@@ -71,7 +70,7 @@ class QueueSchedulingTest extends QueueTestCase {
 
 		// The tick that fires a drain has already consumed its event.
 		$this->queue()->unschedule_cron();
-		set_transient( RevalidateQueue::CRON_TRANSCIENT_NAME, RevalidateQueue::MAX_NB_RUNNING_CRON, HOUR_IN_SECONDS );
+		$this->hold_every_drain_slot( time() + HOUR_IN_SECONDS );
 
 		$this->queue()->run_cron();
 
@@ -96,18 +95,21 @@ class QueueSchedulingTest extends QueueTestCase {
 		$this->enqueue( '/drained/' );
 
 		// What other requests do while this drain runs, staged at the last
-		// moment it can be — as the drain signs off, after its loop has found
-		// the queue empty: one enqueues a path, while the armed event is still
-		// pending and so arms nothing, and then that event fires and is gone.
+		// moment it can be — as the drain gives its lease back, after its loop
+		// has found the queue empty: one enqueues a path, while the armed event
+		// is still pending and so arms nothing, and then that event fires and
+		// is gone.
 		$staged = function () {
 			$this->enqueue( '/arrived-late/' );
 			$this->consume_the_event_behind_this_requests_back();
 		};
-		add_action( 'delete_transient_' . RevalidateQueue::CRON_TRANSCIENT_NAME, $staged );
+		$watch = $this->when_the_drain_gives_its_lease_back( $staged );
 
-		$this->queue()->run_cron();
-
-		remove_action( 'delete_transient_' . RevalidateQueue::CRON_TRANSCIENT_NAME, $staged );
+		try {
+			$this->queue()->run_cron();
+		} finally {
+			remove_filter( 'query', $watch );
+		}
 
 		$this->assertQueueRevalidates(
 			[ '/arrived-late/' ],
@@ -122,6 +124,42 @@ class QueueSchedulingTest extends QueueTestCase {
 
 	// Another request
 	// ====
+
+	/**
+	 * Run `$staged` once, just before the drain's statement giving its lease
+	 * back reaches the database.
+	 *
+	 * The lease is a row written and deleted by plain SQL, which fires no hook
+	 * of its own, so the statement is the only moment there is to catch. It is
+	 * told apart from the expired-lease sweep a drain runs as it starts by the
+	 * lease's own value in its `WHERE`: the sweep matches by name pattern only.
+	 *
+	 * @param callable $staged
+	 * @return callable The filter, for the test to remove: the test library
+	 *                  keeps filters of its own on `query`, so removing them
+	 *                  all is not an option.
+	 */
+	private function when_the_drain_gives_its_lease_back( callable $staged ) {
+		$fired = false;
+
+		$watch = function ( $query ) use ( $staged, &$fired ) {
+			if ( $fired ) return $query;
+
+			if ( 0 !== stripos( ltrim( $query ), 'DELETE' ) ) return $query;
+			if ( false === strpos( $query, RevalidateQueue::DRAIN_LEASE_PREFIX ) ) return $query;
+			if ( false === strpos( $query, '`option_value` =' ) ) return $query;
+
+			// Set before staging, which runs queries of its own.
+			$fired = true;
+			$staged();
+
+			return $query;
+		};
+
+		add_filter( 'query', $watch );
+
+		return $watch;
+	}
 
 	/**
 	 * Remove the drain event from the `cron` row itself, leaving this request's

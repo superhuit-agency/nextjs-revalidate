@@ -33,6 +33,24 @@ two can disagree on a network. Say "the queue holds permalinks"; reserve "path"
 for the thing being revalidated.
 _Avoid_: Job list, backlog
 
+**Drain**:
+One cron run working through the **revalidation queue**, entry by entry, until
+the queue is empty or the run's time budget is spent. At most four run at once on
+a site, and each holds a **drain lease** for as long as it runs. A drain turned
+away by that cap drains nothing and arms the next one.
+_Avoid_: Worker, job, the cron — a site has other crons, and one queue event can
+start several drains over its life.
+
+**Drain lease**:
+A drain's hold on one of the four slots the cap allows: a row of its own, expiring
+a little after the drain's whole time budget. A drain gives its lease back as it
+finishes; a drain killed part-way never does, and its lease expires instead. The
+cap is the number of slots, so it counts drains that are running and nothing
+else — never a number kept up to date by the drains themselves, which is what
+used to drift.
+_Avoid_: Lock — a lease is one of several and runs out on its own; running count,
+which names the thing it replaced.
+
 **Queue priority**:
 The number deciding when one queue entry drains relative to the others. Lower is
 sooner, entries sharing a priority drain oldest first, and `0` is a priority like

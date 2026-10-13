@@ -1117,6 +1117,16 @@ class Settings extends Base implements Hookable {
 		// fails on a table not yet in this shape.
 		$this->queue->migrate_table();
 
+		// 1.7.1 — the count of running drains became one lease per drain
+		// (#210, ADR-0043): forget the count. Gated on the version, since the
+		// ledger is authoritative from 1.7.0 on, and the one site the gate
+		// misses is harmless here: a site jumping to this release from before
+		// the ledger is backfilled past it and keeps its count — but nothing
+		// reads the count any more, and it expires on its own within the hour.
+		if ( version_compare( $db_version, '1.7.1', '<' ) ) {
+			$this->queue->forget_running_count();
+		}
+
 		// Stamp the ledger, so none of the above is eligible to run again.
 		// A site whose data was migrated by newer code than is running now
 		// keeps its higher version: a downgrade must not make migrations it

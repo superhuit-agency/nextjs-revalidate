@@ -165,6 +165,14 @@ so returning `true` there revalidates nothing.
   link, raised an `Undefined array key "post"` warning. Where warnings are
   displayed, it broke the redirect back and left a page of warnings instead of
   the notice.
+* Fixed: drains of the revalidation queue are no longer turned away when none
+  are running. The count of running drains could drift upward — a drain that ran
+  long, two drains starting or finishing together, or a drain that was killed
+  part-way all left it too high — and once it reached four, no drain ran until
+  it expired, up to an hour after the last drain started or finished. Each
+  drain now holds its own slot, which it gives back when it finishes and which
+  frees itself shortly after its time limit if the drain is killed. A count left
+  behind by an earlier release is ignored.
 
 = 1.7.0 =
 

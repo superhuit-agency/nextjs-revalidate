@@ -165,6 +165,8 @@ class NJR_Queue_Double {
 	public function migrate_table() {
 		$GLOBALS['njr_tables_migrated'][] = $GLOBALS['njr_current'];
 	}
+
+	public function forget_running_count() {}
 }
 
 /**

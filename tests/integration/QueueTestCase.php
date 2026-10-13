@@ -92,6 +92,7 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	public function tear_down() {
 		$this->unconfigure_site();
 		$this->queue()->unschedule_cron();
+		$this->delete_drain_lease_rows();
 		$this->reset_queue();
 
 		parent::tear_down();
@@ -194,6 +195,91 @@ abstract class QueueTestCase extends WP_UnitTestCase {
 	 */
 	protected function enqueue( $path, $priority = 10 ) {
 		return $this->queue()->add_item( $this->permalink_of( $path ), $priority );
+	}
+
+	// Drain leases
+	// ====
+
+	/**
+	 * Hold one of the cap's slots, as a drain started in another request would.
+	 *
+	 * Written as a row rather than claimed, so a test can hold a slot with a
+	 * lease that has already expired: the lease of a drain that was killed.
+	 *
+	 * @param int $slot
+	 * @param int $expiry A Unix timestamp.
+	 *
+	 * @return array{name: string, expiry: int} The lease, as its drain holds it.
+	 */
+	protected function hold_drain_slot( $slot, $expiry ) {
+		global $wpdb;
+
+		$name = RevalidateQueue::DRAIN_LEASE_PREFIX . $slot;
+
+		$wpdb->insert(
+			$wpdb->options,
+			[ 'option_name' => $name, 'option_value' => (string) $expiry, 'autoload' => 'no' ]
+		);
+
+		return [ 'name' => $name, 'expiry' => $expiry ];
+	}
+
+	/**
+	 * Hold every slot the cap allows, each with a lease ending at `$expiry`.
+	 *
+	 * @param int $expiry A Unix timestamp.
+	 * @return void
+	 */
+	protected function hold_every_drain_slot( $expiry ) {
+		for ( $slot = 0; $slot < RevalidateQueue::MAX_NB_RUNNING_CRON; $slot++ ) {
+			$this->hold_drain_slot( $slot, $expiry );
+		}
+	}
+
+	/**
+	 * Every lease row the database holds, expired or not. name => expiry.
+	 *
+	 * Read from the table rather than through `get_option()`, because that is
+	 * how the queue reads them: a copy in the object cache is not a lease.
+	 *
+	 * @return array<string, string>
+	 */
+	protected function drain_lease_rows() {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s ORDER BY option_name",
+				$wpdb->esc_like( RevalidateQueue::DRAIN_LEASE_PREFIX ) . '%'
+			)
+		);
+
+		$leases = [];
+		foreach ( $rows as $row ) {
+			$leases[ $row->option_name ] = $row->option_value;
+		}
+
+		return $leases;
+	}
+
+	/**
+	 * Delete every lease row, whoever holds it.
+	 *
+	 * Run on teardown: a drain's `get_next_item()` commits, so a lease a test
+	 * held before it is past the rollback. See `tear_down()` for why the call
+	 * sits above the queue reset.
+	 *
+	 * @return void
+	 */
+	protected function delete_drain_lease_rows() {
+		global $wpdb;
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+				$wpdb->esc_like( RevalidateQueue::DRAIN_LEASE_PREFIX ) . '%'
+			)
+		);
 	}
 
 	// The log

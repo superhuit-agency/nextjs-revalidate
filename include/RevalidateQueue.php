@@ -17,9 +17,39 @@ class RevalidateQueue extends Base implements Hookable {
 	use SendbackUrl;
 
 	const CRON_HOOK_NAME = 'nextjs_revalidate-queue';
+
+	/**
+	 * The transient releases up to 1.7.0 counted running drains in.
+	 *
+	 * Nothing reads it any more: the count drifted upward and turned drains away
+	 * with none running (#210), and drain leases replace it. Kept by name so the
+	 * migration and the uninstall can delete what an earlier release left.
+	 */
 	const CRON_TRANSCIENT_NAME = 'nextjs_revalidate-running_queue';
 
+	/**
+	 * How many drains may run at once on a site — the number of slots there are
+	 * to hold a drain lease on.
+	 */
 	const MAX_NB_RUNNING_CRON = 4;
+
+	/**
+	 * The option name a drain lease is held under, followed by its slot: `0`
+	 * up to `MAX_NB_RUNNING_CRON - 1`.
+	 */
+	const DRAIN_LEASE_PREFIX = 'nextjs_revalidate-drain_lease-';
+
+	/**
+	 * How long a drain lease outlasts the time budget of the drain holding it,
+	 * in seconds.
+	 *
+	 * A drain stops taking entries at 95% of its budget, and the entry it is on
+	 * by then can still take a purge's whole timeout, 60 seconds, to answer.
+	 * Two timeouts is enough over that for a lease to expire only once its
+	 * drain is certainly gone, and little enough that a killed drain's slot is
+	 * not held for long past it.
+	 */
+	const DRAIN_LEASE_MARGIN = 120;
 
 	/**
 	 * The priority an item is queued at when nobody asked for one. Lower is
@@ -709,34 +739,192 @@ class RevalidateQueue extends Base implements Hookable {
 		wp_unschedule_hook( self::CRON_HOOK_NAME );
 	}
 
-	private function add_running_cron() {
-		$nb_running_cron = get_transient( self::CRON_TRANSCIENT_NAME );
-		$nb_running_cron = intval(false === $nb_running_cron ? 0 : $nb_running_cron);
+	/**
+	 * Start a drain: claim a lease on one of the cap's slots, and arm the next
+	 * drain.
+	 *
+	 * A drain lease is one row in the site's options, named for its slot and
+	 * holding the moment it expires — a little past the whole time budget of
+	 * the drain that claimed it. A slot is free when it holds no row, or a row
+	 * whose lease has expired. This replaces a count of running drains kept in
+	 * a transient, which drifted upward until the cap turned drains away with
+	 * none running (#210):
+	 *
+	 *  - **Nothing is counted up or down.** A drain claims its own row and
+	 *    deletes its own row, so there is no shared value for two drains to
+	 *    read alike and write back moved by one, or for a long drain to
+	 *    decrement from the copy it read an hour ago.
+	 *  - **The claim is the cap.** The options table's unique key on the name
+	 *    lets one insert into a slot succeed and refuses every other, so two
+	 *    drains starting together cannot both take the last slot — which a
+	 *    count of live leases followed by an insert would allow.
+	 *  - **A killed drain frees its slot on its own.** A fatal, a timeout or a
+	 *    recycled worker never gives a lease back, and it does not have to: the
+	 *    lease expires, and the next drain to start deletes it.
+	 *
+	 * Read and written in SQL, never through `get_option()`. The object cache
+	 * would answer from a copy as old as the request — the staleness both #208
+	 * and #210 came from — and core's own writes would not do either: they
+	 * insert-or-update, where a claim must be refused when the row is there.
+	 * Not autoloaded, so a claim never touches `alloptions`.
+	 *
+	 * @return array{name: string, expiry: int}|false The lease, which the drain
+	 *                                                gives back as it finishes;
+	 *                                                `false` when every slot is
+	 *                                                held by a drain that is
+	 *                                                still running.
+	 */
+	private function claim_drain_lease() {
+		global $wpdb;
 
-		if ( $nb_running_cron >= self::MAX_NB_RUNNING_CRON ) return false;
+		$now = time();
 
-		$nb_running_cron++;
-		set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
+		$this->delete_expired_drain_leases( $now );
 
-		$this->schedule_next_cron();
+		$expiry = $now + $this->drain_time_budget() + self::DRAIN_LEASE_MARGIN;
 
-		Logger::log( '------', __FILE__ );
-		Logger::log( "🆕 revalidate cron (nb running: $nb_running_cron)", __FILE__ );
+		for ( $slot = 0; $slot < self::MAX_NB_RUNNING_CRON; $slot++ ) {
+			$name = self::DRAIN_LEASE_PREFIX . $slot;
 
-		return $nb_running_cron;
+			// `IGNORE`, so a slot already held answers `0` rows rather than a
+			// duplicate-key error for `$wpdb` to report.
+			$claimed = $wpdb->query(
+				$wpdb->prepare(
+					"INSERT IGNORE INTO `{$wpdb->options}` (`option_name`, `option_value`, `autoload`) VALUES (%s, %s, 'no')",
+					$name,
+					(string) $expiry
+				)
+			);
+
+			if ( 1 !== $claimed ) continue;
+
+			$this->schedule_next_cron();
+
+			Logger::log( '------', __FILE__ );
+			Logger::log( sprintf( '🆕 revalidate cron (nb running: %d)', $this->count_live_drain_leases() ), __FILE__ );
+
+			return [ 'name' => $name, 'expiry' => $expiry ];
+		}
+
+		return false;
 	}
 
-	private function remove_running_cron() {
-		$nb_running_cron = get_transient( self::CRON_TRANSCIENT_NAME );
-		$nb_running_cron = intval(false === $nb_running_cron ? 0 : $nb_running_cron);
+	/**
+	 * Finish a drain: give its lease back, so its slot is free at once rather
+	 * than when the lease expires.
+	 *
+	 * Deleted by its value as well as its name. A drain that outlived its lease
+	 * — a last purge that hung past the margin — may find its slot taken since
+	 * by another drain, and that drain's lease is not this one's to give back.
+	 * Two leases on one slot never share an expiry: the second is claimed only
+	 * once the first has expired, and expires a whole budget after that.
+	 *
+	 * @param array{name: string, expiry: int} $lease What `claim_drain_lease()`
+	 *                                                answered.
+	 * @return void
+	 */
+	private function release_drain_lease( $lease ) {
+		global $wpdb;
 
-		$nb_running_cron--;
-		if ( $nb_running_cron > 0 ) set_transient( self::CRON_TRANSCIENT_NAME, $nb_running_cron, 3600 );
-		else delete_transient( self::CRON_TRANSCIENT_NAME );
+		$wpdb->delete(
+			$wpdb->options,
+			[
+				'option_name'  => $lease['name'],
+				'option_value' => (string) $lease['expiry'],
+			]
+		);
 
-		Logger::log( "🗑️ (remove) revalidate cron (nb still running: $nb_running_cron)", __FILE__ );
+		Logger::log( sprintf( '🗑️ (remove) revalidate cron (nb still running: %d)', $this->count_live_drain_leases() ), __FILE__ );
+	}
 
-		return true;
+	/**
+	 * Delete the leases of drains that are gone — killed before they could give
+	 * them back.
+	 *
+	 * A slot holds at most one row, so expired leases cannot pile up: this is
+	 * what frees their slots for the claim that follows, and a slot left
+	 * expired is taken over by the next drain to run this.
+	 *
+	 * @param int $now
+	 * @return void
+	 */
+	private function delete_expired_drain_leases( $now ) {
+		global $wpdb;
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM `{$wpdb->options}` WHERE `option_name` LIKE %s AND CAST(`option_value` AS UNSIGNED) <= %d",
+				$wpdb->esc_like( self::DRAIN_LEASE_PREFIX ) . '%',
+				$now
+			)
+		);
+	}
+
+	/**
+	 * How many drains hold a lease that has not expired. For the log only: the
+	 * cap is enforced by the claim, not by this count.
+	 *
+	 * @return int
+	 */
+	private function count_live_drain_leases() {
+		global $wpdb;
+
+		return intval(
+			$wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*) FROM `{$wpdb->options}` WHERE `option_name` LIKE %s AND CAST(`option_value` AS UNSIGNED) > %d",
+					$wpdb->esc_like( self::DRAIN_LEASE_PREFIX ) . '%',
+					time()
+				)
+			)
+		);
+	}
+
+	/**
+	 * Delete every drain lease this site holds, and the count of running
+	 * drains an earlier release kept. Part of an uninstall: left behind, both
+	 * are rows nothing would ever read again.
+	 *
+	 * @return void
+	 */
+	public function delete_drain_leases() {
+		global $wpdb;
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM `{$wpdb->options}` WHERE `option_name` LIKE %s",
+				$wpdb->esc_like( self::DRAIN_LEASE_PREFIX ) . '%'
+			)
+		);
+
+		$this->forget_running_count();
+	}
+
+	/**
+	 * Delete the count of running drains releases up to 1.7.0 kept.
+	 *
+	 * Nothing reads it, so a count left at the cap turns no drain away whether
+	 * or not this has run — which matters, because a migration runs on an admin
+	 * request and a site's drains run on front-end traffic. This only stops a
+	 * row that means nothing from sitting in the site's options until it
+	 * expires.
+	 *
+	 * @return void
+	 */
+	public function forget_running_count() {
+		delete_transient( self::CRON_TRANSCIENT_NAME );
+	}
+
+	/**
+	 * How long a drain may run, in seconds: PHP's own limit, or a minute where
+	 * there is none — under WP-CLI, which runs cron with no time limit at all.
+	 *
+	 * @return int
+	 */
+	private function drain_time_budget() {
+		$max_exec_time = intval( ini_get('max_execution_time') );
+
+		return $max_exec_time > 0 ? $max_exec_time : 60;
 	}
 
 	/**
@@ -745,7 +933,7 @@ class RevalidateQueue extends Base implements Hookable {
 	 * until the max execution time is reached
 	 */
 	public function run_cron() {
-		$n_cron = $this->add_running_cron();
+		$lease = $this->claim_drain_lease();
 
 		// Turned away by the cap. The event that fired this is already consumed,
 		// and drains *starting* are what keep the queue scheduled, so returning
@@ -755,7 +943,7 @@ class RevalidateQueue extends Base implements Hookable {
 		// first. A turned-away tick costs one cheap request a minute while the
 		// cap holds; a dropped one stalls the queue until something new is
 		// enqueued (#208).
-		if ( false === $n_cron ) {
+		if ( false === $lease ) {
 			$this->schedule_next_cron();
 			return;
 		}
@@ -765,9 +953,7 @@ class RevalidateQueue extends Base implements Hookable {
 
 		Logger::log( "#$id: Start revalidate queue", __FILE__ );
 
-		// get max php exec time
-		$max_exec_time = ini_get('max_execution_time');
-		$max_exec_time = $max_exec_time ? $max_exec_time : 60;
+		$max_exec_time = $this->drain_time_budget();
 
 		Logger::log( "#$id: Revalidate queue will be running for max $max_exec_time seconds" , __FILE__ );
 
@@ -801,7 +987,7 @@ class RevalidateQueue extends Base implements Hookable {
 
 		} while ($item && $max_exec_time > (time() - $start_time) );
 
-		$this->remove_running_cron();
+		$this->release_drain_lease( $lease );
 		$this->forget_cached_cron();
 		$this->schedule_next_cron();
 	}
