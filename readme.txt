@@ -152,7 +152,7 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
-= 1.7.1 =
+= Unreleased =
 
 * Fixed: the revalidation queue no longer stops draining while it still holds
   entries. A drain that found four already running returned without scheduling
