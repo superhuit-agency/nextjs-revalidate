@@ -94,3 +94,20 @@ them changes the decision above:
   title, tagline, and every string registered with Polylang are kept in the
   language term's `_pll_strings_translations` meta, not in an option, so the
   integration reports a change from that meta's hooks.
+
+## Amended for superstack#141: a front-end may opt its Reading options in
+
+Found porting superstack's front-end to Cache Components. The decision above is
+unchanged: the options that move paths stay off the built-in list, and #172 is
+still where they are fixed.
+
+Until then, `nextjs_revalidate_site_setting_options` is the escape hatch. A
+front-end whose every cached page carries the tag a `settings` change expires
+may add `show_on_front`, `page_on_front` and `page_for_posts` to it, as a
+stopgap. Switching the front page or the posts page then re-reads `/`, the old
+and the new posts page, and the pages at their own URIs, which is the common
+case. It still leaves stale what the decision says that tag cannot fix: "not
+found" answers cached at paths that now hold content, and listings and menus
+linking to a URI that moved. Those still need **revalidate all**.
+
+Superstack does this from its theme (superstack#227).
