@@ -4,7 +4,7 @@ Tags: Next.js, Nextjs, Next, Cache, revalidate, Purge
 Requires at least: 5.6
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.7.0
+Stable tag: 1.7.1
 license: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -152,7 +152,7 @@ so returning `true` there revalidates nothing.
 
 == Changelog ==
 
-= Unreleased =
+= 1.7.1 =
 
 * Fixed: the revalidation queue no longer stops draining while it still holds
   entries. A drain that found four already running returned without scheduling
