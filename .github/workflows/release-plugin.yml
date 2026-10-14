@@ -21,6 +21,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # release-belt's SSH host key is pinned, so the upload only goes to the real
+      # server: without it ssh-deploy connects with StrictHostKeyChecking=no and
+      # trusts whatever key it is shown. The key comes from the
+      # RELEASE_BELT_KNOWN_HOSTS organization secret: the `ssh-keyscan -p <port>
+      # <host>` line(s) (`-H` hashed lines work too), checked against the
+      # fingerprints from `ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub` on the
+      # server by someone with access to it.
+      #
+      # It runs first, so a missing or malformed secret fails the job before
+      # anything is built or published. $RUNNER_TEMP lasts for the whole job, so
+      # "Upload to release-belt" still reads the file written here. A well-formed
+      # key that doesn't match the server is only caught at the upload.
+      #
+      # When release-belt's host key changes, the upload fails with "Host key
+      # verification failed" (and the fingerprints logged below no longer match
+      # the server's). Replace the secret with the new, verified line(s); don't
+      # switch the check off.
+      - name: Pin release-belt's SSH host key
+        shell: bash
+        env:
+          KNOWN_HOSTS: ${{ secrets.RELEASE_BELT_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$KNOWN_HOSTS" ]; then
+            echo "::error::The RELEASE_BELT_KNOWN_HOSTS organization secret is missing or empty, so release-belt's SSH host key can't be verified. Create it (see the comment above this step), then re-run the job: nothing has been built or published yet."
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$KNOWN_HOSTS" | tr -d '\r' > "$RUNNER_TEMP/release_belt_known_hosts"
+          if ! fingerprints=$(ssh-keygen -lf "$RUNNER_TEMP/release_belt_known_hosts"); then
+            echo "::error::RELEASE_BELT_KNOWN_HOSTS holds no valid known_hosts line (expected \`ssh-keyscan -p <port> <host>\` output). Fix the secret, then re-run the job: nothing has been built or published yet."
+            exit 1
+          fi
+          # Bits, fingerprint and key type only, to compare with the server's.
+          awk '{ print $1, $2, $NF }' <<<"$fingerprints"
+
       # PHP Composer dependencies
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
@@ -116,6 +151,16 @@ jobs:
           echo "Highest released version: $highest. Publishing $TAG with Latest=$latest."
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest="$latest"
 
+      # SSH_CMD_ARGS replaces the action's `-o StrictHostKeyChecking=no` default:
+      # the action splits it on commas and appends the options to rsync's `--rsh`
+      # ssh command, which then trusts only the file written by "Pin release-belt's
+      # SSH host key". Don't set SCRIPT_BEFORE/SCRIPT_AFTER: the action runs those
+      # over a separate ssh command with StrictHostKeyChecking=no hardcoded,
+      # ignoring SSH_CMD_ARGS.
+      #
+      # If this step fails, the GitHub release is already published. Don't re-run
+      # the job; upload the zip attached to the release by hand under the TARGET
+      # name below.
       - name: Upload to release-belt
         uses: easingthemes/ssh-deploy@2cc5b27bf3029d0455dd5e09fe02633904031447 # v6.0.3
         with:
@@ -123,5 +168,6 @@ jobs:
           REMOTE_USER: ${{ secrets.RELEASE_BELT_USER }}
           REMOTE_HOST: ${{ secrets.RELEASE_BELT_HOST }}
           REMOTE_PORT: ${{ secrets.RELEASE_BELT_PORT }}
+          SSH_CMD_ARGS: "-o StrictHostKeyChecking=yes, -o UserKnownHostsFile=${{ runner.temp }}/release_belt_known_hosts, -o GlobalKnownHostsFile=/dev/null"
           SOURCE: nextjs-revalidate-${{  github.ref_name }}.zip
           TARGET: "${{ secrets.RELEASE_BELT_PATH }}/releases/wordpress-plugin/superhuit/nextjs-revalidate-${{  github.ref_name }}.zip"
