@@ -4,7 +4,7 @@ Tags: Next.js, Nextjs, Next, Cache, revalidate, Purge
 Requires at least: 5.6
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.1.1
 license: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -172,7 +172,7 @@ add_filter( 'nextjs_revalidate_log_max_size', function( $bytes ) {
 
 == Changelog ==
 
-= Unreleased =
+= 2.1.1 =
 
 * Fixed: changing a routing setting — the permalink structure, the category or
   tag base, the front page or the posts page, the posts per page, or Polylang's
