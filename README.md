@@ -93,7 +93,7 @@ Every change has a `subject`, and that subject's fields. There are eight:
 | `menu` | `id`, `locations` | a classic menu saved; a block menu (`wp_navigation`) saved, trashed, restored or deleted |
 | `templates` | none | an FSE template or template part saved or deleted, a theme switched |
 | `settings` | none | a **site setting** added, changed or deleted — one change per request, however many were saved |
-| `all` | none, or `type` and `taxonomies` | revalidate all, of the whole site or of one post type |
+| `all` | none, or `type` and `taxonomies` | revalidate all, of the whole site or of one post type; a **routing setting** added, changed or deleted — one whole-site change per request, however many were saved |
 
 ```json
 {
@@ -167,7 +167,9 @@ Every field, and when it is `null`:
   whole template structure as one value, the **FSE snapshot**.
 - **`settings`** never names which setting changed: it says something every
   page renders changed. See [Site settings](#site-settings).
-- **`all`** is one change, never the pages it covers.
+- **`all`** is one change, never the pages it covers. A whole-site one comes
+  from an operator or from a changed [routing setting](#routing-settings), and a
+  front-end cannot tell the two apart.
 
 ### Two rules
 
@@ -257,14 +259,44 @@ before it, for an option stored once per language: `landbot_config_url_*` covers
 `landbot_config_url_fr` and `landbot_config_url_de`. Saving a value an option already holds reports nothing: WordPress
 fires no update for it.
 
-Options that move which content lives at which path — the permalink structure,
-the category and tag bases, the front page, the posts page, the posts per page —
-are **not** site settings, and report nothing here. Expiring what every page
-carries does not fix what they leave stale
+Options that move which content lives at which path are **not** site settings:
+they are [routing settings](#routing-settings), and report a revalidate all
+instead. Expiring what every page carries does not fix what they leave stale
 ([ADR 0037](docs/adr/0037-a-settings-change-reports-what-every-page-renders.md)).
 
 The [Yoast SEO](#yoast-seo) and [Polylang](#polylang) integrations add their own
 site settings.
+
+### Routing settings
+
+A **routing setting** is a value held once for the whole site that decides which
+content lives at which path. A change to one can move every path on the site:
+pages cached at paths that no longer hold them, "not found" answers cached at
+paths that now do, listings paginated by the old page size. So saving any of
+them reports **one** revalidate all of the whole site for the request,
+`{ "subject": "all" }` — the same change an operator's revalidate all sends —
+however many were saved: the Reading screen saves four at once
+([ADR 0044](docs/adr/0044-a-routing-setting-reports-a-revalidate-all.md)).
+
+WordPress's are:
+
+`permalink_structure`, `category_base`, `tag_base`, `show_on_front`,
+`page_on_front`, `page_for_posts`, `posts_per_page`
+
+One reports when it is added, updated to a different value, or deleted —
+whether or not the new value moves a path in practice: `page_on_front` changed
+while `show_on_front` is `posts` still reports. Saving a value an option already
+holds reports nothing. The [Polylang](#polylang) integration adds its own.
+
+Not reported:
+
+- **A rewrite flush from any other cause.** Plugins flush the rewrite rules on
+  activation and on registering a post type, and some on every request; a
+  rewrite slug changed in code arrives with a deploy, and an operator's revalidate
+  all is the answer there.
+- **An option a site owns** that moves paths — `woocommerce_permalinks`, a post
+  type plugin's slug option. The list is not filterable; run revalidate all after
+  changing one.
 
 ### Probing the front-end
 
@@ -874,23 +906,27 @@ front-end that does read it adds it through the filter.
 ### Polylang
 
 With [Polylang](https://wordpress.org/plugins/polylang/) active, its language
-list and default language are [site settings](#site-settings). A `settings`
-change is reported when:
+list is a [site setting](#site-settings). A `settings` change is reported when:
 
 - a language is **added, edited or deleted** — a language is a term of
   Polylang's `language` taxonomy, not an option, so no option list could catch
   it;
-- the **default language** changes, from Polylang's Languages screen or by a
-  write of the `polylang` option whose `default_lang` differs.
-
 - a language's **string translations** are saved — the translated site title
   and tagline, and every string registered with Polylang. They are kept in the
   language's term meta rather than in an option.
 
-Nothing else in the `polylang` option reports a change. `hide_default`,
-`force_lang` and `rewrite` decide whether a language prefix is in the path at
-all, which moves pages between paths rather than changing what every page
-renders; `version` and the rest are Polylang's bookkeeping.
+Its URL settings and its default language are [routing settings](#routing-settings):
+`default_lang`, `hide_default`, `force_lang`, `rewrite`, `domains` and
+`redirect_lang` in the `polylang` option. A change to any of them reports one
+revalidate all of the whole site — a change of default language too, since it
+moves which paths carry a language prefix. Polylang 3.7 and later keep that
+option in memory and write it only after the changes are delivered, so the
+integration compares those keys in memory with the stored option just before
+delivery: a save from Polylang's settings page, its REST route or its Languages
+screen is caught, as is a direct write of the option from WP-CLI or a
+migration. A value told apart only by its type — `"1"` stored where Polylang
+holds `true` — is no change. The rest of the option, `version` among it, is
+Polylang's bookkeeping and reports nothing.
 
 **A language is never reported as a term.** The `language` taxonomy is
 publicly queryable, so it would otherwise be a
@@ -1140,7 +1176,8 @@ Add an option your front-end renders, or remove a default it does not. An entry
 ending in `*` names every option starting with what comes before it, for options
 stored once per language; a bare `*` names none. Do not add one that moves which
 content lives at which path, such as `permalink_structure`: expiring what every
-page carries does not fix what that leaves stale.
+page carries does not fix what that leaves stale, and WordPress's own
+[routing settings](#routing-settings) report a revalidate all already.
 
 #### Usage
 ```php

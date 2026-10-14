@@ -119,6 +119,7 @@ require_once __DIR__ . '/../include/FseSnapshot.php';
 require_once __DIR__ . '/../include/BlockMenus.php';
 require_once __DIR__ . '/../include/Terms.php';
 require_once __DIR__ . '/../include/SiteSettings.php';
+require_once __DIR__ . '/../include/RoutingSettings.php';
 require_once __DIR__ . '/../include/RestApi.php';
 
 use NextJsRevalidate\Assets;
@@ -134,6 +135,7 @@ use NextJsRevalidate\Probe;
 use NextJsRevalidate\RestApi;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\RevalidateAll;
+use NextJsRevalidate\RoutingSettings;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\SiteSettings;
 use NextJsRevalidate\Terms;
@@ -243,6 +245,12 @@ $expected_per_class = [
 	],
 
 	SiteSettings::class => [
+		[ 'added_option',   'on_option_change', 10, 1 ],
+		[ 'updated_option', 'on_option_change', 10, 1 ],
+		[ 'deleted_option', 'on_option_change', 10, 1 ],
+	],
+
+	RoutingSettings::class => [
 		[ 'added_option',   'on_option_change', 10, 1 ],
 		[ 'updated_option', 'on_option_change', 10, 1 ],
 		[ 'deleted_option', 'on_option_change', 10, 1 ],

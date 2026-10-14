@@ -30,20 +30,28 @@ _Avoid_: Purge, cache clear, invalidation — the front-end marks entries stale 
 rebuilds them on demand; nothing is cleared.
 
 **Revalidate all**:
-An operator's request that the front-end revalidate everything it cached from
-the site, or from one post type and the **revalidatable taxonomies** registered
-for it. Reported as a single change, never as the pages it covers.
+A request that the front-end revalidate everything it cached from the site, or
+from one post type and the **revalidatable taxonomies** registered for it —
+asked by an operator, or reported by the plugin when a **routing setting**
+changes. Reported as a single change, never as the pages it covers.
 _Avoid_: Purge all
 
 **Site setting**:
 A value held once for the whole site, by WordPress or by an **integration**, that
 the front-end renders as it is on any page: the site title, the tagline, the date
 and time formats, SEO defaults, the language list. A save of any of them is
-reported as one change for all of them. Not a value that moves which content
-lives at which path — the permalink structure, the front page, the posts per
-page — which leaves different things stale.
+reported as one change for all of them. Not a **routing setting**, which leaves
+different things stale.
 _Avoid_: Setting — the plugin's own configuration; option — a storage primitive,
 and a language is not one.
+
+**Routing setting**:
+A value held once for the whole site, by WordPress or by an **integration**, that
+decides which content lives at which path: the permalink structure, the category
+and tag bases, the front page and the posts page, the posts per page, and a
+language's prefix. A change to any of them can move every path on the site.
+_Avoid_: Permalink setting — the front page and the posts per page are not
+permalinks; site setting — that is what the front-end renders, not where.
 
 **Pending changes**:
 The changes one request has produced and not yet delivered. Two changes to the

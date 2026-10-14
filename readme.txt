@@ -172,6 +172,21 @@ add_filter( 'nextjs_revalidate_log_max_size', function( $bytes ) {
 
 == Changelog ==
 
+= Unreleased =
+
+* Fixed: changing a routing setting — the permalink structure, the category or
+  tag base, the front page or the posts page, the posts per page, or Polylang's
+  default language and URL modifications — reports a revalidate all of the whole
+  site, so the front-end stops serving the paths it moved. Saving the Permalinks
+  or the Reading screen, or Polylang's URL modifications, reported nothing, and a
+  change of Polylang's default language only a settings change. With no timer
+  on the front-end, pages cached at old paths stayed stale until an operator ran
+  revalidate all.
+* Act on it: a front-end that added the front page options (`show_on_front`,
+  `page_on_front`, `page_for_posts`) to `nextjs_revalidate_site_setting_options`
+  as a stopgap may remove them. Keeping them only adds a settings change beside
+  the revalidate all.
+
 = 2.1.0 =
 
 New subjects and fields in the request to the front-end, which a route written

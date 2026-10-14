@@ -23,7 +23,8 @@ when it is added, updated to a different value, or deleted.
 `page_on_front`, `page_for_posts`, `posts_per_page` — though they are site-wide
 options too. Expiring the tag every page carries does not fix what they leave
 stale: pages cached at paths that no longer hold them, and "not found" answers
-cached at paths that now do. They are a different fact, and are left to #172.
+cached at paths that now do. They are a different fact, and are left to #172, which ADR 0044 settles: a
+**routing setting** reports a revalidate all of the whole site.
 
 **SEO defaults and languages come from integrations** (Yoast SEO, Polylang), each
 as inert as Redirection's when its plugin is absent (ADR 0014):
@@ -111,3 +112,7 @@ found" answers cached at paths that now hold content, and listings and menus
 linking to a URI that moved. Those still need **revalidate all**.
 
 Superstack does this from its theme (superstack#227).
+
+From 2.1.1, ADR 0044 reports these options as routing settings, and the
+stopgap is no longer needed. A front-end that keeps it sends an extra
+`settings` change beside the `all`, which is harmless.

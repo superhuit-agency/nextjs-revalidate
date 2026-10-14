@@ -463,17 +463,18 @@ Redirection's own bulk screen.
       was skipped because "its source is a regular expression, which names no
       single path".
 
-## N. Site settings
+## N. Site settings and routing settings
 
 Precondition: Yoast SEO and Polylang active (installed and activated from
 `.wp-env.json`), Polylang with **no** language yet. Nothing automated reaches
-the screens below — WordPress's General settings, Yoast's settings app and
-Polylang's Languages screen each save in their own way, and Polylang writes its
-option only once the request is over.
+the screens below — WordPress's General and Permalinks settings, Yoast's
+settings app and Polylang's Languages screen each save in their own way, and
+Polylang writes its option only once the request is over.
 
-The oracle is the **revalidate server console**: every save below that reports
-anything reports one `= Revalidating (v2): {"subject":"settings"}` line, and
-`✅ Revalidated 1 change (settings)` in the log.
+The oracle is the **revalidate server console**: every site setting save below
+that reports anything reports one `= Revalidating (v2): {"subject":"settings"}`
+line, and `✅ Revalidated 1 change (settings)` in the log; every routing setting
+save reports one `{"subject":"all"}` line, and `✅ Revalidated 1 change (all)`.
 
 - [ ] **Settings → General → change both the Site Title and the Tagline, then
       Save Changes.** Expect **one** `{"subject":"settings"}` request for the
@@ -481,30 +482,36 @@ anything reports one `= Revalidating (v2): {"subject":"settings"}` line, and
 - [ ] **Save Changes again without changing anything.** Expect **no** request in
       the console.
 - [ ] **Settings → Permalinks → choose "Day and name", and Save Changes.**
-      Expect **no** `settings` change: the permalink structure moves paths, and
-      is not a site setting. Put back what it was before going on.
+      Expect **one** `{"subject":"all"}` request, and `✅ Revalidated 1 change
+      (all)` in the log: the permalink structure is a routing setting, not a
+      site setting. Put back what it was before going on, which logs another.
 - [ ] **Yoast SEO → Settings → General → Site basics → change the title
       separator, and Save changes.** Expect one `{"subject":"settings"}`
       request.
-- [ ] **Languages → Languages → add English.** Expect one
-      `{"subject":"settings"}` request, and no `term` change: Polylang's
+- [ ] **Languages → Languages → add English.** Expect one request carrying
+      `{"subject":"settings"}` and `{"subject":"all"}` — the first language
+      becomes the default language — and no `term` change: Polylang's
       `language` taxonomy is a site setting, never reported as a taxonomy.
 - [ ] **Add French.** Expect one request carrying `{"subject":"settings"}` and
       a `term` change creating `uncategorized-fr` — the French translation of
       the default category, which Polylang adds with the language. Still no
       change for the language itself.
-- [ ] **Click the star beside French**, making it the default language. Expect one
-      `{"subject":"settings"}` request — Polylang writes its option after this
-      plugin has delivered, so a missing request here means the change was
-      reported too late to send.
+- [ ] **Click the star beside French**, making it the default language. Expect
+      `{"subject":"all"}` in the request, and no `settings` change — Polylang
+      writes its option after this plugin has delivered, so a missing `all`
+      here means the change was not found before delivery.
 - [ ] **Languages → Settings → URL modifications → toggle "Hide URL language
-      information for default language", and Save.** Expect **no** `settings`
-      change: that switch moves paths. Toggle it back and Save.
+      information for default language", and Save.** Expect **one**
+      `{"subject":"all"}` request, and `✅ Revalidated 1 change (all)` in the
+      log: that switch moves paths, and Polylang saves it only into memory
+      during the request. Toggle it back and Save, which logs another.
 - [ ] **Languages → Translations → translate the Site Title into French, and
       Save Changes.** Expect one `{"subject":"settings"}` request: Polylang keeps
       string translations in the language's term meta, not in an option.
-- [ ] **Delete both languages.** Expect one `{"subject":"settings"}` request for
-      each deletion. Before going on, the post's permalink must carry no language
+- [ ] **Delete both languages, French first.** Expect one request for each
+      deletion, carrying `{"subject":"settings"}` and `{"subject":"all"}`: each
+      deletes the default language, which moves the default to the other one,
+      then to none. Before going on, the post's permalink must carry no language
       prefix again; if it does, a language is left behind.
 
 ## O. Reorders, and synchronised translations

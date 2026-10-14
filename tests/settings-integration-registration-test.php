@@ -111,7 +111,7 @@ $polylang_hooks = [
 	'edited_language',
 	'delete_language',
 	'nextjs_revalidate_should_revalidate_taxonomy',
-	'pll_update_default_lang',
+	'shutdown',
 	'update_option_polylang',
 	'added_term_meta',
 	'updated_term_meta',
@@ -156,7 +156,7 @@ njr_test_registered( 'a site running Yoast SEO adds to the site setting options'
 
 $GLOBALS['njr_test_hooks'] = [];
 ( new Polylang() )->register_hooks();
-njr_test_registered( 'a site running Polylang listens to its languages, its default language, its string translations and its translations', $polylang_hooks );
+njr_test_registered( 'a site running Polylang listens to its languages, its routing settings, its string translations and its translations', $polylang_hooks );
 
 // Polylang's `language` taxonomy is publicly queryable, and a site setting
 // rather than a term the front-end shows: the integration declines it, and
