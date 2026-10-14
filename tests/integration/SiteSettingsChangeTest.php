@@ -124,7 +124,24 @@ class SiteSettingsChangeTest extends PendingChangesTestCase {
 
 	public function options_that_are_not_site_settings() {
 		return [
-			'admin_email'         => [ 'admin_email', 'someone-else@example.test' ],
+			'admin_email' => [ 'admin_email', 'someone-else@example.test' ],
+		];
+	}
+
+	/**
+	 * A routing setting is not a site setting: it reports a revalidate all
+	 * (`RoutingSettingsChangeTest`), and no `settings` change.
+	 *
+	 * @dataProvider routing_settings
+	 */
+	public function test_a_routing_setting_reports_no_settings_change( $option, $value ) {
+		update_option( $option, $value );
+
+		$this->assertPendingChanges( [ Change::all() ], "$option reported something other than a revalidate all." );
+	}
+
+	public function routing_settings() {
+		return [
 			'permalink_structure' => [ 'permalink_structure', '/%year%/%postname%/' ],
 			'posts_per_page'      => [ 'posts_per_page', 3 ],
 		];

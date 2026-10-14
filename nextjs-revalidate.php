@@ -47,6 +47,7 @@ use NextJsRevalidate\Integrations\Yoast;
 use NextJsRevalidate\PendingChanges;
 use NextJsRevalidate\Probe;
 use NextJsRevalidate\RevalidateAll;
+use NextJsRevalidate\RoutingSettings;
 use NextJsRevalidate\Revalidate;
 use NextJsRevalidate\Settings;
 use NextJsRevalidate\SiteSettings;
@@ -114,6 +115,7 @@ require_once __DIR__ . '/vendor/autoload.php';
  * @property-read BlockMenus            $blockMenus
  * @property-read Terms                 $terms
  * @property-read SiteSettings          $siteSettings
+ * @property-read RoutingSettings       $routingSettings
  * @property-read RestApi               $restApi
  * @property-read Redirection           $redirection
  * @property-read Yoast                 $yoast
@@ -136,6 +138,7 @@ class NextJsRevalidate {
 	private BlockMenus $blockMenus;
 	private Terms $terms;
 	private SiteSettings $siteSettings;
+	private RoutingSettings $routingSettings;
 	private RestApi $restApi;
 	private Redirection $redirection;
 	private Yoast $yoast;
@@ -189,6 +192,7 @@ class NextJsRevalidate {
 		$this->blockMenus          = $this->hookable( new BlockMenus() );
 		$this->terms               = $this->hookable( new Terms() );
 		$this->siteSettings        = $this->hookable( new SiteSettings() );
+		$this->routingSettings     = $this->hookable( new RoutingSettings() );
 		$this->restApi             = $this->hookable( new RestApi() );
 
 		foreach ( $this->hookables as $hookable ) $hookable->register_hooks();

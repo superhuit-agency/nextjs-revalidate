@@ -22,8 +22,10 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * Options that move which content lives at which path — the permalink
  * structure, the front page, the posts per page — are site-wide too, and are
  * deliberately not on the list: expiring the tag every page carries does not
- * fix what they leave stale. See
- * `docs/adr/0037-a-settings-change-reports-what-every-page-renders.md`.
+ * fix what they leave stale. They are **routing settings**, which
+ * `RoutingSettings` reports as a revalidate all. See
+ * `docs/adr/0037-a-settings-change-reports-what-every-page-renders.md` and
+ * `docs/adr/0044-a-routing-setting-reports-a-revalidate-all.md`.
  *
  * @property PendingChanges $pendingChanges The pending changes, from the composition root.
  */

@@ -4,6 +4,35 @@ What changed in each release of Next.js Revalidate, newest first, and what a
 site has to do about it. Releases before 2.0.0 are listed in the changelog of
 [`readme.txt`](readme.txt).
 
+## Unreleased
+
+Contract version **2**, unchanged: a routing setting reports the `all` change
+an operator's revalidate all already sends.
+
+- **Fixed:** changing a **routing setting** reports a revalidate all of the
+  whole site, `{ "subject": "all" }`, so the front-end stops serving the paths
+  it moved. WordPress's are `permalink_structure`, `category_base`, `tag_base`,
+  `show_on_front`, `page_on_front`, `page_for_posts` and `posts_per_page`:
+  saving the Permalinks or the Reading screen reported nothing. Polylang's are
+  `default_lang`, `hide_default`, `force_lang`, `rewrite`, `domains` and
+  `redirect_lang`: its URL modifications reported nothing, and a change of
+  default language only a `settings` change, which does not fix the paths it
+  moves. Since a front-end caches until a change expires its entries, with no
+  timer, pages cached at old paths, "not found" answers cached at paths that now
+  hold content, and listings paginated by the old page size stayed stale until
+  an operator ran revalidate all. One `all` is reported per request however
+  many routing settings were saved, and Polylang's are compared, before
+  delivery, with what its option held, so a save from its settings page, its
+  REST route or its Languages screen is caught
+  ([ADR 0044](docs/adr/0044-a-routing-setting-reports-a-revalidate-all.md),
+  #172).
+- **Act on it:** a front-end that added `show_on_front`, `page_on_front` or
+  `page_for_posts` to
+  [`nextjs_revalidate_site_setting_options`](README.md#nextjs_revalidate_site_setting_options)
+  as [ADR 0037](docs/adr/0037-a-settings-change-reports-what-every-page-renders.md)'s
+  stopgap may remove them. Keeping them only adds a `settings` change beside the
+  `all`.
+
 ## 2.1.0
 
 Contract version **2**, unchanged: everything added below is a new subject or a

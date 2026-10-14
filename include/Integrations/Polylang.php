@@ -31,18 +31,24 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * `term_translations` — are registered `public => false` and are not viewable,
  * so the gate declines them already.
  *
- * The default language lives in the `polylang` option, alongside keys that are
- * not site settings: `hide_default`, `force_lang` and `rewrite` decide whether a
- * language prefix is in the path at all, which moves paths (#172), and
- * `version` is bookkeeping a Polylang upgrade rewrites. So a write of that
- * option reports a change when its `default_lang` differs, and only then.
+ * Polylang's **routing settings** — `default_lang`, `hide_default`,
+ * `force_lang`, `rewrite`, `domains` and `redirect_lang`, in the `polylang`
+ * option — decide whether a language prefix or domain is in the path, and
+ * which language an unprefixed path answers in. A change to any of them
+ * reports one revalidate all of the whole site, not a `settings` change: a
+ * default language changed moves paths too. The option's other keys —
+ * `version`, `sync` and the rest — are bookkeeping, and report nothing.
  *
- * Polylang 3.7 and later hold that option in memory and write it on `shutdown`,
- * after the pending changes are delivered. A change of default language made
- * through Polylang is therefore reported from `pll_update_default_lang`, which
- * it fires while the request is still running; the option's own hook still
- * catches a write made directly, from WP-CLI or a migration. When both fire
- * they are the same change.
+ * Polylang 3.7 and later hold that option in memory and write it on `shutdown`
+ * at priority 1000, after the pending changes are delivered; its settings page
+ * and its REST route write only into that memory, and it fires no action for
+ * these keys. So just before delivery, in the same `shutdown`, the routing keys
+ * in its options in memory are compared with the stored option, which still
+ * holds what was there before. One comparison catches every writer that goes
+ * through Polylang's options: the settings page, REST, changing the default
+ * language, renaming its slug, adding the first language, the importer. The
+ * option's own hook still catches a write made directly — from WP-CLI, a
+ * migration, or Polylang's wizard. When both see a change, it is one.
  *
  * A string translation — a translated site title or tagline, or any string
  * registered with Polylang — is kept in its language term's meta rather than in
@@ -62,7 +68,9 @@ defined( 'ABSPATH' ) or die( 'Cheatin&#8217; uh?' );
  * Supported, never required: when Polylang is not there, this registers no
  * hooks at all.
  *
- * See `docs/adr/0037-a-settings-change-reports-what-every-page-renders.md`.
+ * See `docs/adr/0037-a-settings-change-reports-what-every-page-renders.md`,
+ * and `docs/adr/0044-a-routing-setting-reports-a-revalidate-all.md` for the
+ * routing settings.
  *
  * @property-read \NextJsRevalidate\PendingChanges $pendingChanges The pending
  *                changes of this request, reached through `Base`.
@@ -90,6 +98,18 @@ class Polylang extends Base implements Hookable {
 	const STRINGS_META_KEY = '_pll_strings_translations';
 
 	/**
+	 * The keys of the `polylang` option that are routing settings.
+	 */
+	const ROUTING_KEYS = [ 'default_lang', 'hide_default', 'force_lang', 'rewrite', 'domains', 'redirect_lang' ];
+
+	/**
+	 * The `shutdown` priority the comparison runs at: before the pending
+	 * changes are delivered, at the default 10, and long before Polylang
+	 * writes its option, at 1000.
+	 */
+	const COMPARISON_PRIORITY = 9;
+
+	/**
 	 * Register the integration's hooks, once every plugin has declared itself
 	 * — the same deferral, and for the same reason, as `Redirection`'s.
 	 *
@@ -115,7 +135,7 @@ class Polylang extends Base implements Hookable {
 
 		add_filter( 'nextjs_revalidate_should_revalidate_taxonomy', [$this, 'decline_language_taxonomy'], 10, 2 );
 
-		add_action( 'pll_update_default_lang', [$this, 'report_settings_change'] );
+		add_action( 'shutdown', [$this, 'compare_routing_settings'], self::COMPARISON_PRIORITY );
 		add_action( 'update_option_' . self::OPTION, [$this, 'on_option_update'], 10, 2 );
 
 		add_action( 'added_term_meta',   [$this, 'on_term_meta_change'], 10, 3 );
@@ -132,7 +152,7 @@ class Polylang extends Base implements Hookable {
 
 	/**
 	 * Report that a site setting changed: a language was created, edited or
-	 * deleted, or the default language changed.
+	 * deleted, or its string translations were saved.
 	 *
 	 * @return void
 	 */
@@ -159,16 +179,41 @@ class Polylang extends Base implements Hookable {
 
 	/**
 	 * The `polylang` option was written with a different value — which is a
-	 * site setting change only when the default language is what differs.
+	 * routing setting change only when a routing key is what differs.
+	 *
+	 * Not while `shutdown` runs: a write before the comparison is in the
+	 * stored option it compares, and Polylang's own save, after delivery,
+	 * writes the options in memory it has already compared. Reporting from
+	 * there would only log a change that nothing is left to send.
 	 *
 	 * @param mixed $old_value The option before.
 	 * @param mixed $value     The option after.
 	 * @return void
 	 */
 	public function on_option_update( $old_value, $value ) {
-		if ( self::default_language( $old_value ) === self::default_language( $value ) ) return;
+		if ( doing_action( 'shutdown' ) ) return;
+		if ( ! self::routing_differs( $old_value, $value ) ) return;
 
-		$this->report_settings_change();
+		$this->pendingChanges->report( Change::all() );
+	}
+
+	/**
+	 * Compare the routing keys of Polylang's options in memory with the
+	 * stored option, and report a revalidate all when one differs — see the
+	 * class docblock.
+	 *
+	 * Nothing to compare when no Polylang is running — a front end with no
+	 * language yet sets none up — or when no option is stored yet.
+	 *
+	 * @return void
+	 */
+	public function compare_routing_settings() {
+		$in_memory = $this->running_options();
+		if ( null === $in_memory ) return;
+
+		if ( ! self::routing_differs( get_option( self::OPTION ), $in_memory ) ) return;
+
+		$this->pendingChanges->report( Change::all() );
 	}
 
 	/**
@@ -273,14 +318,13 @@ class Polylang extends Base implements Hookable {
 	 * The fields the site has Polylang synchronise between translations.
 	 *
 	 * Read off the running Polylang rather than the `polylang` option, which
-	 * Polylang 3.7 and later hold in memory — see the class docblock. Its
-	 * options are an array before 3.7, an `ArrayAccess` since.
+	 * Polylang 3.7 and later hold in memory — see the class docblock.
 	 *
 	 * @return array The `sync` list, empty when there is none.
 	 */
 	private function synchronised_fields() {
-		$options = is_object( $GLOBALS['polylang'] ?? null ) ? ( $GLOBALS['polylang']->options ?? null ) : null;
-		if ( ! is_array( $options ) && ! $options instanceof \ArrayAccess ) return [];
+		$options = $this->running_options();
+		if ( null === $options ) return [];
 
 		$sync = $options['sync'] ?? null;
 
@@ -288,12 +332,89 @@ class Polylang extends Base implements Hookable {
 	}
 
 	/**
-	 * The default language a value of the `polylang` option names.
+	 * The running Polylang's options: an array before 3.7, an `ArrayAccess`
+	 * since, which reads each through its `get()`.
 	 *
-	 * @param mixed $options
-	 * @return mixed The `default_lang`, or null when there is none.
+	 * @return array|\ArrayAccess|null Null when no Polylang is running.
 	 */
-	private static function default_language( $options ) {
-		return is_array( $options ) ? ( $options['default_lang'] ?? null ) : null;
+	private function running_options() {
+		$options = is_object( $GLOBALS['polylang'] ?? null ) ? ( $GLOBALS['polylang']->options ?? null ) : null;
+
+		return ( is_array( $options ) || $options instanceof \ArrayAccess ) ? $options : null;
+	}
+
+	/**
+	 * Whether two values of Polylang's options differ in a routing key.
+	 *
+	 * Only the keys both hold are compared: a key one side lacks is one that
+	 * side leaves to Polylang's default, and comparing it would report on
+	 * every request until Polylang next writes its option. Nothing at all is
+	 * compared when either side is not options.
+	 *
+	 * @param mixed $before The options before: the stored option.
+	 * @param mixed $after  The options after.
+	 * @return bool
+	 */
+	private static function routing_differs( $before, $after ) {
+		if ( ! self::is_options( $before ) || ! self::is_options( $after ) ) return false;
+
+		foreach ( self::ROUTING_KEYS as $key ) {
+			if ( ! self::holds( $before, $key ) || ! self::holds( $after, $key ) ) continue;
+
+			if ( self::normalised( $before[ $key ] ) !== self::normalised( $after[ $key ] ) ) return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * @param mixed $options
+	 * @return bool
+	 * @phpstan-assert-if-true array|\ArrayAccess $options
+	 */
+	private static function is_options( $options ) {
+		return is_array( $options ) || $options instanceof \ArrayAccess;
+	}
+
+	/**
+	 * Whether options hold a key: Polylang's own `ArrayAccess` answers for the
+	 * keys it registered.
+	 *
+	 * @param array|\ArrayAccess $options
+	 * @param string             $key
+	 * @return bool
+	 */
+	private static function holds( $options, $key ) {
+		return is_array( $options ) ? array_key_exists( $key, $options ) : $options->offsetExists( $key );
+	}
+
+	/**
+	 * A value of a routing key with its type told apart no more than Polylang
+	 * tells it apart: the stored option can hold `"1"` or `1` where memory
+	 * holds `true`, a string where memory holds an int, and an empty value of
+	 * any type for false.
+	 *
+	 * @param mixed $value
+	 * @return string|array<array-key, mixed> An empty value as `''`, any other
+	 *                                        scalar as a string, a map with
+	 *                                        its empty entries dropped and its
+	 *                                        keys sorted.
+	 */
+	private static function normalised( $value ) {
+		if ( empty( $value ) ) return '';
+		if ( true === $value ) return '1';
+		if ( is_scalar( $value ) ) return (string) $value;
+		if ( ! is_array( $value ) ) return '';
+
+		$normalised = [];
+		foreach ( $value as $key => $entry ) {
+			$entry = self::normalised( $entry );
+			if ( '' !== $entry ) $normalised[ $key ] = $entry;
+		}
+		if ( empty( $normalised ) ) return '';
+
+		ksort( $normalised );
+
+		return $normalised;
 	}
 }
