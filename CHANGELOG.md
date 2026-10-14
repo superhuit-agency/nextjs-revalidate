@@ -4,7 +4,7 @@ What changed in each release of Next.js Revalidate, newest first, and what a
 site has to do about it. Releases before 2.0.0 are listed in the changelog of
 [`readme.txt`](readme.txt).
 
-## Unreleased
+## 2.1.1
 
 Contract version **2**, unchanged: a routing setting reports the `all` change
 an operator's revalidate all already sends.
