@@ -98,9 +98,17 @@ class Polylang extends Base implements Hookable {
 	const STRINGS_META_KEY = '_pll_strings_translations';
 
 	/**
-	 * The keys of the `polylang` option that are routing settings.
+	 * The keys of the `polylang` option that are routing settings, each with
+	 * the type Polylang's own schema reads it as.
 	 */
-	const ROUTING_KEYS = [ 'default_lang', 'hide_default', 'force_lang', 'rewrite', 'domains', 'redirect_lang' ];
+	const ROUTING_KEYS = [
+		'default_lang'  => 'string',
+		'hide_default'  => 'boolean',
+		'force_lang'    => 'integer',
+		'rewrite'       => 'boolean',
+		'domains'       => 'domains',
+		'redirect_lang' => 'boolean',
+	];
 
 	/**
 	 * The `shutdown` priority the comparison runs at: before the pending
@@ -358,10 +366,10 @@ class Polylang extends Base implements Hookable {
 	private static function routing_differs( $before, $after ) {
 		if ( ! self::is_options( $before ) || ! self::is_options( $after ) ) return false;
 
-		foreach ( self::ROUTING_KEYS as $key ) {
+		foreach ( self::ROUTING_KEYS as $key => $type ) {
 			if ( ! self::holds( $before, $key ) || ! self::holds( $after, $key ) ) continue;
 
-			if ( self::normalised( $before[ $key ] ) !== self::normalised( $after[ $key ] ) ) return true;
+			if ( self::normalised( $before[ $key ], $type ) !== self::normalised( $after[ $key ], $type ) ) return true;
 		}
 
 		return false;
@@ -389,32 +397,40 @@ class Polylang extends Base implements Hookable {
 	}
 
 	/**
-	 * A value of a routing key with its type told apart no more than Polylang
-	 * tells it apart: the stored option can hold `"1"` or `1` where memory
-	 * holds `true`, a string where memory holds an int, and an empty value of
-	 * any type for false.
+	 * A value of a routing key read the way Polylang reads the stored option
+	 * when it loads it — through its schema, as `rest_sanitize_value_from_schema()`
+	 * does — so two values Polylang holds as one are one. The stored option can
+	 * hold `"1"`, `1` or `"false"` where memory holds a boolean, and a string
+	 * where it holds an int; a value that differs only so would otherwise
+	 * report on every request, since Polylang, seeing nothing modified, never
+	 * writes its option back.
 	 *
-	 * @param mixed $value
-	 * @return string|array<array-key, mixed> An empty value as `''`, any other
-	 *                                        scalar as a string, a map with
-	 *                                        its empty entries dropped and its
-	 *                                        keys sorted.
+	 * @param mixed  $value
+	 * @param string $type  The key's type, from `ROUTING_KEYS`.
+	 * @return string|array<string, string> A scalar as a string — a boolean as
+	 *                                      `'1'` or `''` — and the domains as a
+	 *                                      map with its empty entries dropped
+	 *                                      and its keys sorted.
 	 */
-	private static function normalised( $value ) {
-		if ( empty( $value ) ) return '';
-		if ( true === $value ) return '1';
-		if ( is_scalar( $value ) ) return (string) $value;
-		if ( ! is_array( $value ) ) return '';
+	private static function normalised( $value, string $type ) {
+		switch ( $type ) {
+			case 'boolean':
+				return rest_sanitize_boolean( $value ) ? '1' : '';
+			case 'integer':
+				return is_scalar( $value ) ? (string) (int) $value : '';
+			case 'domains':
+				if ( ! is_array( $value ) ) return [];
 
-		$normalised = [];
-		foreach ( $value as $key => $entry ) {
-			$entry = self::normalised( $entry );
-			if ( '' !== $entry ) $normalised[ $key ] = $entry;
+				$domains = [];
+				foreach ( $value as $language => $url ) {
+					$url = is_string( $url ) ? esc_url_raw( $url ) : '';
+					if ( '' !== $url ) $domains[ (string) $language ] = $url;
+				}
+				ksort( $domains );
+
+				return $domains;
+			default:
+				return is_scalar( $value ) ? (string) $value : '';
 		}
-		if ( empty( $normalised ) ) return '';
-
-		ksort( $normalised );
-
-		return $normalised;
 	}
 }

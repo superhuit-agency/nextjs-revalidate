@@ -226,6 +226,37 @@ class PolylangSettingsTest extends PendingChangesTestCase {
 		];
 	}
 
+	/**
+	 * A later request, which changes nothing: Polylang reads the stored value
+	 * through its schema, into a value of the type it holds, and writes nothing
+	 * back. Told apart only by type, the two would report on every request —
+	 * a value written as text, as `wp option patch update polylang
+	 * hide_default false` writes it, among them.
+	 *
+	 * @dataProvider values_polylang_reads_as_another_type
+	 */
+	public function test_a_routing_key_polylang_reads_as_another_type_reports_nothing( $key, $stored ) {
+		$this->add_language( 'en_US', 'en' );
+		update_option( 'polylang', array_merge( $this->model->options->get_all(), [ $key => $stored ] ) );
+		$this->reset_pending_changes();
+
+		$this->load_polylang();
+		$this->compare_before_delivery();
+
+		$this->assertNoPendingChanges( "$key stored as " . var_export( $stored, true ) . ' reported a change on a request that changed nothing.' );
+	}
+
+	public function values_polylang_reads_as_another_type() {
+		return [
+			'hide_default "false"'     => [ 'hide_default', 'false' ],
+			'hide_default "yes"'       => [ 'hide_default', 'yes' ],
+			'rewrite "true"'           => [ 'rewrite', 'true' ],
+			'redirect_lang "false"'    => [ 'redirect_lang', 'false' ],
+			'force_lang "1.0"'         => [ 'force_lang', '1.0' ],
+			'domains without a scheme' => [ 'domains', [ 'en' => 'en.example.test' ] ],
+		];
+	}
+
 	public function test_nothing_changed_reports_nothing() {
 		$this->add_language( 'en_US', 'en' );
 		$this->store_options();
@@ -365,6 +396,19 @@ class PolylangSettingsTest extends PendingChangesTestCase {
 	private function store_options() {
 		update_option( 'polylang', $this->model->options->get_all() );
 		$this->reset_pending_changes();
+	}
+
+	/**
+	 * Load Polylang's options from the stored option, as a new request does,
+	 * and make it the running Polylang.
+	 *
+	 * @return void
+	 */
+	private function load_polylang() {
+		$this->model = new \PLL_Admin_Model( new \WP_Syntex\Polylang\Options\Options() );
+		$this->model->languages->set_ready();
+
+		$GLOBALS['polylang'] = new \PLL_Admin( $this->model->get_links_model() );
 	}
 
 	/**
